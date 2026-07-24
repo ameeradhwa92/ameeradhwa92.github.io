@@ -50,4 +50,38 @@
   } else {
     targets.forEach(function (t) { t.classList.add("in", "lit"); });
   }
+
+  /* --- ambient cursor glow + card spotlights (pointer devices only) --- */
+  var fine = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  if (fine && !reduced) {
+    var glow = document.querySelector(".cursor-glow");
+    var gx = 0, gy = 0, tx = -600, ty = -600, raf = null;
+
+    function tick() {
+      gx += (tx - gx) * 0.08;
+      gy += (ty - gy) * 0.08;
+      glow.style.transform = "translate3d(" + gx + "px," + gy + "px,0)";
+      if (Math.abs(tx - gx) + Math.abs(ty - gy) > 0.4) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        raf = null;
+      }
+    }
+
+    document.addEventListener("pointermove", function (e) {
+      tx = e.clientX; ty = e.clientY;
+      if (glow && !glow.classList.contains("on")) {
+        gx = tx; gy = ty;
+        glow.classList.add("on");
+      }
+      if (glow && raf === null) raf = requestAnimationFrame(tick);
+
+      var host = e.target.closest && e.target.closest(".card, .skill-group, .edu-card");
+      if (host) {
+        var r = host.getBoundingClientRect();
+        host.style.setProperty("--mx", (e.clientX - r.left) + "px");
+        host.style.setProperty("--my", (e.clientY - r.top) + "px");
+      }
+    }, { passive: true });
+  }
 })();

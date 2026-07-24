@@ -73,10 +73,31 @@ img { max-width: 100%; display: block; }
     radial-gradient(700px 700px at -12% 30%, rgba(23, 118, 110, 0.10), transparent 60%),
     var(--ink);
 }
+.atmosphere::before {
+  content: ""; position: absolute; inset: -20%;
+  background:
+    radial-gradient(760px 560px at 22% 78%, rgba(23, 118, 110, 0.10), transparent 62%),
+    radial-gradient(900px 640px at 82% 18%, rgba(62, 207, 187, 0.05), transparent 60%);
+  animation: drift 46s ease-in-out infinite alternate;
+}
 .atmosphere::after {
   content: ""; position: absolute; inset: 0; opacity: 0.05;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
 }
+@keyframes drift {
+  from { transform: translate3d(-2.5%, -1.5%, 0) scale(1); }
+  to   { transform: translate3d(2.5%, 2%, 0) scale(1.06); }
+}
+
+/* cursor-following ambient glow (JS moves it; hidden until first pointer move) */
+.cursor-glow {
+  position: fixed; left: 0; top: 0; z-index: 0; pointer-events: none;
+  width: 560px; height: 560px; margin: -280px 0 0 -280px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(62, 207, 187, 0.07), rgba(62, 207, 187, 0.025) 40%, transparent 68%);
+  opacity: 0; transition: opacity 0.8s ease;
+  will-change: transform;
+}
+.cursor-glow.on { opacity: 1; }
 
 /* ---------- progress + nav ---------- */
 .progress {
@@ -141,8 +162,9 @@ img { max-width: 100%; display: block; }
 
 .portrait { position: relative; justify-self: end; }
 .portrait img {
-  width: min(300px, 100%); height: auto; aspect-ratio: 1; object-fit: cover; border-radius: 18px;
-  filter: saturate(0.92);
+  width: min(330px, 100%); height: auto; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 18px;
+  filter: saturate(0.94);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
 }
 .portrait::before {
   content: ""; position: absolute; inset: 14px -14px -14px 14px;
@@ -232,6 +254,19 @@ img { max-width: 100%; display: block; }
   background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
   overflow: hidden; display: flex; flex-direction: column;
   transition: transform 0.25s, border-color 0.25s;
+  position: relative;
+}
+/* hover spotlight — follows the cursor inside the card (JS sets --mx/--my) */
+.card::after, .skill-group::after, .edu-card::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(340px circle at var(--mx, 50%) var(--my, 50%),
+              rgba(62, 207, 187, 0.09), transparent 62%);
+  opacity: 0; transition: opacity 0.35s;
+}
+.card:hover::after, .skill-group:hover::after, .edu-card:hover::after { opacity: 1; }
+.card.eol::after {
+  background: radial-gradient(340px circle at var(--mx, 50%) var(--my, 50%),
+              rgba(217, 164, 65, 0.06), transparent 62%);
 }
 .card:hover { transform: translateY(-4px); border-color: var(--teal-deep); }
 .card.eol:hover { border-color: #4a4436; }
@@ -297,7 +332,9 @@ img { max-width: 100%; display: block; }
 }
 .skill-group {
   background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 22px;
+  position: relative; transition: border-color 0.25s;
 }
+.skill-group:hover { border-color: var(--teal-deep); }
 .skill-group h3 {
   font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.2em;
   text-transform: uppercase; color: var(--teal); font-weight: 600; margin-bottom: 12px;
@@ -308,21 +345,37 @@ img { max-width: 100%; display: block; }
 .edu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 30px; }
 .edu-card {
   border: 1px solid var(--line); border-radius: 14px; padding: 22px; background: var(--panel);
+  position: relative; transition: border-color 0.25s;
 }
+.edu-card:hover { border-color: var(--teal-deep); }
 .edu-card b { font-family: var(--display); font-weight: 600; font-size: 1.05rem; display: block; }
 .edu-card span { color: var(--muted); font-size: 0.88rem; }
 .langs { margin-top: 20px; color: var(--muted); font-size: 0.9rem; }
 .langs b { color: var(--paper); }
 
 /* ---------- contact ---------- */
-.contact { padding-top: 110px; padding-bottom: 60px; text-align: center; }
+.contact { padding-top: 110px; padding-bottom: 60px; }
+.contact-grid {
+  display: grid; grid-template-columns: 0.85fr 1.5fr; gap: 64px; align-items: center;
+  margin-bottom: 60px;
+}
+.contact-photo { position: relative; }
+.contact-photo img {
+  width: min(320px, 100%); height: auto; aspect-ratio: 3 / 4; object-fit: cover;
+  border-radius: 18px; filter: saturate(0.94);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+.contact-photo::before {
+  content: ""; position: absolute; inset: 14px 14px -14px -14px;
+  border: 1px solid var(--teal-deep); border-radius: 18px; z-index: -1;
+}
 .contact h2 {
   font-family: var(--display); font-weight: 400; font-style: italic;
-  font-size: clamp(2rem, 5vw, 3.2rem); margin: 16px 0 18px;
+  font-size: clamp(2rem, 4vw, 3rem); margin: 16px 0 18px;
 }
 .contact h2 em { color: var(--teal); font-style: italic; }
-.contact p { color: var(--muted); max-width: 46ch; margin: 0 auto 34px; }
-.contact-links { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; }
+.contact p { color: var(--muted); max-width: 52ch; margin-bottom: 34px; }
+.contact-links { display: flex; flex-wrap: wrap; gap: 14px; }
 
 .footer {
   border-top: 1px solid var(--line); padding: 26px 0 34px;
@@ -342,12 +395,19 @@ img { max-width: 100%; display: block; }
   .js .reveal { opacity: 1; transform: none; transition: none; }
   .badge .dot, .card:hover, .card:hover .shot img, .btn:hover { animation: none; transform: none; transition: none; }
   .spine-progress { box-shadow: none; }
+  .atmosphere::before { animation: none; }
+  .cursor-glow { display: none; }
+  .card::after, .skill-group::after, .edu-card::after { display: none; }
+}
+@media (hover: none), (pointer: coarse) {
+  .cursor-glow { display: none; }
 }
 
 /* ---------- responsive ---------- */
 @media (max-width: 900px) {
   .hero-grid { grid-template-columns: 1fr; gap: 44px; }
   .portrait { justify-self: start; }
+  .contact-grid { grid-template-columns: 1fr; gap: 44px; }
   .skills-grid { grid-template-columns: 1fr 1fr; }
   .stats-grid { grid-template-columns: 1fr 1fr; }
   .stat:nth-child(3) { border-left: none; }
