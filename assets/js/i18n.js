@@ -124,10 +124,14 @@ window.I18N_MS = {
   "skills.cloud": "Awan &amp; DevOps",
   "skills.integrations": "Integrasi",
 
-  "edu.degree": "Sarjana Muda IT (Kepujian), Kejuruteraan Sistem Pintar",
-  "edu.degree.sub": "UiTM Shah Alam · 2013 – 2016 · PTA: Pengecam Pelekat Cukai Jalan (OCR Tesseract, Android)",
+  "edu.eyebrow": "Pendidikan &amp; Kelayakan",
+  "edu.degree": "Sarjana Muda Teknologi Maklumat (Kepujian), Kejuruteraan Sistem Pintar",
+  "edu.degree.sub": "UiTM Shah Alam · 2013 – 2016 · Dianugerahkan Mac 2016 · PTA: Pengecam Pelekat Cukai Jalan (OCR Tesseract, Android)",
   "edu.diploma": "Diploma Sains Komputer",
-  "edu.diploma.sub": "UiTM Dungun · 2010 – 2013 · PTA: Sistem Tiket Bas (PHP)",
+  "edu.diploma.sub": "UiTM Dungun · 2010 – 2013 · Dianugerahkan Mei 2013 · PTA: Sistem Tiket Bas (PHP)",
+  "edu.muet.sub": "Majlis Peperiksaan Malaysia · November 2015 · Band 3",
+  "edu.spm.sub": "SMK Balai Besar, Dungun · 2009 · Sains Tulen — 10 mata pelajaran termasuk A+ Matematik",
+  "edu.cert": "Sijil (PDF)",
   "langs": "<b>Bahasa:</b> Bahasa Melayu (ibunda) · Bahasa Inggeris (profesional)",
 
   "contact.eyebrow": "Persinggahan Seterusnya",
