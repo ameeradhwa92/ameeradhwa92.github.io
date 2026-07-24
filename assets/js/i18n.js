@@ -132,6 +132,7 @@ window.I18N_MS = {
   "edu.muet.sub": "Majlis Peperiksaan Malaysia · November 2015 · Band 3",
   "edu.spm.sub": "SMK Balai Besar, Dungun · 2009 · Sains Tulen — 10 mata pelajaran termasuk A+ Matematik",
   "edu.cert": "Sijil (PDF)",
+  "modal.download": "Muat turun PDF",
   "langs": "<b>Bahasa:</b> Bahasa Melayu (ibunda) · Bahasa Inggeris (profesional)",
 
   "contact.eyebrow": "Persinggahan Seterusnya",

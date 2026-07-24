@@ -513,22 +513,22 @@
       <div class="edu-card reveal">
         <b data-i18n="edu.degree">B.IT (Hons.), Intelligent Systems Engineering</b>
         <span data-i18n="edu.degree.sub">UiTM Shah Alam · 2013 – 2016 · Awarded Mar 2016 · FYP: Road Tax Sticker Recognizer (Tesseract OCR, Android)</span>
-        <a class="edu-cert" href="assets/certs/degree-uitm-2016.pdf" target="_blank" rel="noopener" data-i18n="edu.cert">Certificate (PDF)</a>
+        <a class="edu-cert" href="assets/certs/degree-uitm-2016.pdf" target="_blank" rel="noopener" data-cert="degree-uitm-2016" data-pages="2" data-i18n="edu.cert">Certificate (PDF)</a>
       </div>
       <div class="edu-card reveal">
         <b data-i18n="edu.diploma">Diploma in Computer Science</b>
         <span data-i18n="edu.diploma.sub">UiTM Dungun · 2010 – 2013 · Awarded May 2013 · FYP: Bus Ticketing System (PHP)</span>
-        <a class="edu-cert" href="assets/certs/diploma-uitm-2013.pdf" target="_blank" rel="noopener" data-i18n="edu.cert">Certificate (PDF)</a>
+        <a class="edu-cert" href="assets/certs/diploma-uitm-2013.pdf" target="_blank" rel="noopener" data-cert="diploma-uitm-2013" data-pages="2" data-i18n="edu.cert">Certificate (PDF)</a>
       </div>
       <div class="edu-card reveal">
         <b>Malaysian University English Test (MUET)</b>
         <span data-i18n="edu.muet.sub">Malaysian Examinations Council · November 2015 · Band 3</span>
-        <a class="edu-cert" href="assets/certs/muet-2015.pdf" target="_blank" rel="noopener" data-i18n="edu.cert">Certificate (PDF)</a>
+        <a class="edu-cert" href="assets/certs/muet-2015.pdf" target="_blank" rel="noopener" data-cert="muet-2015" data-pages="2" data-i18n="edu.cert">Certificate (PDF)</a>
       </div>
       <div class="edu-card reveal">
         <b>Sijil Pelajaran Malaysia (SPM)</b>
         <span data-i18n="edu.spm.sub">SMK Balai Besar, Dungun · 2009 · Pure Sciences — 10 subjects incl. A+ in Mathematics</span>
-        <a class="edu-cert" href="assets/certs/spm-2009.pdf" target="_blank" rel="noopener" data-i18n="edu.cert">Certificate (PDF)</a>
+        <a class="edu-cert" href="assets/certs/spm-2009.pdf" target="_blank" rel="noopener" data-cert="spm-2009" data-pages="1" data-i18n="edu.cert">Certificate (PDF)</a>
       </div>
     </div>
     <p class="langs reveal" data-i18n="langs"><b>Languages:</b> Bahasa Malaysia (native) · English (professional)</p>
@@ -558,6 +558,23 @@
       <span data-i18n="footer.built">Built by hand — one HTML file, zero frameworks.</span>
     </div>
   </footer>
+
+  <!-- ================= CERTIFICATE MODAL ================= -->
+  <div class="cert-modal" id="cert-modal" role="dialog" aria-modal="true" aria-labelledby="cert-modal-title" hidden>
+    <div class="cert-modal-backdrop" data-close aria-hidden="true"></div>
+    <div class="cert-modal-box" role="document">
+      <div class="cert-modal-head">
+        <h4 id="cert-modal-title"></h4>
+        <button class="icon-btn cert-modal-close" type="button" aria-label="Close" data-close>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>
+        </button>
+      </div>
+      <div class="cert-modal-body"></div>
+      <div class="cert-modal-foot">
+        <a class="btn btn-ghost" id="cert-modal-download" href="#" target="_blank" rel="noopener" download data-i18n="modal.download">Download PDF</a>
+      </div>
+    </div>
+  </div>
 
   <script src="assets/js/i18n.js" defer></script>
   <script src="assets/js/main.js" defer></script>

@@ -105,6 +105,69 @@
     targets.forEach(function (t) { t.classList.add("in", "lit"); });
   }
 
+  /* --- certificate modal: images in a dialog, PDF as download fallback --- */
+  var modal = document.getElementById("cert-modal");
+  if (modal) {
+    var modalBody = modal.querySelector(".cert-modal-body");
+    var modalTitle = modal.querySelector("#cert-modal-title");
+    var modalDownload = modal.querySelector("#cert-modal-download");
+    var modalClose = modal.querySelector(".cert-modal-close");
+    var lastFocus = null;
+    var closing = null;
+
+    function openCert(link) {
+      var slug = link.getAttribute("data-cert");
+      var pages = parseInt(link.getAttribute("data-pages"), 10) || 1;
+      var card = link.closest(".edu-card");
+      var title = card ? card.querySelector("b").textContent : "";
+      modalTitle.textContent = title;
+      modalDownload.href = link.href;
+      modalBody.innerHTML = "";
+      for (var i = 1; i <= pages; i++) {
+        var img = document.createElement("img");
+        img.src = "assets/certs/img/" + slug + "-" + i + ".jpg";
+        img.alt = title + " — " + i + "/" + pages;
+        img.loading = i === 1 ? "eager" : "lazy";
+        modalBody.appendChild(img);
+      }
+      modalBody.scrollTop = 0;
+      lastFocus = link;
+      if (closing) { clearTimeout(closing); closing = null; }
+      modal.hidden = false;
+      modal.classList.remove("closing");
+      void modal.offsetWidth; /* flush styles so the open transition runs */
+      modal.classList.add("open");
+      document.body.classList.add("modal-open");
+      modalClose.focus();
+    }
+
+    function closeCert() {
+      modal.classList.remove("open");
+      modal.classList.add("closing");
+      document.body.classList.remove("modal-open");
+      var delay = reduced ? 0 : 340;
+      closing = setTimeout(function () {
+        modal.hidden = true;
+        modal.classList.remove("closing");
+        closing = null;
+      }, delay);
+      if (lastFocus) lastFocus.focus();
+    }
+
+    document.querySelectorAll(".edu-cert[data-cert]").forEach(function (a) {
+      a.addEventListener("click", function (e) {
+        e.preventDefault();
+        openCert(this);
+      });
+    });
+    modal.addEventListener("click", function (e) {
+      if (e.target.hasAttribute("data-close") || e.target.closest("[data-close]")) closeCert();
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !modal.hidden) closeCert();
+    });
+  }
+
   /* --- ambient cursor glow + card spotlights (pointer devices only) --- */
   var fine = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
   if (fine && !reduced) {

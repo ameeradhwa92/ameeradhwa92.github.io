@@ -428,6 +428,61 @@ html[lang="ms"] .portrait::after { content: "SEJAK 2010 · DUNGUN → SHAH ALAM"
 .langs { margin-top: 20px; color: var(--muted); font-size: 0.9rem; }
 .langs b { color: var(--paper); }
 
+/* ---------- certificate modal ---------- */
+.cert-modal {
+  position: fixed; inset: 0; z-index: 90;
+  display: flex; align-items: center; justify-content: center;
+  padding: clamp(12px, 3vw, 32px);
+}
+.cert-modal[hidden] { display: none; }
+.cert-modal-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(4, 6, 8, 0.72); backdrop-filter: blur(7px);
+  opacity: 0; transition: opacity 0.32s ease;
+}
+.cert-modal-box {
+  position: relative; z-index: 1;
+  width: min(720px, 100%); max-height: min(90dvh, 100%);
+  display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+  box-shadow: 0 32px 90px var(--shadow);
+  opacity: 0; transform: translateY(22px) scale(0.965);
+  transition: opacity 0.34s ease, transform 0.34s cubic-bezier(0.22, 0.9, 0.28, 1.02);
+}
+.cert-modal.open .cert-modal-backdrop { opacity: 1; }
+.cert-modal.open .cert-modal-box { opacity: 1; transform: none; }
+.cert-modal.closing .cert-modal-backdrop { opacity: 0; }
+.cert-modal.closing .cert-modal-box { opacity: 0; transform: translateY(14px) scale(0.975); }
+
+.cert-modal-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 16px 20px; border-bottom: 1px solid var(--line); flex-shrink: 0;
+}
+.cert-modal-head h4 {
+  font-family: var(--display); font-weight: 600; font-size: 1.05rem; line-height: 1.3;
+}
+.cert-modal-close { flex-shrink: 0; width: 34px; height: 34px; }
+
+.cert-modal-body {
+  overflow-y: auto; padding: 18px 20px 6px; overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.cert-modal-body img {
+  width: 100%; height: auto; border: 1px solid var(--line); border-radius: 10px;
+  margin-bottom: 14px; background: #fff;
+}
+.cert-modal-foot {
+  display: flex; justify-content: flex-end;
+  padding: 12px 20px 16px; border-top: 1px solid var(--line); flex-shrink: 0;
+}
+body.modal-open { overflow: hidden; }
+
+@media (max-width: 640px) {
+  .cert-modal { padding: 10px; align-items: flex-end; }
+  .cert-modal-box { border-radius: 14px; max-height: 94dvh; }
+  .cert-modal-head, .cert-modal-body, .cert-modal-foot { padding-left: 14px; padding-right: 14px; }
+}
+
 /* ---------- contact ---------- */
 .contact { padding-top: 110px; padding-bottom: 60px; }
 .contact-grid {
@@ -473,6 +528,7 @@ html[lang="ms"] .portrait::after { content: "SEJAK 2010 · DUNGUN → SHAH ALAM"
   .atmosphere::before { animation: none; }
   .cursor-glow { display: none; }
   .card::after, .skill-group::after, .edu-card::after { display: none; }
+  .cert-modal-backdrop, .cert-modal-box { transition: none; transform: none; }
 }
 @media (hover: none), (pointer: coarse) {
   .cursor-glow { display: none; }
