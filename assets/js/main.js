@@ -1,8 +1,62 @@
-/* The Journey — scroll choreography. No dependencies. */
+/* The Journey — scroll choreography, theming and language. No dependencies. */
 (function () {
   "use strict";
 
   var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var root = document.documentElement;
+
+  /* --- theme: follows the device by default; toggle overrides and persists --- */
+  var themeBtn = document.getElementById("theme-toggle");
+  function effectiveTheme() {
+    if (root.dataset.theme) return root.dataset.theme;
+    return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  }
+  function syncThemeColor() {
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = effectiveTheme() === "light" ? "#f4f2ec" : "#0b0e10";
+  }
+  if (themeBtn) {
+    themeBtn.addEventListener("click", function () {
+      var next = effectiveTheme() === "light" ? "dark" : "light";
+      root.dataset.theme = next;
+      try { localStorage.setItem("theme", next); } catch (e) {}
+      syncThemeColor();
+    });
+  }
+  syncThemeColor();
+
+  /* --- language: EN/BM. English lives in the DOM; BM comes from i18n.js --- */
+  var langBtn = document.getElementById("lang-toggle");
+  var EN = {};
+  document.querySelectorAll("[data-i18n]").forEach(function (el) {
+    var k = el.getAttribute("data-i18n");
+    if (!(k in EN)) EN[k] = el.innerHTML;
+  });
+  EN["meta.title"] = document.title;
+  EN["meta.desc"] = (document.querySelector('meta[name="description"]') || {}).content || "";
+
+  function setLang(lang) {
+    var dict = lang === "ms" ? (window.I18N_MS || {}) : EN;
+    document.querySelectorAll("[data-i18n]").forEach(function (el) {
+      var k = el.getAttribute("data-i18n");
+      if (dict[k] != null) el.innerHTML = dict[k];
+    });
+    document.title = dict["meta.title"] || EN["meta.title"];
+    var meta = document.querySelector('meta[name="description"]');
+    if (meta) meta.content = dict["meta.desc"] || EN["meta.desc"];
+    root.lang = lang;
+    root.dataset.lang = lang;
+    if (langBtn) langBtn.textContent = lang === "ms" ? "EN" : "BM";
+    try { localStorage.setItem("lang", lang); } catch (e) {}
+  }
+  var initialLang = root.dataset.lang === "ms" ? "ms" : "en";
+  if (initialLang === "ms") setLang("ms");
+  else if (langBtn) langBtn.textContent = "BM";
+  if (langBtn) {
+    langBtn.addEventListener("click", function () {
+      setLang(root.lang === "ms" ? "en" : "ms");
+    });
+  }
 
   /* --- top progress bar --- */
   var bar = document.querySelector(".progress");

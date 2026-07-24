@@ -15,10 +15,22 @@
   <link rel="icon" type="image/svg+xml" href="assets/img/favicon.svg">
   <link rel="preload" href="assets/fonts/fraunces-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="assets/css/style.css">
-  <script>document.documentElement.classList.replace('no-js', 'js');</script>
+  <script>
+    document.documentElement.classList.replace('no-js', 'js');
+    /* apply saved theme/language before first paint to avoid flashes */
+    (function () {
+      try {
+        var t = localStorage.getItem('theme');
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+        var l = localStorage.getItem('lang') ||
+                ((navigator.language || '').toLowerCase().indexOf('ms') === 0 ? 'ms' : 'en');
+        document.documentElement.dataset.lang = l;
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
-  <a class="skip-link" href="#journey">Skip to the journey</a>
+  <a class="skip-link" href="#journey" data-i18n="skip">Skip to the journey</a>
   <div class="atmosphere" aria-hidden="true"></div>
   <div class="cursor-glow" aria-hidden="true"></div>
   <div class="progress" aria-hidden="true"></div>
@@ -27,10 +39,15 @@
     <div class="nav-inner">
       <a class="nav-name" href="#top">Ameer&nbsp;Adhwa</a>
       <div class="nav-links">
-        <a href="#journey">Journey</a>
-        <a href="#skills">Skills</a>
-        <a href="#contact">Contact</a>
-        <a class="nav-cta" href="assets/resume/Ameer_Adhwa_Resume_2026.pdf" download>Résumé&nbsp;(PDF)</a>
+        <a href="#journey" data-i18n="nav.journey">Journey</a>
+        <a href="#skills" data-i18n="nav.skills">Skills</a>
+        <a href="#contact" data-i18n="nav.contact">Contact</a>
+        <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle light or dark theme">
+          <svg class="ic-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+          <svg class="ic-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4m11.4-11.4 1.4-1.4"/></svg>
+        </button>
+        <button class="icon-btn lang-btn" id="lang-toggle" type="button" aria-label="Tukar bahasa / Switch language">BM</button>
+        <a class="nav-cta" href="assets/resume/Ameer_Adhwa_Resume_2026.pdf" download data-i18n="nav.resume">Résumé&nbsp;(PDF)</a>
       </div>
     </div>
   </nav>
@@ -39,17 +56,17 @@
   <header class="hero wrap" id="top">
     <div class="hero-grid">
       <div>
-        <p class="eyebrow">Shah Alam, Malaysia — Full Stack Web Specialist</p>
-        <h1>From a diploma classroom in <em>Dungun</em> to multi-tenant SaaS across <em>Southeast Asia</em>.</h1>
-        <p class="hero-sub">
+        <p class="eyebrow" data-i18n="hero.eyebrow">Shah Alam, Malaysia — Full Stack Web Specialist</p>
+        <h1 data-i18n="hero.h1">From a diploma classroom in <em>Dungun</em> to multi-tenant SaaS across <em>Southeast Asia</em>.</h1>
+        <p class="hero-sub" data-i18n="hero.sub">
           I'm Ameer Adhwa Bin Mohamad. For 12+ years I've shipped web and mobile systems for
           government agencies, ports and customs, clinics — and today I'm the developer behind
           <b>RetailAIM® Plus</b>, a multi-tenant ASP.NET Core SaaS platform used by 20+ FMCG brands
           (Nestlé, Unilever, Abbott, Farm Fresh) across Malaysia, Singapore, Thailand and the Philippines.
         </p>
         <div class="hero-actions">
-          <a class="btn btn-solid" href="assets/resume/Ameer_Adhwa_Resume_2026.pdf" download>Download résumé</a>
-          <a class="btn btn-ghost" href="#journey">Walk the timeline ↓</a>
+          <a class="btn btn-solid" href="assets/resume/Ameer_Adhwa_Resume_2026.pdf" download data-i18n="hero.download">Download résumé</a>
+          <a class="btn btn-ghost" href="#journey" data-i18n="hero.walk">Walk the timeline ↓</a>
         </div>
         <div class="hero-meta">
           <a href="mailto:ameeradhwa92@gmail.com">ameeradhwa92@gmail.com</a>
@@ -68,10 +85,10 @@
   <section class="stats" aria-label="Career at a glance">
     <div class="wrap">
       <div class="stats-grid">
-        <div class="stat reveal"><b>12+</b><span>years shipping</span></div>
-        <div class="stat reveal"><b>25+</b><span>production systems</span></div>
-        <div class="stat reveal"><b>20+</b><span>FMCG brands served</span></div>
-        <div class="stat reveal"><b>4</b><span>countries live</span></div>
+        <div class="stat reveal"><b>12+</b><span data-i18n="stats.years">years shipping</span></div>
+        <div class="stat reveal"><b>25+</b><span data-i18n="stats.systems">production systems</span></div>
+        <div class="stat reveal"><b>20+</b><span data-i18n="stats.brands">FMCG brands served</span></div>
+        <div class="stat reveal"><b>4</b><span data-i18n="stats.countries">countries live</span></div>
       </div>
     </div>
   </section>
@@ -79,9 +96,9 @@
   <!-- ================= TIMELINE ================= -->
   <main class="section wrap" id="journey">
     <div class="section-head reveal">
-      <p class="eyebrow">The Journey · 2010 → Today</p>
-      <h2>Sixteen years, one line of travel — every stop <em>still running</em> somewhere.</h2>
-      <p>Each port of call below is a real era, and every project carries its live link.
+      <p class="eyebrow" data-i18n="journey.eyebrow">The Journey · 2010 → Today</p>
+      <h2 data-i18n="journey.h2">Sixteen years, one line of travel — every stop <em>still running</em> somewhere.</h2>
+      <p data-i18n="journey.p">Each port of call below is a real era, and every project carries its live link.
          Systems that have since been decommissioned are honestly marked <b>Retired</b> —
          they served their tour of duty.</p>
     </div>
@@ -93,12 +110,12 @@
       <article class="era reveal">
         <span class="era-node" aria-hidden="true"></span>
         <p class="era-year">2010 — 2013 · Dungun, Terengganu</p>
-        <h3 class="era-title">The starting line — Diploma in Computer Science</h3>
-        <p class="era-role"><b>UiTM Dungun</b> · CGPA 3.03 · Final-year project: a Bus Ticketing System in PHP</p>
-        <p class="era-desc">A kid from Terengganu writes his first real application and finds out
+        <h3 class="era-title" data-i18n="era1.title">The starting line — Diploma in Computer Science</h3>
+        <p class="era-role" data-i18n="era1.role"><b>UiTM Dungun</b> · CGPA 3.03 · Final-year project: a Bus Ticketing System in PHP</p>
+        <p class="era-desc" data-i18n="era1.desc">A kid from Terengganu writes his first real application and finds out
           software is a thing you can build for people. The PHP ticketing system was humble —
           the habit of shipping wasn't.</p>
-        <p class="era-note">Side quest: weekends as a motorbike mechanic at Hussin Daud Motor, Sura Gate —
+        <p class="era-note" data-i18n="era1.note">Side quest: weekends as a motorbike mechanic at Hussin Daud Motor, Sura Gate —
           first lessons in diagnosing broken systems under pressure, just with carburetors instead of code.</p>
       </article>
 
@@ -106,22 +123,22 @@
       <article class="era reveal">
         <span class="era-node" aria-hidden="true"></span>
         <p class="era-year">2013 — 2014 · Kuala Lumpur</p>
-        <h3 class="era-title">First job: keeping aircraft on schedule</h3>
-        <p class="era-role"><b>MyEMRO Sdn. Bhd.</b> · Web Application Developer</p>
-        <p class="era-desc">Built an aircraft maintenance scheduling system in <b>Ruby on Rails</b>,
+        <h3 class="era-title" data-i18n="era2.title">First job: keeping aircraft on schedule</h3>
+        <p class="era-role" data-i18n="era2.role"><b>MyEMRO Sdn. Bhd.</b> · Web Application Developer</p>
+        <p class="era-desc" data-i18n="era2.desc">Built an aircraft maintenance scheduling system in <b>Ruby on Rails</b>,
           wrangling thousands of datasets across aircraft compartments for MRO
           (maintenance, repair &amp; overhaul) operations. Regulated-industry software, from day one.</p>
         <div class="cards">
           <div class="card">
             <div class="card-body">
-              <p class="card-client">MyEMRO · Aviation</p>
-              <h4>Aircraft MRO Scheduling System</h4>
-              <p>Maintenance, repair and overhaul scheduling engine handling thousands of
+              <p class="card-client" data-i18n="myemro.client">MyEMRO · Aviation</p>
+              <h4 data-i18n="myemro.title">Aircraft MRO Scheduling System</h4>
+              <p data-i18n="myemro.desc">Maintenance, repair and overhaul scheduling engine handling thousands of
                  datasets per aircraft compartment for aviation clients.</p>
               <div class="tags"><span>Ruby on Rails</span><span>MySQL</span></div>
             </div>
             <div class="card-foot">
-              <span class="badge badge-eol"><span class="dot"></span>Retired · Internal</span>
+              <span class="badge badge-eol"><span class="dot"></span><span data-i18n="badge.eol-internal">Retired · Internal</span></span>
             </div>
           </div>
         </div>
@@ -131,9 +148,9 @@
       <article class="era reveal">
         <span class="era-node" aria-hidden="true"></span>
         <p class="era-year">2013 — 2016 · Shah Alam, Selangor</p>
-        <h3 class="era-title">Levelling up — B.IT (Hons.) Intelligent Systems Engineering</h3>
-        <p class="era-role"><b>UiTM Shah Alam</b> · Final-year project: Mobile Road Tax Sticker Recognizer</p>
-        <p class="era-desc">Studied intelligent systems while already working — the FYP used the
+        <h3 class="era-title" data-i18n="era3.title">Levelling up — B.IT (Hons.) Intelligent Systems Engineering</h3>
+        <p class="era-role" data-i18n="era3.role"><b>UiTM Shah Alam</b> · Final-year project: Mobile Road Tax Sticker Recognizer</p>
+        <p class="era-desc" data-i18n="era3.desc">Studied intelligent systems while already working — the FYP used the
           <b>Tesseract OCR engine on Android</b> to read Malaysian road-tax stickers with a phone camera.
           The mobile obsession starts here.</p>
       </article>
@@ -141,10 +158,10 @@
       <!-- 2015-2023 · TRM Nett -->
       <article class="era reveal">
         <span class="era-node" aria-hidden="true"></span>
-        <p class="era-year">2015 — 2023 · Petaling Jaya · 7 yrs 10 mos</p>
-        <h3 class="era-title">The government years — 15+ systems for the nation's agencies</h3>
-        <p class="era-role"><b>TRM Nett Systems (M) Sdn. Bhd.</b> · Web &amp; Mobile Application Developer, Junior → Senior</p>
-        <p class="era-desc">Nearly eight years delivering licensing, certification, customs and payment
+        <p class="era-year" data-i18n="era4.year">2015 — 2023 · Petaling Jaya · 7 yrs 10 mos</p>
+        <h3 class="era-title" data-i18n="era4.title">The government years — 15+ systems for the nation's agencies</h3>
+        <p class="era-role" data-i18n="era4.role"><b>TRM Nett Systems (M) Sdn. Bhd.</b> · Web &amp; Mobile Application Developer, Junior → Senior</p>
+        <p class="era-desc" data-i18n="era4.desc">Nearly eight years delivering licensing, certification, customs and payment
           platforms for <b>CIDB, SPAN, SIRIM, Kastam, Port Klang Authority and LPPEH</b> — on the web and
           natively on Android &amp; iOS. Pioneered <b>Flutter</b> adoption and introduced Git company-wide,
           replacing ZIP-archive backups forever.</p>
@@ -153,14 +170,14 @@
           <div class="card">
             <div class="shot"><img src="assets/img/projects/service73.jpg" alt="Service 73 web dashboard showing live team locations on a map" loading="lazy" width="1000" height="666"></div>
             <div class="card-body">
-              <p class="card-client">TRM Nett · Product</p>
+              <p class="card-client" data-i18n="service73.client">TRM Nett · Product</p>
               <h4>Service 73</h4>
-              <p>Real-time GPS team management — geofencing, task assignment, mileage claims and
+              <p data-i18n="service73.desc">Real-time GPS team management — geofencing, task assignment, mileage claims and
                  push notifications. Published to Google Play and the App Store.</p>
               <div class="tags"><span>Android</span><span>iOS</span><span>ASP.NET</span><span>Firebase</span></div>
             </div>
             <div class="card-foot">
-              <span class="badge badge-eol"><span class="dot"></span>Retired</span>
+              <span class="badge badge-eol"><span class="dot"></span><span data-i18n="badge.eol">Retired</span></span>
               <span class="card-formerly">service73.com</span>
             </div>
           </div>
@@ -168,14 +185,14 @@
           <div class="card">
             <div class="shot"><img src="assets/img/projects/lppeh.jpg" alt="LPPEH Board Information System web application" loading="lazy" width="1000" height="642"></div>
             <div class="card-body">
-              <p class="card-client">LPPEH · Property Board</p>
-              <h4>LPPEH BIS + Public Verification App</h4>
-              <p>Board Information System for valuers, appraisers and estate agents — licensing
+              <p class="card-client" data-i18n="lppeh.client">LPPEH · Property Board</p>
+              <h4 data-i18n="lppeh.title">LPPEH BIS + Public Verification App</h4>
+              <p data-i18n="lppeh.desc">Board Information System for valuers, appraisers and estate agents — licensing
                  approvals and reporting, plus a public verification app on Android &amp; iOS.</p>
               <div class="tags"><span>ASP.NET</span><span>VB.NET</span><span>MSSQL</span><span>Android</span><span>iOS</span></div>
             </div>
             <div class="card-foot">
-              <span class="badge badge-live"><span class="dot"></span>Live</span>
+              <span class="badge badge-live"><span class="dot"></span><span data-i18n="badge.live">Live</span></span>
               <a class="card-link" href="https://lpeph.gov.my/" target="_blank" rel="noopener">lpeph.gov.my</a>
             </div>
           </div>
@@ -183,14 +200,14 @@
           <div class="card">
             <div class="shot"><img src="assets/img/projects/marii-eev.jpg" alt="MARii EEV Label application dashboard with star-rating charts" loading="lazy" width="1000" height="1172"></div>
             <div class="card-body">
-              <p class="card-client">MARii · Automotive</p>
-              <h4>EEV Label Application</h4>
-              <p>Energy-Efficient Vehicle star-rating system for OEMs — eGHL payments and
+              <p class="card-client" data-i18n="marii.client">MARii · Automotive</p>
+              <h4 data-i18n="marii.title">EEV Label Application</h4>
+              <p data-i18n="marii.desc">Energy-Efficient Vehicle star-rating system for OEMs — eGHL payments and
                  QR-verified PDF technical reports.</p>
               <div class="tags"><span>ASP.NET</span><span>eGHL</span><span>QR / PDF</span></div>
             </div>
             <div class="card-foot">
-              <span class="badge badge-live"><span class="dot"></span>Live</span>
+              <span class="badge badge-live"><span class="dot"></span><span data-i18n="badge.live">Live</span></span>
               <a class="card-link" href="https://eev.marii.my/" target="_blank" rel="noopener">eev.marii.my</a>
             </div>
           </div>
@@ -198,14 +215,14 @@
           <div class="card">
             <div class="shot"><img src="assets/img/projects/cidb-ccpm.jpg" alt="CIDB CCPM certification web application" loading="lazy" width="1000" height="551"></div>
             <div class="card-body">
-              <p class="card-client">CIDB · Construction</p>
-              <h4>CCPM Certification Platform</h4>
-              <p>Construction product &amp; material certification — multi-step verification and approval,
+              <p class="card-client" data-i18n="ccpm.client">CIDB · Construction</p>
+              <h4 data-i18n="ccpm.title">CCPM Certification Platform</h4>
+              <p data-i18n="ccpm.desc">Construction product &amp; material certification — multi-step verification and approval,
                  blacklisting tracking, PMS payments, and an on-site officer Android app.</p>
               <div class="tags"><span>ASP.NET</span><span>Android</span><span>PMS</span></div>
             </div>
             <div class="card-foot">
-              <span class="badge badge-live"><span class="dot"></span>Live</span>
+              <span class="badge badge-live"><span class="dot"></span><span data-i18n="badge.live">Live</span></span>
               <a class="card-link" href="https://ccpm.cidb.gov.my/" target="_blank" rel="noopener">ccpm.cidb.gov.my</a>
             </div>
           </div>
@@ -213,14 +230,14 @@
           <div class="card">
             <div class="shot"><img src="assets/img/projects/span-eclaps.jpg" alt="SPAN eCLAPS licensing portal" loading="lazy" width="1000" height="546"></div>
             <div class="card-body">
-              <p class="card-client">SPAN · Water Services</p>
-              <h4>eCLAPS Licensing System</h4>
-              <p>Centralised licence &amp; permit platform in Laravel — SenangPay payments,
+              <p class="card-client" data-i18n="span.client">SPAN · Water Services</p>
+              <h4 data-i18n="span.title">eCLAPS Licensing System</h4>
+              <p data-i18n="span.desc">Centralised licence &amp; permit platform in Laravel — SenangPay payments,
                  SSM/DAPAT/SAGA/CIDB integrations and PDF virtual certificates.</p>
               <div class="tags"><span>Laravel</span><span>PHP</span><span>SenangPay</span></div>
             </div>
             <div class="card-foot">
-              <span class="badge badge-live"><span class="dot"></span>Live</span>
+              <span class="badge badge-live"><span class="dot"></span><span data-i18n="badge.live">Live</span></span>
               <a class="card-link" href="https://eclaps.span.gov.my/" target="_blank" rel="noopener">eclaps.span.gov.my</a>
             </div>
           </div>
@@ -228,14 +245,14 @@
           <div class="card">
             <div class="shot"><img src="assets/img/projects/kastam-ecaf.jpg" alt="Kastam eCAF customs declaration system" loading="lazy" width="1000" height="547"></div>
             <div class="card-body">
-              <p class="card-client">Kastam DiRaja Malaysia · Customs</p>
-              <h4>eCAF — Electronic Customs Forms</h4>
-              <p>Customs administration declarations for PKFZ, North Port &amp; Westport —
+              <p class="card-client" data-i18n="ecaf.client">Kastam DiRaja Malaysia · Customs</p>
+              <h4 data-i18n="ecaf.title">eCAF — Electronic Customs Forms</h4>
+              <p data-i18n="ecaf.desc">Customs administration declarations for PKFZ, North Port &amp; Westport —
                  QR-coded T1 forms, DNT onboarding and gatepass integration.</p>
               <div class="tags"><span>ASP.NET</span><span>DNT</span><span>QR</span></div>
             </div>
             <div class="card-foot">
-              <span class="badge badge-live"><span class="dot"></span>Live · Restricted</span>
+              <span class="badge badge-live"><span class="dot"></span><span data-i18n="badge.live-restricted">Live · Restricted</span></span>
               <a class="card-link" href="https://ecaf.dagangnet.com.my/" target="_blank" rel="noopener">ecaf.dagangnet.com.my</a>
             </div>
           </div>
@@ -245,12 +262,12 @@
             <div class="card-body">
               <p class="card-client">SIRIM QAS International</p>
               <h4>Check Your Label (CYL)</h4>
-              <p>Product-certification verification by IMEI or serial number, with ePermit, TAC
+              <p data-i18n="cyl.desc">Product-certification verification by IMEI or serial number, with ePermit, TAC
                  and SLP features for eComM SIRIM users. Android &amp; iOS.</p>
               <div class="tags"><span>Android</span><span>iOS</span><span>SOAP API</span></div>
             </div>
             <div class="card-foot">
-              <span class="badge badge-live"><span class="dot"></span>Live</span>
+              <span class="badge badge-live"><span class="dot"></span><span data-i18n="badge.live">Live</span></span>
               <span class="card-links">
                 <a class="card-link" href="https://play.google.com/store/apps/details?id=sirim.ecommpublic" target="_blank" rel="noopener">Google Play</a>
                 <a class="card-link" href="https://apps.apple.com/my/app/check-your-label/id946294548" target="_blank" rel="noopener">App Store</a>
@@ -261,14 +278,14 @@
           <div class="card">
             <div class="shot"><img src="assets/img/projects/pka-edcfz.jpg" alt="PKA eDCFZ dangerous cargo declaration mobile app" loading="lazy" width="433" height="769"></div>
             <div class="card-body">
-              <p class="card-client">Port Klang Authority</p>
-              <h4>eDCFZ Declaration System</h4>
-              <p>Dangerous Cargo &amp; Free Zone declarations with real-time Ship Call Numbers,
+              <p class="card-client" data-i18n="edcfz.client">Port Klang Authority</p>
+              <h4 data-i18n="edcfz.title">eDCFZ Declaration System</h4>
+              <p data-i18n="edcfz.desc">Dangerous Cargo &amp; Free Zone declarations with real-time Ship Call Numbers,
                  IMDG data and push status updates. Android &amp; iOS.</p>
               <div class="tags"><span>Android</span><span>iOS</span><span>Push</span></div>
             </div>
             <div class="card-foot">
-              <span class="badge badge-live"><span class="dot"></span>Live</span>
+              <span class="badge badge-live"><span class="dot"></span><span data-i18n="badge.live">Live</span></span>
               <a class="card-link" href="https://edcfz.pka.gov.my/" target="_blank" rel="noopener">edcfz.pka.gov.my</a>
             </div>
           </div>
@@ -276,14 +293,14 @@
           <div class="card">
             <div class="shot"><img src="assets/img/projects/pkfz-pims.jpg" alt="PKFZ PIMS gate and cargo mobile app" loading="lazy" width="433" height="770"></div>
             <div class="card-body">
-              <p class="card-client">Port Klang Free Zone</p>
-              <h4>PIMS — Gate &amp; Cargo System</h4>
-              <p>Integrated free-zone platform tracking inflow/outflow of goods — real-time
+              <p class="card-client" data-i18n="pims.client">Port Klang Free Zone</p>
+              <h4 data-i18n="pims.title">PIMS — Gate &amp; Cargo System</h4>
+              <p data-i18n="pims.desc">Integrated free-zone platform tracking inflow/outflow of goods — real-time
                  declaration status and vessel information on mobile.</p>
               <div class="tags"><span>Android</span><span>iOS</span><span>ASP.NET</span></div>
             </div>
             <div class="card-foot">
-              <span class="badge badge-live"><span class="dot"></span>Live</span>
+              <span class="badge badge-live"><span class="dot"></span><span data-i18n="badge.live">Live</span></span>
               <a class="card-link" href="http://www.pkfz.com/" target="_blank" rel="noopener">pkfz.com</a>
             </div>
           </div>
@@ -291,14 +308,14 @@
           <div class="card">
             <div class="shot"><img src="assets/img/projects/clinicplus.jpg" alt="ClinicPlus clinic management system" loading="lazy" width="1000" height="542"></div>
             <div class="card-body">
-              <p class="card-client">Healthcare · Private Clinics</p>
+              <p class="card-client" data-i18n="clinicplus.client">Healthcare · Private Clinics</p>
               <h4>ClinicPlus 2019</h4>
-              <p>Full clinic management — patient/doctor/drug administration, multi-queue tracking,
+              <p data-i18n="clinicplus.desc">Full clinic management — patient/doctor/drug administration, multi-queue tracking,
                  panel &amp; cash pricing, invoicing and patient-dependent linking.</p>
               <div class="tags"><span>ASP.NET</span><span>MSSQL</span><span>Crystal Reports</span></div>
             </div>
             <div class="card-foot">
-              <span class="badge badge-eol"><span class="dot"></span>Retired</span>
+              <span class="badge badge-eol"><span class="dot"></span><span data-i18n="badge.eol">Retired</span></span>
               <span class="card-formerly">ttdi2019.esource.my</span>
             </div>
           </div>
@@ -307,13 +324,13 @@
             <div class="shot"><img src="assets/img/projects/sacfz.jpg" alt="Senai Airport City Free Zone Flutter app" loading="lazy" width="329" height="711"></div>
             <div class="card-body">
               <p class="card-client">PKFZ · Senai Airport City</p>
-              <h4>Senai Airport City FZ</h4>
-              <p>Free-zone gate &amp; cargo app — the company's <b>first Flutter production build</b>,
+              <h4 data-i18n="sacfz.title">Senai Airport City FZ</h4>
+              <p data-i18n="sacfz.desc">Free-zone gate &amp; cargo app — the company's <b>first Flutter production build</b>,
                  killing the separate Android/iOS codebases in one move.</p>
               <div class="tags"><span>Flutter</span><span>Dart</span><span>Push</span></div>
             </div>
             <div class="card-foot">
-              <span class="badge badge-eol"><span class="dot"></span>Retired</span>
+              <span class="badge badge-eol"><span class="dot"></span><span data-i18n="badge.eol">Retired</span></span>
               <span class="card-formerly">sacfz.com</span>
             </div>
           </div>
@@ -321,14 +338,14 @@
           <div class="card">
             <div class="shot"><img src="assets/img/projects/contractor4u.jpg" alt="CIDB Contractor4U marketplace mobile app" loading="lazy" width="356" height="770"></div>
             <div class="card-body">
-              <p class="card-client">CIDB · Marketplace</p>
+              <p class="card-client" data-i18n="c4u.client">CIDB · Marketplace</p>
               <h4>Contractor4U</h4>
-              <p>Marketplace connecting homeowners with CIDB-registered (G1/G2) contractors —
+              <p data-i18n="c4u.desc">Marketplace connecting homeowners with CIDB-registered (G1/G2) contractors —
                  quotations, enquiries and job status tracking. Android &amp; iOS.</p>
               <div class="tags"><span>Android</span><span>iOS</span><span>ASP.NET</span></div>
             </div>
             <div class="card-foot">
-              <span class="badge badge-eol"><span class="dot"></span>Retired</span>
+              <span class="badge badge-eol"><span class="dot"></span><span data-i18n="badge.eol">Retired</span></span>
               <span class="card-formerly">contractor4u.cidb.gov.my</span>
             </div>
           </div>
@@ -338,23 +355,23 @@
       <!-- 2023 · NCS / Motorola -->
       <article class="era reveal">
         <span class="era-node" aria-hidden="true"></span>
-        <p class="era-year">Feb — Aug 2023 · Remote Contract</p>
-        <h3 class="era-title">Mission-critical interlude — Motorola Solutions</h3>
-        <p class="era-role"><b>NCS Global Technology Sdn. Bhd.</b> · Android / iOS Developer</p>
-        <p class="era-desc">Six months inside a public-safety engineering culture: delivering features
+        <p class="era-year" data-i18n="era5.year">Feb — Aug 2023 · Remote Contract</p>
+        <h3 class="era-title" data-i18n="era5.title">Mission-critical interlude — Motorola Solutions</h3>
+        <p class="era-role" data-i18n="era5.role"><b>NCS Global Technology Sdn. Bhd.</b> · Android / iOS Developer</p>
+        <p class="era-desc" data-i18n="era5.desc">Six months inside a public-safety engineering culture: delivering features
           for Motorola Solutions' Android platform under <b>defense-in-depth security</b> and
           high-test-coverage standards, with code review and incident response as daily disciplines.</p>
         <div class="cards">
           <div class="card">
             <div class="card-body">
-              <p class="card-client">Motorola Solutions · via NCS</p>
-              <h4>Public Safety Platform</h4>
-              <p>Feature development on the mission-critical Android application used by
+              <p class="card-client" data-i18n="moto.client">Motorola Solutions · via NCS</p>
+              <h4 data-i18n="moto.title">Public Safety Platform</h4>
+              <p data-i18n="moto.desc">Feature development on the mission-critical Android application used by
                  public-safety agencies — Kotlin, Java, NDK, JUnit4, Bitbucket workflows.</p>
               <div class="tags"><span>Kotlin</span><span>Java</span><span>NDK</span><span>JUnit4</span></div>
             </div>
             <div class="card-foot">
-              <span class="badge badge-live"><span class="dot"></span>Live · Client</span>
+              <span class="badge badge-live"><span class="dot"></span><span data-i18n="badge.live-client">Live · Client</span></span>
               <a class="card-link" href="https://www.motorolasolutions.com/" target="_blank" rel="noopener">motorolasolutions.com</a>
             </div>
           </div>
@@ -364,11 +381,11 @@
       <!-- 2023-now · RetailAIM -->
       <article class="era reveal">
         <span class="era-node" aria-hidden="true"></span>
-        <p class="era-year">Aug 2023 — Present · Kuala Lumpur</p>
-        <h3 class="era-title">The SaaS era — RetailAIM®</h3>
-        <p class="era-role"><b>RetailAIM Malaysia Sdn. Bhd.</b> (formerly Always Marketing) ·
+        <p class="era-year" data-i18n="era6.year">Aug 2023 — Present · Kuala Lumpur</p>
+        <h3 class="era-title" data-i18n="era6.title">The SaaS era — RetailAIM®</h3>
+        <p class="era-role" data-i18n="era6.role"><b>RetailAIM Malaysia Sdn. Bhd.</b> (formerly Always Marketing) ·
           Web Application Developer → <b>Full Stack Web Specialist</b> (Jan 2025)</p>
-        <p class="era-desc">Sole developer of <b>RetailAIM® Plus</b> — a multi-tenant ASP.NET Core SaaS
+        <p class="era-desc" data-i18n="era6.desc">Sole developer of <b>RetailAIM® Plus</b> — a multi-tenant ASP.NET Core SaaS
           platform serving 20+ FMCG brands and DemoPower's field operations across four countries.
           Currently rebuilding the back office in <b>React + FastAPI</b>, migrating the Abbott CRM to a
           <b>.NET 10 clean-architecture</b> monorepo, and running every Azure DevOps pipeline that ships it all.</p>
@@ -377,14 +394,14 @@
           <div class="card">
             <div class="shot"><img src="assets/img/projects/retailaim-plus.jpg" alt="RetailAIM Plus deployment scheduling interface" loading="lazy" width="1000" height="513"></div>
             <div class="card-body">
-              <p class="card-client">20+ FMCG brands · MY SG TH PH</p>
+              <p class="card-client" data-i18n="raplus.client">20+ FMCG brands · MY SG TH PH</p>
               <h4>RetailAIM® Plus</h4>
-              <p>Multi-tenant ASP.NET Core MVC SaaS replacing the legacy stack — Retail Execution,
+              <p data-i18n="raplus.desc">Multi-tenant ASP.NET Core MVC SaaS replacing the legacy stack — Retail Execution,
                  Merchandising BI, Field Sales Ordering, Stock Take and Consumer Insights modules.</p>
               <div class="tags"><span>ASP.NET Core</span><span>C#</span><span>EF Core</span><span>DevExpress</span><span>Azure</span></div>
             </div>
             <div class="card-foot">
-              <span class="badge badge-live"><span class="dot"></span>Live</span>
+              <span class="badge badge-live"><span class="dot"></span><span data-i18n="badge.live">Live</span></span>
               <a class="card-link" href="https://www.retailaim.com/" target="_blank" rel="noopener">retailaim.com</a>
             </div>
           </div>
@@ -392,55 +409,55 @@
           <div class="card">
             <div class="shot"><img src="assets/img/projects/retailaim-backoffice.jpg" alt="RetailAIM BackOffice administrative portal" loading="lazy" width="1000" height="503"></div>
             <div class="card-body">
-              <p class="card-client">RetailAIM · Operations</p>
-              <h4>BackOffice &amp; QuickView</h4>
-              <p>The legacy administrative portal and field-operations console — clients, projects,
+              <p class="card-client" data-i18n="rabo.client">RetailAIM · Operations</p>
+              <h4 data-i18n="rabo.title">BackOffice &amp; QuickView</h4>
+              <p data-i18n="rabo.desc">The legacy administrative portal and field-operations console — clients, projects,
                  products, promoter scheduling, transaction oversight and flow approvals.</p>
               <div class="tags"><span>ASP.NET</span><span>Azure MSSQL</span><span>SOAP</span></div>
             </div>
             <div class="card-foot">
-              <span class="badge badge-private"><span class="dot"></span>Live · Private</span>
+              <span class="badge badge-private"><span class="dot"></span><span data-i18n="badge.live-private">Live · Private</span></span>
             </div>
           </div>
 
           <div class="card">
             <div class="card-body">
-              <p class="card-client">RetailAIM · Next Generation</p>
-              <h4>Plus BackOffice — React + FastAPI</h4>
-              <p>Next-gen back office: React 18 + TypeScript (Vite, TailwindCSS, ShadCN) over a Python
+              <p class="card-client" data-i18n="ranext.client">RetailAIM · Next Generation</p>
+              <h4 data-i18n="ranext.title">Plus BackOffice — React + FastAPI</h4>
+              <p data-i18n="ranext.desc">Next-gen back office: React 18 + TypeScript (Vite, TailwindCSS, ShadCN) over a Python
                  FastAPI API — per-tenant database resolution, JWT HttpOnly-cookie auth, ASP.NET
                  Identity password back-compat.</p>
               <div class="tags"><span>React 18</span><span>TypeScript</span><span>FastAPI</span><span>Azure SQL</span></div>
             </div>
             <div class="card-foot">
-              <span class="badge badge-dev"><span class="dot"></span>In development</span>
+              <span class="badge badge-dev"><span class="dot"></span><span data-i18n="badge.dev">In development</span></span>
             </div>
           </div>
 
           <div class="card">
             <div class="card-body">
-              <p class="card-client">Abbott Nutrition · Healthcare</p>
-              <h4>Abbott CRM + Salesforce Integration</h4>
-              <p>React PWA + .NET 10 clean-architecture monorepo, with a 14-step conditional
+              <p class="card-client" data-i18n="abbott.client">Abbott Nutrition · Healthcare</p>
+              <h4 data-i18n="abbott.title">Abbott CRM + Salesforce Integration</h4>
+              <p data-i18n="abbott.desc">React PWA + .NET 10 clean-architecture monorepo, with a 14-step conditional
                  Salesforce API v60.0 workflow across dual clouds — duplicate detection, WhatsApp OTP
                  via Bird API, digital consent capture.</p>
               <div class="tags"><span>React PWA</span><span>.NET 10</span><span>Salesforce</span><span>Bicep IaC</span></div>
             </div>
             <div class="card-foot">
-              <span class="badge badge-private"><span class="dot"></span>Live · Private</span>
+              <span class="badge badge-private"><span class="dot"></span><span data-i18n="badge.live-private">Live · Private</span></span>
             </div>
           </div>
 
           <div class="card">
             <div class="card-body">
-              <p class="card-client">RetailAIM · Payroll</p>
-              <h4>Promoter Payment System</h4>
-              <p>Five-level digital approval &amp; payroll platform replacing a manual Excel process —
+              <p class="card-client" data-i18n="pps.client">RetailAIM · Payroll</p>
+              <h4 data-i18n="pps.title">Promoter Payment System</h4>
+              <p data-i18n="pps.desc">Five-level digital approval &amp; payroll platform replacing a manual Excel process —
                  attendance sync, Maybank bulk-payment exports and mobile payslip distribution.</p>
               <div class="tags"><span>ASP.NET Core</span><span>Scheduled Jobs</span><span>Maybank CSV</span></div>
             </div>
             <div class="card-foot">
-              <span class="badge badge-private"><span class="dot"></span>Live · Private</span>
+              <span class="badge badge-private"><span class="dot"></span><span data-i18n="badge.live-private">Live · Private</span></span>
             </div>
           </div>
         </div>
@@ -451,36 +468,36 @@
   <!-- ================= SKILLS ================= -->
   <section class="section wrap" id="skills">
     <div class="section-head reveal">
-      <p class="eyebrow">The Toolkit</p>
-      <h2>Everything it takes to ship — <em>and keep it running</em>.</h2>
+      <p class="eyebrow" data-i18n="skills.eyebrow">The Toolkit</p>
+      <h2 data-i18n="skills.h2">Everything it takes to ship — <em>and keep it running</em>.</h2>
     </div>
     <div class="skills-grid">
       <div class="skill-group reveal">
-        <h3>Web &amp; Backend</h3>
+        <h3 data-i18n="skills.web">Web &amp; Backend</h3>
         <p>ASP.NET Core (MVC), ASP.NET Framework, C#, Entity Framework, Python (FastAPI),
            REST &amp; SOAP APIs, Laravel/PHP</p>
       </div>
       <div class="skill-group reveal">
-        <h3>Frontend &amp; UI/UX</h3>
+        <h3 data-i18n="skills.frontend">Frontend &amp; UI/UX</h3>
         <p>React, TypeScript, Vite, TailwindCSS, ShadCN/Radix, React Query, DevExpress,
            Bootstrap, JavaScript, HTML5/CSS3</p>
       </div>
       <div class="skill-group reveal">
-        <h3>Mobile</h3>
-        <p>Flutter/Dart, Android (Kotlin, Java), iOS (Swift), Ionic Framework —
+        <h3 data-i18n="skills.mobile">Mobile</h3>
+        <p data-i18n="skills.mobile.desc">Flutter/Dart, Android (Kotlin, Java), iOS (Swift), Ionic Framework —
            published to Google Play &amp; the App Store</p>
       </div>
       <div class="skill-group reveal">
-        <h3>Data &amp; Databases</h3>
-        <p>MS SQL Server, Azure SQL, MySQL, SQLite, stored-procedure → Entity Framework migration</p>
+        <h3 data-i18n="skills.data">Data &amp; Databases</h3>
+        <p data-i18n="skills.data.desc">MS SQL Server, Azure SQL, MySQL, SQLite, stored-procedure → Entity Framework migration</p>
       </div>
       <div class="skill-group reveal">
-        <h3>Cloud &amp; DevOps</h3>
+        <h3 data-i18n="skills.cloud">Cloud &amp; DevOps</h3>
         <p>Azure DevOps (Repos, Pipelines, YAML CI/CD), Azure App Service, ARM/Bicep IaC,
            Git/GitHub/Bitbucket</p>
       </div>
       <div class="skill-group reveal">
-        <h3>Integrations</h3>
+        <h3 data-i18n="skills.integrations">Integrations</h3>
         <p>Salesforce CRM API, SAP, AutoCount ERP, iPay88, SenangPay, eGHL, PayPal,
            WhatsApp Business API, FCM/Pushwoosh</p>
       </div>
@@ -488,15 +505,15 @@
 
     <div class="edu-grid">
       <div class="edu-card reveal">
-        <b>B.IT (Hons.), Intelligent Systems Engineering</b>
-        <span>UiTM Shah Alam · 2013 – 2016 · FYP: Road Tax Sticker Recognizer (Tesseract OCR, Android)</span>
+        <b data-i18n="edu.degree">B.IT (Hons.), Intelligent Systems Engineering</b>
+        <span data-i18n="edu.degree.sub">UiTM Shah Alam · 2013 – 2016 · FYP: Road Tax Sticker Recognizer (Tesseract OCR, Android)</span>
       </div>
       <div class="edu-card reveal">
-        <b>Diploma in Computer Science</b>
-        <span>UiTM Dungun · 2010 – 2013 · FYP: Bus Ticketing System (PHP)</span>
+        <b data-i18n="edu.diploma">Diploma in Computer Science</b>
+        <span data-i18n="edu.diploma.sub">UiTM Dungun · 2010 – 2013 · FYP: Bus Ticketing System (PHP)</span>
       </div>
     </div>
-    <p class="langs reveal"><b>Languages:</b> Bahasa Malaysia (native) · English (professional)</p>
+    <p class="langs reveal" data-i18n="langs"><b>Languages:</b> Bahasa Malaysia (native) · English (professional)</p>
   </section>
 
   <!-- ================= CONTACT ================= -->
@@ -506,24 +523,25 @@
         <img src="assets/img/portrait-seated.jpg" alt="Ameer Adhwa seated in a dark study, deep in thought" loading="lazy" width="900" height="1200">
       </div>
       <div class="contact-text">
-        <p class="eyebrow reveal">Next Port of Call</p>
-        <h2 class="reveal">The timeline isn't finished — <em>let's write the next stop.</em></h2>
-        <p class="reveal">Open to hard problems in web, mobile and multi-tenant SaaS.
+        <p class="eyebrow reveal" data-i18n="contact.eyebrow">Next Port of Call</p>
+        <h2 class="reveal" data-i18n="contact.h2">The timeline isn't finished — <em>let's write the next stop.</em></h2>
+        <p class="reveal" data-i18n="contact.p">Open to hard problems in web, mobile and multi-tenant SaaS.
            The fastest route is email; the résumé has the rest.</p>
         <div class="contact-links reveal">
           <a class="btn btn-solid" href="mailto:ameeradhwa92@gmail.com">ameeradhwa92@gmail.com</a>
           <a class="btn btn-ghost" href="https://linkedin.com/in/ameeradhwa92" target="_blank" rel="noopener">LinkedIn</a>
           <a class="btn btn-ghost" href="https://github.com/ameeradhwa92" target="_blank" rel="noopener">GitHub</a>
-          <a class="btn btn-ghost" href="assets/resume/Ameer_Adhwa_Resume_2026.pdf" download>Résumé (PDF)</a>
+          <a class="btn btn-ghost" href="assets/resume/Ameer_Adhwa_Resume_2026.pdf" download data-i18n="contact.resume">Résumé (PDF)</a>
         </div>
       </div>
     </div>
     <div class="footer">
       <span>© 2026 Ameer Adhwa Bin Mohamad · Shah Alam, Malaysia</span>
-      <span>Built by hand — one HTML file, zero frameworks.</span>
+      <span data-i18n="footer.built">Built by hand — one HTML file, zero frameworks.</span>
     </div>
   </footer>
 
+  <script src="assets/js/i18n.js" defer></script>
   <script src="assets/js/main.js" defer></script>
 </body>
 </html>

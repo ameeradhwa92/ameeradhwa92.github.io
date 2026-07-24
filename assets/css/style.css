@@ -28,11 +28,56 @@
   --muted: #8b959a;
   --teal: #3ecfbb;
   --teal-deep: #17766e;
+  --teal-rgb: 62, 207, 187;
   --amber: #d9a441;
+  --nav-bg: rgba(11, 14, 16, 0.72);
+  --shadow: rgba(0, 0, 0, 0.45);
+  --atmo-a: 0.28;
+  --atmo-b: 0.10;
   --display: "Fraunces", "Palatino Linotype", Georgia, serif;
   --body: "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: "Cascadia Code", Consolas, "SF Mono", monospace;
   --spine-x: 44px;
+  color-scheme: dark;
+}
+
+/* Light palette — applied when the device prefers light (and the user hasn't
+   forced dark), or when the user explicitly picks light. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --ink: #f4f2ec;
+    --panel: #fdfcf9;
+    --panel-2: #eceae2;
+    --line: #d9d5c9;
+    --paper: #1d2529;
+    --muted: #5d6b71;
+    --teal: #0f7f74;
+    --teal-deep: #17766e;
+    --teal-rgb: 15, 127, 116;
+    --amber: #9a7420;
+    --nav-bg: rgba(244, 242, 236, 0.8);
+    --shadow: rgba(32, 42, 46, 0.22);
+    --atmo-a: 0.10;
+    --atmo-b: 0.05;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --ink: #f4f2ec;
+  --panel: #fdfcf9;
+  --panel-2: #eceae2;
+  --line: #d9d5c9;
+  --paper: #1d2529;
+  --muted: #5d6b71;
+  --teal: #0f7f74;
+  --teal-deep: #17766e;
+  --teal-rgb: 15, 127, 116;
+  --amber: #9a7420;
+  --nav-bg: rgba(244, 242, 236, 0.8);
+  --shadow: rgba(32, 42, 46, 0.22);
+  --atmo-a: 0.10;
+  --atmo-b: 0.05;
+  color-scheme: light;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -69,15 +114,15 @@ img { max-width: 100%; display: block; }
 .atmosphere {
   position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(900px 520px at 78% -8%, rgba(23, 118, 110, 0.28), transparent 66%),
-    radial-gradient(700px 700px at -12% 30%, rgba(23, 118, 110, 0.10), transparent 60%),
+    radial-gradient(900px 520px at 78% -8%, rgba(23, 118, 110, var(--atmo-a)), transparent 66%),
+    radial-gradient(700px 700px at -12% 30%, rgba(23, 118, 110, var(--atmo-b)), transparent 60%),
     var(--ink);
 }
 .atmosphere::before {
   content: ""; position: absolute; inset: -20%;
   background:
-    radial-gradient(760px 560px at 22% 78%, rgba(23, 118, 110, 0.10), transparent 62%),
-    radial-gradient(900px 640px at 82% 18%, rgba(62, 207, 187, 0.05), transparent 60%);
+    radial-gradient(760px 560px at 22% 78%, rgba(23, 118, 110, var(--atmo-b)), transparent 62%),
+    radial-gradient(900px 640px at 82% 18%, rgba(var(--teal-rgb), 0.05), transparent 60%);
   animation: drift 46s ease-in-out infinite alternate;
 }
 .atmosphere::after {
@@ -93,7 +138,7 @@ img { max-width: 100%; display: block; }
 .cursor-glow {
   position: fixed; left: 0; top: 0; z-index: 0; pointer-events: none;
   width: 560px; height: 560px; margin: -280px 0 0 -280px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(62, 207, 187, 0.07), rgba(62, 207, 187, 0.025) 40%, transparent 68%);
+  background: radial-gradient(circle, rgba(var(--teal-rgb), 0.07), rgba(var(--teal-rgb), 0.025) 40%, transparent 68%);
   opacity: 0; transition: opacity 0.8s ease;
   will-change: transform;
 }
@@ -108,8 +153,8 @@ img { max-width: 100%; display: block; }
 .nav {
   position: fixed; top: 0; left: 0; right: 0; z-index: 50;
   backdrop-filter: blur(10px);
-  background: rgba(11, 14, 16, 0.72);
-  border-bottom: 1px solid rgba(34, 48, 55, 0.6);
+  background: var(--nav-bg);
+  border-bottom: 1px solid var(--line);
 }
 .nav-inner {
   max-width: 1100px; margin: 0 auto; padding: 14px 28px;
@@ -125,6 +170,28 @@ img { max-width: 100%; display: block; }
   padding: 7px 14px; border-radius: 999px; transition: background 0.2s, color 0.2s;
 }
 .nav-cta:hover { background: var(--teal); color: var(--ink) !important; }
+
+/* theme + language toggles */
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 999px;
+  background: none; border: 1px solid var(--line); color: var(--muted);
+  cursor: pointer; font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.06em;
+  transition: color 0.2s, border-color 0.2s;
+}
+.icon-btn:hover { color: var(--teal); border-color: var(--teal-deep); }
+.lang-btn { width: auto; padding: 0 11px; }
+/* show the icon of the theme you would switch to */
+.ic-moon { display: none; }
+.ic-sun { display: inline; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .ic-sun { display: none; }
+  :root:not([data-theme="dark"]) .ic-moon { display: inline; }
+}
+:root[data-theme="light"] .ic-sun { display: none; }
+:root[data-theme="light"] .ic-moon { display: inline; }
+:root[data-theme="dark"] .ic-sun { display: inline; }
+:root[data-theme="dark"] .ic-moon { display: none; }
 
 /* ---------- hero ---------- */
 .hero { padding-top: 168px; padding-bottom: 80px; }
@@ -164,12 +231,13 @@ img { max-width: 100%; display: block; }
 .portrait img {
   width: min(330px, 100%); height: auto; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 18px;
   filter: saturate(0.94);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 24px 60px var(--shadow);
 }
 .portrait::before {
   content: ""; position: absolute; inset: 14px -14px -14px 14px;
   border: 1px solid var(--teal-deep); border-radius: 18px; z-index: -1;
 }
+html[lang="ms"] .portrait::after { content: "SEJAK 2010 · DUNGUN → SHAH ALAM"; }
 .portrait::after {
   content: "EST. 2010 · DUNGUN → SHAH ALAM";
   position: absolute; left: 0; bottom: -38px;
@@ -213,7 +281,7 @@ img { max-width: 100%; display: block; }
 .spine-progress {
   position: absolute; top: 0; left: var(--spine-x); width: 2px; height: 0;
   background: linear-gradient(180deg, var(--teal-deep), var(--teal));
-  box-shadow: 0 0 12px rgba(62, 207, 187, 0.55);
+  box-shadow: 0 0 12px rgba(var(--teal-rgb), 0.55);
   z-index: 1;
 }
 
@@ -226,7 +294,7 @@ img { max-width: 100%; display: block; }
 }
 .era.lit .era-node {
   border-color: var(--teal);
-  box-shadow: 0 0 0 5px rgba(62, 207, 187, 0.14), 0 0 16px rgba(62, 207, 187, 0.6);
+  box-shadow: 0 0 0 5px rgba(var(--teal-rgb), 0.14), 0 0 16px rgba(var(--teal-rgb), 0.6);
 }
 .era-year {
   font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.2em;
@@ -260,7 +328,7 @@ img { max-width: 100%; display: block; }
 .card::after, .skill-group::after, .edu-card::after {
   content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
   background: radial-gradient(340px circle at var(--mx, 50%) var(--my, 50%),
-              rgba(62, 207, 187, 0.09), transparent 62%);
+              rgba(var(--teal-rgb), 0.09), transparent 62%);
   opacity: 0; transition: opacity 0.35s;
 }
 .card:hover::after, .skill-group:hover::after, .edu-card:hover::after { opacity: 1; }
@@ -309,7 +377,7 @@ img { max-width: 100%; display: block; }
 }
 .badge .dot { width: 7px; height: 7px; border-radius: 50%; }
 .badge-live { color: var(--teal); }
-.badge-live .dot { background: var(--teal); box-shadow: 0 0 8px rgba(62, 207, 187, 0.8); animation: pulse 2.4s infinite; }
+.badge-live .dot { background: var(--teal); box-shadow: 0 0 8px rgba(var(--teal-rgb), 0.8); animation: pulse 2.4s infinite; }
 .badge-private { color: var(--teal); opacity: 0.85; }
 .badge-private .dot { background: var(--teal-deep); }
 .badge-dev { color: var(--paper); }
@@ -363,7 +431,7 @@ img { max-width: 100%; display: block; }
 .contact-photo img {
   width: min(320px, 100%); height: auto; aspect-ratio: 3 / 4; object-fit: cover;
   border-radius: 18px; filter: saturate(0.94);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 24px 60px var(--shadow);
 }
 .contact-photo::before {
   content: ""; position: absolute; inset: 14px 14px -14px -14px;
