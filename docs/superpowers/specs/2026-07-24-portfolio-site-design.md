@@ -68,13 +68,13 @@ If regenerating the site from scratch, feed this whole document to the builder.
 | Promoter Payment System | RetailAIM | private | Live |
 | Motorola Public Safety Platform | NCS | https://www.motorolasolutions.com | Live (client) |
 | Service 73 | TRM | formerly service73.com | Retired (EOL) |
-| LPPEH BIS + app | TRM | https://lppeh.gov.my/ | Live |
+| LPPEH BIS + app | TRM | https://lpeph.gov.my/ (moved from lppeh.gov.my) | Live |
 | MARii EEV Label | TRM | https://eev.marii.my/ | Live |
 | CIDB CCPM | TRM | https://ccpm.cidb.gov.my/ | Live |
 | Kastam eCAF | TRM | https://ecaf.dagangnet.com.my/ | Live |
 | ClinicPlus 2019 | TRM | http://ttdi2019.esource.my/ | Live |
 | SPAN eCLAPS | TRM | https://eclaps.span.gov.my/ | Live |
-| SIRIM CYL | TRM | app-store app (goo.gl/5mii8D short link) | Live |
+| SIRIM CYL | TRM | Play: play.google.com/store/apps/details?id=sirim.ecommpublic · iOS: apps.apple.com/my/app/check-your-label/id946294548 | Live (both stores) |
 | PKA eDCFZ | TRM | https://edcfz.pka.gov.my/ | Live |
 | PKFZ PIMS | TRM | http://www.pkfz.com/ | Live |
 | Senai Airport City FZ (first Flutter build) | TRM | formerly sacfz.com | Retired (EOL) |

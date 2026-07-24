@@ -283,6 +283,7 @@ img { max-width: 100%; display: block; }
 .badge-eol .dot { background: var(--amber); }
 @keyframes pulse { 50% { opacity: 0.35; } }
 
+.card-links { display: inline-flex; gap: 14px; }
 .card-link { font-weight: 600; font-size: 0.82rem; white-space: nowrap; }
 .card-link::after { content: " ↗"; font-size: 0.9em; }
 .card-formerly {
