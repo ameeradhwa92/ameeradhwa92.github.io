@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Ameer Adhwa Bin Mohamad — Resume</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 0;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    html,
+    body {
+      font-family: "Segoe UI", Arial, sans-serif;
+      color: #3d4247;
+      font-size: 9.1pt;
+      line-height: 1.31;
+    }
+
+    .page {
+      padding: 24pt 40pt 20pt 40pt;
+    }
+
+    /* ---------- Header ---------- */
+    .header {
+      display: flex;
+      align-items: flex-start;
+      gap: 16pt;
+    }
+
+    .photo {
+      width: 74pt;
+      height: 74pt;
+      border-radius: 50%;
+      object-fit: cover;
+      object-position: top center;
+      flex-shrink: 0;
+      margin-top: 2pt;
+    }
+
+    h1 {
+      font-family: "Segoe UI", Arial, sans-serif;
+      font-size: 20pt;
+      font-weight: bold;
+      color: #1a1a1a;
+      letter-spacing: 0.2pt;
+    }
+
+    .headline {
+      color: #17766e;
+      font-weight: 600;
+      font-size: 10pt;
+      margin-top: 3pt;
+    }
+
+    .contact {
+      color: #5f6a72;
+      font-size: 8.6pt;
+      margin-top: 4pt;
+    }
+
+    .contact span {
+      white-space: nowrap;
+    }
+
+    .contact b {
+      color: #17766e;
+      font-weight: 600;
+    }
+
+    .rule {
+      border: none;
+      border-top: 2.2pt solid #22333b;
+      margin: 10pt 0 9pt 0;
+    }
+
+    /* ---------- Summary ---------- */
+    .summary {
+      font-size: 9.6pt;
+      color: #3d4247;
+    }
+
+    /* ---------- Sections ---------- */
+    h2 {
+      font-family: "Segoe UI", Arial, sans-serif;
+      font-style: italic;
+      font-size: 10.2pt;
+      letter-spacing: 1.1pt;
+      color: #17766e;
+      text-transform: uppercase;
+      margin: 9pt 0 2pt 0;
+    }
+
+    .sec-rule {
+      border: none;
+      border-top: 0.7pt solid #d4d9dc;
+      margin-bottom: 5.5pt;
+    }
+
+    /* ---------- Skills ---------- */
+    .skills {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      column-gap: 20pt;
+      row-gap: 5.5pt;
+    }
+
+    .skill b {
+      color: #22333b;
+      font-size: 9pt;
+    }
+
+    .skill div {
+      color: #5f6a72;
+      font-size: 8.8pt;
+    }
+
+    /* ---------- Experience ---------- */
+    .job {
+      display: flex;
+      gap: 14pt;
+      margin-bottom: 6pt;
+      page-break-inside: avoid;
+    }
+
+    .job.allow-break {
+      page-break-inside: auto;
+    }
+
+    .job-left {
+      width: 106pt;
+      flex-shrink: 0;
+    }
+
+    .job-left .co {
+      font-weight: 700;
+      color: #22333b;
+      font-size: 9.3pt;
+    }
+
+    .job-left .meta {
+      color: #7a848b;
+      font-size: 8.5pt;
+      margin-top: 1pt;
+    }
+
+    .job-right {
+      flex: 1;
+    }
+
+    .job-right .role {
+      font-weight: 700;
+      color: #1a1a1a;
+      font-size: 10.2pt;
+      margin-bottom: 3pt;
+    }
+
+    .job-right .role small {
+      font-weight: 400;
+      color: #7a848b;
+      font-style: italic;
+      font-size: 8.8pt;
+    }
+
+    .job-right .role2 {
+      margin-top: 6pt;
+    }
+
+    .job-left .note {
+      color: #7a848b;
+      font-size: 8pt;
+      font-style: italic;
+      margin-top: 3pt;
+    }
+
+    ul {
+      margin-left: 12pt;
+    }
+
+    li {
+      margin-bottom: 1.4pt;
+      padding-left: 2pt;
+    }
+
+    li b {
+      color: #22333b;
+    }
+
+    /* ---------- Projects ---------- */
+    .projects {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      column-gap: 20pt;
+      row-gap: 4pt;
+      margin-bottom: 4pt;
+    }
+
+    .proj {
+      page-break-inside: avoid;
+      font-size: 8.8pt;
+      color: #5f6a72;
+      line-height: 1.24;
+    }
+
+    .proj b {
+      color: #22333b;
+      font-size: 9pt;
+    }
+
+    .proj .url {
+      color: #17766e;
+      font-size: 8.2pt;
+      white-space: nowrap;
+    }
+
+    .proj .eol {
+      color: #9a8458;
+      font-size: 8.2pt;
+      font-style: italic;
+      white-space: nowrap;
+    }
+
+    /* ---------- Education ---------- */
+    .edu {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      column-gap: 22pt;
+    }
+
+    .edu b {
+      color: #1a1a1a;
+      font-size: 9.6pt;
+    }
+
+    .edu div.sub {
+      color: #5f6a72;
+      font-size: 9.1pt;
+    }
+
+    .langs {
+      margin-top: 4pt;
+      color: #5f6a72;
+      font-size: 9.1pt;
+    }
+
+    .langs b {
+      color: #22333b;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+
+    <div class="header">
+      <img class="photo" src="file:///C:/Users/ameer.mohamad/source/repos/ameeradhwa92.github.io/assets/img/portrait-hero.jpg" alt="">
+      <div>
+        <h1>Ameer Adhwa Bin Mohamad</h1>
+        <div class="headline">Full Stack Web Specialist &nbsp;·&nbsp; ASP.NET Core &nbsp;·&nbsp; React &nbsp;·&nbsp;
+          Azure DevOps &nbsp;·&nbsp; Multi-Tenant SaaS &nbsp;·&nbsp; Mobile</div>
+        <div class="contact">
+          <span>Shah Alam, Selangor, Malaysia</span> &nbsp;·&nbsp; <span>+60 13-961 0053</span> &nbsp;·&nbsp;
+          <span>ameeradhwa92@gmail.com</span> &nbsp;·&nbsp;
+          <span>linkedin.com/in/ameeradhwa92</span> &nbsp;·&nbsp; <span>github.com/ameeradhwa92</span> &nbsp;·&nbsp;
+          <span><b>Portfolio: ameeradhwa92.github.io</b></span>
+        </div>
+      </div>
+    </div>
+
+    <hr class="rule">
+
+    <p class="summary" style="text-align: justify;">
+      Full stack web specialist with 12+ years building web and mobile systems for enterprise and government
+      clients in Malaysia. Main developer behind <b>RetailAIM® Plus</b>, a multi-tenant ASP.NET Core SaaS platform
+      used by 20+ FMCG brands (Nestlé, Unilever, Abbott, Farm Fresh) and field-marketing operators including
+      <b>DemoPower</b> across Malaysia, Singapore, Thailand and the Philippines.
+      Current work includes rebuilding the platform's back office in React and FastAPI, migrating the Abbott CRM
+      to a React + .NET 10 clean-architecture stack, and running the Azure DevOps CI/CD pipelines that ship all
+      of it to production. Before that, spent years delivering licensing, certification and payment systems for
+      government agencies (CIDB, SPAN, SIRIM, Port Klang Authority, Kastam) on the web and on native Android/iOS.
+    </p>
+
+    <h2>Core Technical Skills</h2>
+    <hr class="sec-rule">
+    <div class="skills">
+      <div class="skill"><b>Web &amp; Backend</b>
+        <div>ASP.NET Core (MVC), ASP.NET Framework, C#, Entity Framework (ORM), Python (FastAPI), REST &amp; SOAP APIs,
+          Laravel/PHP</div>
+      </div>
+      <div class="skill"><b>Frontend &amp; UI/UX</b>
+        <div>React, TypeScript, Vite, TailwindCSS, ShadCN/Radix, React Query, DevExpress, Bootstrap, JavaScript,
+          HTML5/CSS3</div>
+      </div>
+      <div class="skill"><b>Mobile</b>
+        <div>Flutter/Dart, Android (Kotlin, Java), iOS (Swift), Ionic Framework</div>
+      </div>
+      <div class="skill"><b>Data &amp; Databases</b>
+        <div>MS SQL Server, Azure SQL, MySQL, SQLite, stored-procedure → Entity Framework migration</div>
+      </div>
+      <div class="skill"><b>Cloud &amp; DevOps</b>
+        <div>Azure DevOps (Repos, Pipelines, YAML CI/CD), Azure App Service, ARM/Bicep IaC, Git/GitHub/Bitbucket</div>
+      </div>
+      <div class="skill"><b>Integrations</b>
+        <div>Salesforce CRM API, SAP, AutoCount ERP, iPay88, SenangPay, eGHL, PayPal, WhatsApp Business API,
+          FCM/Pushwoosh</div>
+      </div>
+    </div>
+
+    <h2>Professional Experience</h2>
+    <hr class="sec-rule">
+
+    <div class="job allow-break">
+      <div class="job-left">
+        <div class="co">RetailAIM Malaysia Sdn. Bhd.</div>
+        <div class="meta">Kuala Lumpur<br>Aug 2023 – Present</div>
+        <div class="note">Formerly the ISIT division of Always Marketing (M) Sdn. Bhd. — restructured into RetailAIM
+          Malaysia Sdn. Bhd. in Jan 2025 (same organisation, continuous tenure)</div>
+      </div>
+      <div class="job-right">
+        <div class="role">Full Stack Web Specialist <small>— Jan 2025 – Present</small></div>
+        <ul>
+          <li>Sole developer of <b>RetailAIM® Plus</b>, a multi-tenant ASP.NET Core MVC SaaS platform replacing the
+            legacy BackOffice/QuickView systems, serving 20+ FMCG clients (Nestlé, Unilever, Farm Fresh, Abbott) and
+            powering <b>DemoPower</b>'s in-store sampling &amp; demonstration operations, across Malaysia, Singapore,
+            Thailand &amp; the Philippines with further markets rolling out.</li>
+          <li>Building the next-generation <b>RetailAIM Plus BackOffice</b> — a React 18 + TypeScript (Vite,
+            TailwindCSS, ShadCN) front end over a Python FastAPI API, with per-tenant database resolution, JWT
+            HttpOnly-cookie auth and ASP.NET Identity password back-compat.</li>
+          <li>Migrating the <b>Abbott CRM</b> to a React PWA backed by a .NET 10 clean-architecture API in a monorepo,
+            with Bicep infrastructure-as-code and shared .NET integration libraries.</li>
+          <li>Migrated core business logic from MSSQL stored procedures into Entity Framework ORM models across 5
+            enterprise modules (Retail Execution, Merchandising BI, Field Sales Ordering, Stock Take Automation,
+            Consumer Insights).</li>
+          <li>Built Abbott's <b>Salesforce CRM integration</b> (API v60.0): a 14-step conditional workflow spanning dual
+            cloud environments (Azure + RetailAIM), covering account/contact creation, duplicate detection, OTP
+            verification via the Bird WhatsApp API, and digital consent capture.</li>
+          <li>Engineered the <b>Promoter Payment System</b>, a 5-level digital approval and payroll platform replacing a
+            manual Excel process — automating attendance sync, Maybank bulk-payment exports, and mobile payslip
+            distribution.</li>
+          <li>Own the full CI/CD lifecycle in Azure DevOps: branch policies, PR gates, YAML pipelines, and automated
+            releases to Azure App Service across staging and production slots.</li>
+        </ul>
+        <div class="role role2">Web Application Developer <small>— Aug 2023 – Dec 2024, as Always Marketing (M) Sdn.
+            Bhd.</small></div>
+        <ul>
+          <li>Built and scaled <b>RetailAIM®</b>, a multi-tenant workflow platform for promoter and merchandising
+            operations, supporting 10+ FMCG clients across Malaysia, Singapore &amp; Thailand.</li>
+          <li>Implemented end-to-end Azure DevOps CI/CD pipelines with enforced pull-request approvals and automated
+            staging/production deployments.</li>
+          <li>Developed and integrated REST/SOAP web services connecting the mobile app with AutoCount Accounting
+            software.</li>
+          <li>Planned and drove the technical migration path from ASP.NET Framework to .NET Core, Entity Framework &amp;
+            DevExpress.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="job">
+      <div class="job-left">
+        <div class="co">NCS Global Technology Sdn. Bhd.</div>
+        <div class="meta">Remote (Contract)<br>Feb 2023 – Aug 2023</div>
+      </div>
+      <div class="job-right">
+        <div class="role">Android / iOS Developer</div>
+        <ul>
+          <li>Delivered features for Motorola Solutions' <b>Public Safety Platform</b> Android application under strict
+            defense-in-depth and high-test-coverage standards.</li>
+          <li>Contributed to code review, incident response, and continuous improvement within an agile delivery team.
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="job">
+      <div class="job-left">
+        <div class="co">TRM Nett Systems (M) Sdn. Bhd.</div>
+        <div class="meta">Petaling Jaya<br>Mar 2015 – Jan 2023<br>(7 yrs 10 mos)</div>
+      </div>
+      <div class="job-right">
+        <div class="role">Web &amp; Mobile Application Developer <small>— progressed Junior to Senior</small></div>
+        <ul>
+          <li>Delivered 15+ production systems for Malaysian government agencies and regulated industries (CIDB, SPAN,
+            SIRIM, Port Klang Authority, Kastam, LPPEH) spanning web, native Android/iOS, and cross-platform mobile.
+          </li>
+          <li>Built <b>Service 73</b>, a real-time GPS team-management app with geofencing, task assignment, and push
+            notifications, published to Google Play and the App Store.</li>
+          <li>Delivered multi-step approval and licensing platforms (LPPEH BIS, CIDB CCPM, SPAN eCLAPS) integrating
+            payment gateways and third-party verification services (SSM, CIDB, DAPAT, SAGA, PMS).</li>
+          <li>Pioneered <b>Flutter</b> adoption for cross-platform mobile (PKFZ Senai Airport City), eliminating
+            separate Android/iOS codebases, and introduced Git-based version control company-wide, replacing manual
+            ZIP-archive backups.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="job">
+      <div class="job-left">
+        <div class="co">MyEMRO Sdn. Bhd.</div>
+        <div class="meta">Kuala Lumpur<br>Sep 2013 – Aug 2014</div>
+      </div>
+      <div class="job-right">
+        <div class="role">Web Application Developer</div>
+        <ul>
+          <li>Developed an aircraft maintenance scheduling system (Ruby on Rails) handling thousands of datasets across
+            aircraft compartments for MRO operations.</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2>Notable Projects</h2>
+    <hr class="sec-rule">
+
+    <div class="projects">
+      <div class="proj"><b>RetailAIM® Plus</b> — multi-tenant ASP.NET Core MVC SaaS replacing the legacy BackOffice
+        &amp; QuickView; Retail Execution, Merchandising BI, Field Sales Ordering, Stock Take and Consumer Insights
+        modules for 20+ FMCG tenants, including <b>DemoPower</b>, Thailand's leading in-store sampling operator; live in
+        MY, SG, TH &amp; PH. <span class="url">retailaim.com</span></div>
+      <div class="proj"><b>RetailAIM Plus BackOffice (React + FastAPI)</b> — next-gen back office: React
+        18/TypeScript/TailwindCSS front end, Python FastAPI + Azure SQL backend with per-tenant DB resolution and JWT
+        cookie auth. <span class="eol">in development</span></div>
+      <div class="proj"><b>Abbott CRM Platform</b> — React PWA + .NET 10 clean-architecture monorepo migration of the
+        Abbott promoter/admin CRM, with Bicep IaC and shared .NET integration libraries.</div>
+      <div class="proj"><b>Promoter Payment System (PPS)</b> — 5-level digital approval &amp; payroll platform:
+        attendance sync, Maybank bulk-payment exports and mobile payslips, replacing a manual Excel workflow.</div>
+      <div class="proj"><b>RetailAIM® BackOffice &amp; QuickView</b> — administrative portal (clients, projects,
+        products, promoter scheduling) and field-operations console for transaction oversight and flow approvals.</div>
+      <div class="proj"><b>Salesforce CRM Integration (Abbott)</b> — 14-step conditional workflow across Azure and
+        RetailAIM: account/contact creation, duplicate detection, WhatsApp OTP and digital consent capture.</div>
+    </div>
+    <hr class="sec-rule">
+
+    <div class="projects">
+      <div class="proj"><b>Motorola Solutions Public Safety Platform</b> — feature development on the mission-critical
+        Android app under defense-in-depth security and high test-coverage standards (via NCS Global Technology).
+        <span class="url">motorolasolutions.com</span></div>
+      <div class="proj"><b>Service 73</b> — real-time GPS team management with geofencing, task assignment, mileage
+        tracking and push notifications; Android, iOS &amp; web. <span class="eol">retired · formerly
+          service73.com</span></div>
+      <div class="proj"><b>SIRIM CYL (Check Your Label)</b> — product-certification verification app for SIRIM QAS
+        International (IMEI/serial lookup, ePermit, TAC, SLP); later rebuilt as a Flutter clean-architecture monorepo.
+        <span class="url">live on Google Play &amp; the App Store</span></div>
+      <div class="proj"><b>CIDB CCPM</b> — construction product &amp; material certification: multi-step
+        verification/approval, blacklisting tracking, PMS payments, plus an on-site officer Android app.
+        <span class="url">ccpm.cidb.gov.my</span></div>
+      <div class="proj"><b>SPAN eCLAPS</b> — centralised licence &amp; permit system (Laravel) with SenangPay payments,
+        SSM/DAPAT/SAGA/CIDB integrations and PDF virtual certificates. <span class="url">eclaps.span.gov.my</span></div>
+      <div class="proj"><b>Kastam eCAF</b> — electronic customs administration forms for PKFZ, North Port &amp; Westport
+        with QR-coded T1 forms, DNT onboarding and gatepass integration. <span class="url">ecaf.dagangnet.com.my</span>
+      </div>
+      <div class="proj"><b>MARii EEV Label</b> — energy-efficient vehicle star-rating application for OEMs, with eGHL
+        payments and QR-verified PDF technical reports. <span class="url">eev.marii.my</span></div>
+      <div class="proj"><b>LPPEH BIS &amp; mobile app</b> — Board Information System for valuers, appraisers &amp;
+        estate agents (licensing approvals, reporting) plus a public verification app on Android &amp; iOS.
+        <span class="url">lpeph.gov.my</span></div>
+      <div class="proj"><b>ClinicPlus</b> — full clinic management: patient/doctor/drug admin, multi-queue tracking,
+        panel/cash drug pricing, invoicing and patient-dependent linking. <span class="eol">retired</span></div>
+      <div class="proj"><b>PKA eDCFZ</b> — dangerous cargo &amp; free zone declaration app with real-time Ship Call
+        Numbers, IMDG info and push status updates. <span class="url">edcfz.pka.gov.my</span></div>
+      <div class="proj"><b>PKFZ PIMS &amp; Senai Airport City FZ</b> — free-zone gate &amp; cargo apps with real-time
+        declaration and vessel status; SACFZ was the company's first Flutter production build.
+        <span class="url">pkfz.com</span></div>
+      <div class="proj"><b>CIDB Contractor4U</b> — marketplace app connecting homeowners with CIDB-registered (G1/G2)
+        contractors for quotations, enquiries and job status tracking. <span class="eol">retired</span></div>
+    </div>
+
+    <h2>Education, Certificates &amp; Languages</h2>
+    <hr class="sec-rule">
+    <div class="edu">
+      <div>
+        <b>B.IT (Hons.), Intelligent Systems Engineering</b>
+        <div class="sub">UiTM Shah Alam · 2013–2016 · awarded Mar 2016</div>
+      </div>
+      <div>
+        <b>Diploma in Computer Science</b>
+        <div class="sub">UiTM Dungun · 2010–2013 · awarded May 2013</div>
+      </div>
+    </div>
+    <div class="langs"><b>Certificates:</b> MUET Band 3 (Nov 2015) · SPM, SMK Balai Besar (2009) — viewable at
+      ameeradhwa92.github.io</div>
+    <div class="langs"><b>Languages:</b> Bahasa Malaysia (Native) · English (Professional)</div>
+
+  </div>
+</body>
+
+</html>
