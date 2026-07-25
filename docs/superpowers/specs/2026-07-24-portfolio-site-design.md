@@ -72,7 +72,7 @@ If regenerating the site from scratch, feed this whole document to the builder.
 | MARii EEV Label | TRM | https://eev.marii.my/ | Live |
 | CIDB CCPM | TRM | https://ccpm.cidb.gov.my/ | Live |
 | Kastam eCAF | TRM | https://ecaf.dagangnet.com.my/ | Live |
-| ClinicPlus 2019 | TRM | http://ttdi2019.esource.my/ | Live |
+| ClinicPlus 2019 | TRM | formerly ttdi2019.esource.my | Retired (EOL) |
 | SPAN eCLAPS | TRM | https://eclaps.span.gov.my/ | Live |
 | SIRIM CYL | TRM | Play: play.google.com/store/apps/details?id=sirim.ecommpublic · iOS: apps.apple.com/my/app/check-your-label/id946294548 | Live (both stores) |
 | PKA eDCFZ | TRM | https://edcfz.pka.gov.my/ | Live |
