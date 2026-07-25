@@ -145,6 +145,9 @@ window.I18N_MS = {
 
   "chat.title": "<em>AI</em>Meer",
   "chat.callout": "Kenali <b>AIMeer</b> — kembar AI saya. Tanyakannya tentang perjalanan 16 tahun saya; jawapan AI sebenar, pada peranti anda atau melalui awan.",
+  "chat.model.cloud.label": "Guna AI awan selamat",
+  "chat.model.local.label": "Guna AI pada peranti",
+  "chat.model.local.hint": "Peranti ini tidak serasi dengan AI pada peranti. AI awan selamat masih tersedia.",
   "chat.chip1": "Apakah tugas beliau sekarang?",
   "chat.chip2": "Projek mana yang masih beroperasi?",
   "chat.chip3": "Apakah tindanan teknologi beliau?",

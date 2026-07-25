@@ -224,6 +224,9 @@
   var progress = panel.querySelector(".chat-progress");
   var progressBar = panel.querySelector(".chat-progress-bar");
   var progressText = panel.querySelector(".chat-progress-text");
+  var modelCloud = document.getElementById("chat-model-cloud");
+  var modelLocal = document.getElementById("chat-model-local");
+  var modelTooltip = document.getElementById("chat-model-tooltip");
 
   var open = false, greeted = false, busy = false;
   var engine = null, canceled = false;
@@ -260,6 +263,46 @@
     if (aiState === "ready") setStatus("ai");
     else if (aiState === "cloud") setStatus("cloud");
     else if (aiState !== "loading") setStatus("instant");
+    syncModelSwitch();
+  }
+
+  /* The visible control only records a preference in this task. Task 4 owns
+     translating that preference into download cancellation and route changes. */
+  function setPreferredRoute(mode) {
+    if (mode !== "cloud" && mode !== "local") return;
+    try { localStorage.setItem("aimeer-route", mode); } catch (e) { }
+    syncModelSwitch();
+  }
+
+  function showLocalCompatibilityHint() {
+    if (!modelTooltip || localOK) return;
+    modelTooltip.hidden = false;
+  }
+
+  function hideLocalCompatibilityHint() {
+    if (modelTooltip) modelTooltip.hidden = true;
+  }
+
+  function syncModelSwitch() {
+    if (!modelCloud || !modelLocal) return;
+    var localSelected = route === "local" || aiState === "ready";
+    var cloudSelected = !localSelected && (route === "cloud" || aiState === "cloud" || cloudOk);
+    modelCloud.classList.toggle("is-selected", cloudSelected);
+    modelLocal.classList.toggle("is-selected", localSelected);
+    modelLocal.classList.toggle("is-unavailable", !localOK);
+    modelCloud.setAttribute("aria-pressed", cloudSelected ? "true" : "false");
+    modelLocal.setAttribute("aria-pressed", localSelected ? "true" : "false");
+    if (localOK) hideLocalCompatibilityHint();
+  }
+
+  if (modelCloud && modelLocal) {
+    modelCloud.addEventListener("click", function () { setPreferredRoute("cloud"); });
+    modelLocal.addEventListener("click", function () {
+      if (!localOK) { showLocalCompatibilityHint(); return; }
+      setPreferredRoute("local");
+    });
+    modelLocal.addEventListener("focus", showLocalCompatibilityHint);
+    modelLocal.addEventListener("blur", hideLocalCompatibilityHint);
   }
 
   /* ---------------- launcher ring: grey → progress fill → teal glow ---------------- */
@@ -284,9 +327,14 @@
       progress.hidden = false;
       cancelBtn.hidden = false;
       cancelBtn.textContent = t("cancelPlain");
+      syncModelSwitch();
       return;
     }
-    if (aiState === "ready" || aiState === "cloud") { aiBox.hidden = true; return; }
+    if (aiState === "ready" || aiState === "cloud") {
+      aiBox.hidden = true;
+      syncModelSwitch();
+      return;
+    }
     aiBox.hidden = false;
     if (aiState === "loading") {
       aiPitch.textContent = t("aiDownloading");
@@ -310,6 +358,7 @@
       aiEnable.hidden = true;
       progress.hidden = true;
     }
+    syncModelSwitch();
   }
 
   function refreshLangBits() {
@@ -564,6 +613,7 @@
       }
       ringReady();
     }
+    syncModelSwitch();
     if (open) { refreshStatus(); applyAiBox(); }
   });
 
