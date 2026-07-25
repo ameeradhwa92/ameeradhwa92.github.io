@@ -15,7 +15,7 @@
 const SITE = "https://ameeradhwa92.github.io";
 const KB_URL = SITE + "/assets/data/aimeer-kb.txt";
 const ALLOWED_ORIGINS = [SITE, "http://localhost:8080", "http://127.0.0.1:8080"];
-const MODEL = "@cf/meta/llama-3.1-8b-instruct";
+const MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
 
 const PERSONA_HEAD =
   "You are AIMeer, the AI twin of Ameer Adhwa on his portfolio website. You speak about Ameer in the third person, " +
@@ -101,7 +101,8 @@ async function loadKB() {
   const cache = caches.default;
   const hit = await cache.match(cacheKey);
   if (hit && hit.ok) return hit.text();
-  const r = await fetch(KB_URL, { cf: { cacheTtl: 0 } });
+  /* unique query string sidesteps any stale edge-cache entry for the bare URL */
+  const r = await fetch(KB_URL + "?fresh=" + Date.now());
   if (!r.ok) return "";
   const text = await r.text();
   await cache.put(cacheKey, new Response(text, {
