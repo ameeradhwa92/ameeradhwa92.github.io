@@ -75,8 +75,7 @@ export default {
     if (mode === "chat") {
       let kb = "";
       try {
-        const r = await fetch(KB_URL, { cf: { cacheEverything: true, cacheTtl: 3600 } });
-        if (r.ok) kb = await r.text();
+        kb = await loadKB();
       } catch {}
       if (!kb) return json({ error: "kb-unavailable" }, 502, cors);
       system = PERSONA_HEAD + kb;
@@ -94,6 +93,22 @@ export default {
     }
   },
 };
+
+/* Cache the KB for an hour, but only ever cache successful fetches —
+   caching a 404 would poison chat mode until the entry expired. */
+async function loadKB() {
+  const cacheKey = new Request(KB_URL + "?aimeer-kb-cache=v1");
+  const cache = caches.default;
+  const hit = await cache.match(cacheKey);
+  if (hit && hit.ok) return hit.text();
+  const r = await fetch(KB_URL, { cf: { cacheTtl: 0 } });
+  if (!r.ok) return "";
+  const text = await r.text();
+  await cache.put(cacheKey, new Response(text, {
+    headers: { "Content-Type": "text/plain", "Cache-Control": "public, max-age=3600" },
+  }));
+  return text;
+}
 
 function json(obj, status, headers) {
   return new Response(JSON.stringify(obj), {
