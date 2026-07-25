@@ -9,6 +9,8 @@ window.I18N_MS = {
   "nav.skills": "Kemahiran",
   "nav.contact": "Hubungi",
   "nav.resume": "Resume&nbsp;(PDF)",
+  "nav.resume.label": "Muat turun resume (PDF)",
+  "nav.resume.tooltip": "Muat turun resume",
 
   "hero.eyebrow": "Shah Alam, Malaysia — Pakar Web Tindanan Penuh",
   "hero.h1": "Daripada bilik kuliah diploma di <em>Dungun</em> kepada SaaS berbilang penyewa di seluruh <em>Asia Tenggara</em>.",
@@ -143,6 +145,9 @@ window.I18N_MS = {
 
   "chat.title": "<em>AI</em>Meer",
   "chat.callout": "Kenali <b>AIMeer</b> — kembar AI saya. Tanyakannya tentang perjalanan 16 tahun saya; jawapan AI sebenar, pada peranti anda atau melalui awan.",
+  "chat.model.cloud.label": "Guna AI awan selamat",
+  "chat.model.local.label": "Guna AI pada peranti",
+  "chat.model.local.hint": "Peranti ini tidak serasi dengan AI pada peranti. AI awan selamat masih tersedia.",
   "chat.chip1": "Apakah tugas beliau sekarang?",
   "chat.chip2": "Projek mana yang masih beroperasi?",
   "chat.chip3": "Apakah tindanan teknologi beliau?",

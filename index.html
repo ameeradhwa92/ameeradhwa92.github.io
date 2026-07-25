@@ -47,7 +47,11 @@
           <svg class="ic-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4m11.4-11.4 1.4-1.4"/></svg>
         </button>
         <button class="icon-btn lang-btn" id="lang-toggle" type="button" aria-label="Tukar bahasa / Switch language">BM</button>
-        <a class="nav-cta" href="assets/resume/Ameer_Adhwa_Resume_2026.pdf" download data-i18n="nav.resume">Résumé&nbsp;(PDF)</a>
+        <a class="nav-cta nav-resume" href="assets/resume/Ameer_Adhwa_Resume_2026.pdf" download aria-label="Download résumé (PDF)" aria-describedby="nav-resume-tooltip" title="Download résumé (PDF)">
+          <svg class="nav-resume-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"/></svg>
+          <span class="nav-resume-label" id="nav-resume-label" data-i18n="nav.resume.label">Download résumé (PDF)</span>
+          <span class="nav-resume-tooltip" id="nav-resume-tooltip" role="tooltip" data-i18n="nav.resume.tooltip">Download résumé</span>
+        </a>
       </div>
     </div>
   </nav>
@@ -600,6 +604,17 @@
           <span class="dot" aria-hidden="true"></span><span class="chat-status-text">Instant answers · no download</span>
         </p>
       </div>
+      <div class="chat-model-switch" id="chat-model-switch">
+        <button class="chat-model-choice is-selected" id="chat-model-cloud" type="button" aria-pressed="true" aria-labelledby="chat-model-cloud-label">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6 8.2 4.8 4.8 0 0 0 7 18Z"/></svg>
+          <span class="sr-only" id="chat-model-cloud-label" data-i18n="chat.model.cloud.label">Use secure cloud AI</span>
+        </button>
+        <button class="chat-model-choice" id="chat-model-local" type="button" aria-pressed="false" aria-labelledby="chat-model-local-label" aria-describedby="chat-model-tooltip">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 1v3m6-3v3M9 20v3m6-3v3M20 9h3m-3 6h3M1 9h3m-3 6h3M9 9h6v6H9z"/></svg>
+          <span class="sr-only" id="chat-model-local-label" data-i18n="chat.model.local.label">Use AI on this device</span>
+        </button>
+        <span class="chat-model-tooltip" id="chat-model-tooltip" role="tooltip" data-i18n="chat.model.local.hint" hidden>This device is not compatible with on-device AI. Secure cloud AI remains available.</span>
+      </div>
       <button class="icon-btn chat-close" type="button" aria-label="Close chat">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>
       </button>
@@ -635,6 +650,7 @@
 
   <script src="assets/js/i18n.js" defer></script>
   <script src="assets/js/main.js" defer></script>
+  <script src="assets/js/aimeer-device.js" defer></script>
   <script src="assets/js/chatbot.js" defer></script>
 </body>
 </html>

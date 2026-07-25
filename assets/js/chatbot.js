@@ -224,14 +224,18 @@
   var progress = panel.querySelector(".chat-progress");
   var progressBar = panel.querySelector(".chat-progress-bar");
   var progressText = panel.querySelector(".chat-progress-text");
+  var modelCloud = document.getElementById("chat-model-cloud");
+  var modelLocal = document.getElementById("chat-model-local");
+  var modelTooltip = document.getElementById("chat-model-tooltip");
 
   var open = false, greeted = false, busy = false;
-  var engine = null, canceled = false;
+  var engine = null, canceled = false, downloadGeneration = 0;
   var dlActive = false;      /* the on-device download is running */
   var fallbackTimer = null;  /* switches answers to cloud if the download is slow */
   var LOCAL_TIMEOUT = window.AIMEER_LOCAL_TIMEOUT || 20000; /* ms of downloading before cloud takes over answering */
   var route = "pending"; /* pending | local | cloud | none */
   var localOK = false;   /* device could run the on-device model (for manual retry) */
+  var preferredMode = null; /* explicit cloud/local choice, independent of the live route */
   var announcedCloud = false;
   var aiState = "off"; /* off | loading | ready (local) | cloud | failed */
   var history = []; /* {role, content} — capped so prefill stays fast */
@@ -260,6 +264,85 @@
     if (aiState === "ready") setStatus("ai");
     else if (aiState === "cloud") setStatus("cloud");
     else if (aiState !== "loading") setStatus("instant");
+    syncModelSwitch();
+  }
+
+  function showLocalCompatibilityHint() {
+    if (!modelTooltip || localOK) return;
+    modelTooltip.hidden = false;
+  }
+
+  function persistPreferredRoute(mode) {
+    preferredMode = mode;
+    try { localStorage.setItem("aimeer-route", mode); } catch (e) { }
+  }
+
+  function clearPreferredRoute() {
+    preferredMode = null;
+    try { localStorage.removeItem("aimeer-route"); } catch (e) { }
+  }
+
+  function cancelLocalDownload() {
+    if (!dlActive) return false;
+    downloadGeneration += 1;
+    canceled = true;
+    dlActive = false;
+    if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
+    progressBar.style.width = "0";
+    progress.hidden = true;
+    ringReady();
+    syncModelSwitch();
+    return true;
+  }
+
+  function setPreferredRoute(mode) {
+    if (mode !== "cloud" && mode !== "local") return;
+    if (mode === "cloud") {
+      var canceledDownload = cancelLocalDownload();
+      persistPreferredRoute("cloud");
+      switchToCloud(canceledDownload ? "canceledCloud" : null);
+      return;
+    }
+    if (!localOK) {
+      if (preferredMode === "local") clearPreferredRoute();
+      showLocalCompatibilityHint();
+      if (cloudOk && aiState !== "cloud") switchToCloud();
+      else syncModelSwitch();
+      return;
+    }
+    persistPreferredRoute("local");
+    hideLocalCompatibilityHint();
+    if (!dlActive && aiState !== "ready") startLocalAI();
+    else syncModelSwitch();
+  }
+
+  function hideLocalCompatibilityHint() {
+    if (modelTooltip) modelTooltip.hidden = true;
+  }
+
+  function syncModelSwitch() {
+    if (!modelCloud || !modelLocal) return;
+    var activeMode = route === "local" || aiState === "ready"
+      ? "local"
+      : (route === "cloud" || aiState === "cloud" || cloudOk ? "cloud" : null);
+    var selectedMode = preferredMode === "local" && !localOK ? activeMode : (preferredMode || activeMode);
+    var localSelected = selectedMode === "local";
+    var cloudSelected = selectedMode === "cloud";
+    modelCloud.classList.toggle("is-selected", cloudSelected);
+    modelLocal.classList.toggle("is-selected", localSelected);
+    modelLocal.classList.toggle("is-unavailable", !localOK);
+    modelCloud.setAttribute("aria-pressed", cloudSelected ? "true" : "false");
+    modelLocal.setAttribute("aria-pressed", localSelected ? "true" : "false");
+    if (localOK) hideLocalCompatibilityHint();
+  }
+
+  if (modelCloud && modelLocal) {
+    modelCloud.addEventListener("click", function () { setPreferredRoute("cloud"); });
+    modelLocal.addEventListener("click", function () {
+      setPreferredRoute("local");
+    });
+    modelLocal.addEventListener("focus", showLocalCompatibilityHint);
+    modelLocal.addEventListener("blur", hideLocalCompatibilityHint);
   }
 
   /* ---------------- launcher ring: grey → progress fill → teal glow ---------------- */
@@ -284,9 +367,14 @@
       progress.hidden = false;
       cancelBtn.hidden = false;
       cancelBtn.textContent = t("cancelPlain");
+      syncModelSwitch();
       return;
     }
-    if (aiState === "ready" || aiState === "cloud") { aiBox.hidden = true; return; }
+    if (aiState === "ready" || aiState === "cloud") {
+      aiBox.hidden = true;
+      syncModelSwitch();
+      return;
+    }
     aiBox.hidden = false;
     if (aiState === "loading") {
       aiPitch.textContent = t("aiDownloading");
@@ -310,6 +398,7 @@
       aiEnable.hidden = true;
       progress.hidden = true;
     }
+    syncModelSwitch();
   }
 
   function refreshLangBits() {
@@ -394,26 +483,37 @@
   function decideRoute() {
     var pref = null;
     try { pref = localStorage.getItem("aimeer-route"); } catch (e) { }
-    /* iPhones and iPads expose WebGPU but Safari's per-tab memory ceiling kills
-       the model mid-load, so they always go to the cloud */
-    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent || "") ||
-      (/Mac/.test(navigator.platform || "") && (navigator.maxTouchPoints || 0) > 1);
-    if (!("gpu" in navigator) || isIOS) {
-      return Promise.resolve(cloudOk ? "cloud" : "none");
-    }
-    return navigator.gpu.requestAdapter().then(function (adapter) {
-      var maxBuf = adapter && adapter.limits ? (adapter.limits.maxBufferSize || 0) : 0;
-      localOK = !!adapter && (!maxBuf || maxBuf >= 1500000000);
-      if (!localOK) return cloudOk ? "cloud" : "none";
+    if (pref === "cloud" || pref === "local") preferredMode = pref;
+    var requestAdapter = navigator.gpu && navigator.gpu.requestAdapter
+      ? navigator.gpu.requestAdapter()
+      : Promise.resolve(null);
+    return requestAdapter.then(function (adapter) {
+      var policy = window.AIMEER_DEVICE.evaluate({
+        userAgent: navigator.userAgent || "",
+        platform: navigator.platform || "",
+        maxTouchPoints: navigator.maxTouchPoints || 0,
+        hasWebGPU: !!adapter,
+        maxBufferSize: adapter && adapter.limits ? (adapter.limits.maxBufferSize || 0) : 0,
+        saveData: !!(navigator.connection && navigator.connection.saveData)
+      });
+      localOK = policy.localEligible;
+      if (pref === "local" && !localOK) {
+        clearPreferredRoute();
+        pref = null;
+      }
+      syncModelSwitch();
       if (pref === "cloud" && cloudOk) return "cloud";
+      if (pref === "local" && localOK) return "local";
       if (pref === "off") return "none"; /* visitor canceled before; manual enable still offered */
-      if (navigator.connection && navigator.connection.saveData) {
+      if (policy.cloudPreferred) {
         return cloudOk ? "cloud" : "none";
       }
-      return "local";
+      return localOK ? "local" : (cloudOk ? "cloud" : "none");
     }).catch(function () {
       localOK = false;
-      return cloudOk ? "cloud" : "none";
+      if (pref === "local") clearPreferredRoute();
+      syncModelSwitch();
+      return Promise.resolve(cloudOk ? "cloud" : "none");
     });
   }
 
@@ -423,6 +523,7 @@
     ringReady();
     refreshStatus();
     applyAiBox();
+    syncModelSwitch();
     if (greeted && msgKey) {
       announcedCloud = true;
       addMsg("bot", t(msgKey));
@@ -432,11 +533,11 @@
   /* ---------------- tier 2: on-device webllm, auto-started ---------------- */
   function startLocalAI() {
     if (dlActive || aiState === "ready") return;
+    var generation = ++downloadGeneration;
     aiState = "loading";
     route = "local";
     canceled = false;
     dlActive = true;
-    try { localStorage.removeItem("aimeer-route"); } catch (e) { }
     ringProgress(0);
     setStatus("loading");
     applyAiBox();
@@ -446,7 +547,7 @@
     if (cloudOk) {
       fallbackTimer = setTimeout(function () {
         fallbackTimer = null;
-        if (aiState !== "loading" || canceled) return;
+        if (generation !== downloadGeneration || aiState !== "loading" || canceled) return;
         aiState = "cloud";
         refreshStatus();
         applyAiBox();
@@ -458,6 +559,7 @@
     }
 
     Promise.all([ensureKB(), navigator.gpu.requestAdapter()]).then(function (r) {
+      if (generation !== downloadGeneration || canceled) return null;
       var adapter = r[1];
       if (!adapter) throw new Error("no-webgpu-adapter");
       /* f16 shaders halve memory; fall back to f32 weights where unsupported */
@@ -465,9 +567,10 @@
         ? "Llama-3.2-1B-Instruct-q4f16_1-MLC"
         : "Llama-3.2-1B-Instruct-q4f32_1-MLC";
       return import(WEBLLM_CDN).then(function (webllm) {
+        if (generation !== downloadGeneration || canceled) return null;
         return webllm.CreateMLCEngine(model, {
           initProgressCallback: function (p) {
-            if (canceled) return;
+            if (generation !== downloadGeneration || canceled) return;
             var pct = Math.round((p.progress || 0) * 100);
             ringProgress(pct);
             progressBar.style.width = pct + "%";
@@ -480,12 +583,12 @@
         });
       });
     }).then(function (e) {
-      if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
-      if (canceled) {
+      if (generation !== downloadGeneration || canceled) {
         /* visitor bailed while this resolved — drop the engine again */
         try { if (e && e.unload) e.unload(); } catch (err) { }
         return;
       }
+      if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
       var wasInterim = aiState === "cloud";
       engine = e;
       aiState = "ready";
@@ -495,6 +598,7 @@
       applyAiBox();
       if (greeted) addMsg("bot", t(wasInterim ? "aiUpgraded" : "aiReady"));
     }).catch(function (err) {
+      if (generation !== downloadGeneration) return;
       if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
       dlActive = false;
       if (canceled) return;
@@ -520,12 +624,9 @@
 
   cancelBtn.addEventListener("click", function () {
     if (!dlActive) return;
-    canceled = true;
-    dlActive = false;
-    if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
-    progressBar.style.width = "0";
-    progress.hidden = true;
+    cancelLocalDownload();
     try { localStorage.setItem("aimeer-route", cloudOk ? "cloud" : "off"); } catch (e) { }
+    preferredMode = cloudOk ? "cloud" : null;
     if (cloudOk) {
       switchToCloud("canceledCloud");
     } else {
@@ -564,6 +665,7 @@
       }
       ringReady();
     }
+    syncModelSwitch();
     if (open) { refreshStatus(); applyAiBox(); }
   });
 

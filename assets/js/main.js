@@ -58,6 +58,42 @@
     });
   }
 
+  /* --- résumé tooltip: introduce the compact download control once, unless motion is reduced --- */
+  var resumeLink = document.querySelector(".nav-resume");
+  var resumeLabel = document.getElementById("nav-resume-label");
+  if (resumeLink && resumeLabel) {
+    function syncResumeTitle() {
+      resumeLink.title = resumeLabel.textContent;
+      resumeLink.setAttribute("aria-label", resumeLabel.textContent);
+    }
+    syncResumeTitle();
+    var resumeSeen = false;
+    try { resumeSeen = localStorage.getItem("resume-tooltip-seen") === "true"; } catch (e) {}
+    function dismissResumeTooltip() {
+      resumeLink.classList.remove("resume-tooltip-intro");
+      if (!resumeSeen) {
+        resumeSeen = true;
+        try { localStorage.setItem("resume-tooltip-seen", "true"); } catch (e) {}
+      }
+    }
+    resumeLink.addEventListener("pointerenter", dismissResumeTooltip);
+    resumeLink.addEventListener("focus", dismissResumeTooltip);
+    resumeLink.addEventListener("click", dismissResumeTooltip);
+    resumeLink.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") dismissResumeTooltip();
+    });
+    if (!reduced && !resumeSeen) {
+      window.setTimeout(function () {
+        if (!resumeSeen) resumeLink.classList.add("resume-tooltip-intro");
+      }, 500);
+    }
+    var priorSetLang = setLang;
+    setLang = function (lang) {
+      priorSetLang(lang);
+      syncResumeTitle();
+    };
+  }
+
   /* --- top progress bar --- */
   var bar = document.querySelector(".progress");
   /* --- timeline spine that draws itself --- */

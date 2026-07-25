@@ -8,7 +8,7 @@ Improve the small-screen navigation and AIMeer controls without changing the sit
 
 ### Résumé download control
 
-The top navigation résumé link remains a real download link but becomes icon-only at narrow widths. It uses a download-arrow-into-tray SVG, with an accessible label and tooltip text identifying the action as “Download résumé PDF”. The tooltip is revealed once on page load so touch users receive the affordance without hover; it remains available on hover and keyboard focus, and can be dismissed. The hero, contact, and modal résumé links retain their existing text labels.
+The top navigation résumé link remains a real download link and is icon-only at every width, including wide screens. It uses a download-arrow-into-tray SVG, with an accessible label and tooltip text identifying the action as “Download résumé PDF”. The tooltip is revealed once on page load so touch users receive the affordance without hover; it remains available on hover and keyboard focus, and can be dismissed. The hero, contact, and modal résumé links retain their existing text labels.
 
 ### Button press feedback
 
