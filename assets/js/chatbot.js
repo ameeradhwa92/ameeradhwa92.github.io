@@ -116,6 +116,9 @@
   function t(key) { return T[lang()][key]; }
 
   /* ---------------- tier 1: instant keyword answers ---------------- */
+  /* salary questions always offer the WhatsApp/email handoff, in both tiers */
+  var SALARY_KEYS = /\b(salary|pay|paid|earn(s|ing)?|expected|compensation|remuneration|package|gaji|pendapatan|rm|ringgit)\b/;
+
   var TOPICS = [
     {
       keys: /\b(now|today|current|kini|sekarang|retailaim|saas|fmcg|nestle|unilever|farm fresh|role|job|kerja|jawatan)\b/,
@@ -163,7 +166,7 @@
       ms: "Ameer dilahirkan pada tahun 1992 dan dibesarkan sepenuhnya di Dungun, Terengganu — dari tadika hingga sekolah menengah (SMK Balai Besar). Separuh hayat di pekan kecil tidak pernah menghadkan impiannya daripada sekadar menjadi \"pengatur cara semata-mata\". Kini beliau seorang suami dan bapa kepada tiga cahaya mata — seorang puteri dan dua putera — dan tugas 24 jam itulah yang mengasah kebolehan berbilang tugas serta naluri mencari penyelesaian paling cekap. Impian sebenarnya: melihat keluarganya hidup selesa."
     },
     {
-      keys: /\b(salary|pay|paid|earn(s|ing)?|expected|compensation|remuneration|package|gaji|pendapatan|rm|ringgit)\b/,
+      keys: SALARY_KEYS,
       en: "Ameer prefers to discuss compensation directly — his expectations are negotiable and depend on the role. Email ameeradhwa92@gmail.com or use the WhatsApp button when it appears, and he'll be happy to talk numbers.",
       ms: "Ameer lebih gemar membincangkan pampasan secara terus — jangkaannya boleh dirunding dan bergantung pada peranan. E-mel ameeradhwa92@gmail.com atau gunakan butang WhatsApp apabila ia dipaparkan untuk berbincang lanjut."
     },
@@ -474,6 +477,8 @@
     if (transcript.length > 24) transcript = transcript.slice(-24);
     if (unanswered) {
       lastUnanswered = question;
+      offerHandoff();
+    } else if (SALARY_KEYS.test(question.toLowerCase())) {
       offerHandoff();
     }
     busy = false;
