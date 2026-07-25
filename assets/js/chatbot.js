@@ -235,6 +235,7 @@
   var LOCAL_TIMEOUT = window.AIMEER_LOCAL_TIMEOUT || 20000; /* ms of downloading before cloud takes over answering */
   var route = "pending"; /* pending | local | cloud | none */
   var localOK = false;   /* device could run the on-device model (for manual retry) */
+  var preferredMode = null; /* explicit cloud/local choice, independent of the live route */
   var announcedCloud = false;
   var aiState = "off"; /* off | loading | ready (local) | cloud | failed */
   var history = []; /* {role, content} — capped so prefill stays fast */
@@ -270,6 +271,7 @@
      translating that preference into download cancellation and route changes. */
   function setPreferredRoute(mode) {
     if (mode !== "cloud" && mode !== "local") return;
+    preferredMode = mode;
     try { localStorage.setItem("aimeer-route", mode); } catch (e) { }
     syncModelSwitch();
   }
@@ -285,8 +287,12 @@
 
   function syncModelSwitch() {
     if (!modelCloud || !modelLocal) return;
-    var localSelected = route === "local" || aiState === "ready";
-    var cloudSelected = !localSelected && (route === "cloud" || aiState === "cloud" || cloudOk);
+    var activeMode = route === "local" || aiState === "ready"
+      ? "local"
+      : (route === "cloud" || aiState === "cloud" || cloudOk ? "cloud" : null);
+    var selectedMode = preferredMode === "local" && !localOK ? activeMode : (preferredMode || activeMode);
+    var localSelected = selectedMode === "local";
+    var cloudSelected = selectedMode === "cloud";
     modelCloud.classList.toggle("is-selected", cloudSelected);
     modelLocal.classList.toggle("is-selected", localSelected);
     modelLocal.classList.toggle("is-unavailable", !localOK);
@@ -443,6 +449,7 @@
   function decideRoute() {
     var pref = null;
     try { pref = localStorage.getItem("aimeer-route"); } catch (e) { }
+    if (pref === "cloud" || pref === "local") preferredMode = pref;
     /* iPhones and iPads expose WebGPU but Safari's per-tab memory ceiling kills
        the model mid-load, so they always go to the cloud */
     var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent || "") ||

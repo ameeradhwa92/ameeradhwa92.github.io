@@ -6,6 +6,97 @@ const vm = require('node:vm');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const i18n = fs.readFileSync(path.join(__dirname, '..', 'assets', 'js', 'i18n.js'), 'utf8');
+const chatbot = fs.readFileSync(path.join(__dirname, '..', 'assets', 'js', 'chatbot.js'), 'utf8');
+const css = fs.readFileSync(path.join(__dirname, '..', 'assets', 'css', 'style.css'), 'utf8');
+
+function createElement() {
+  const listeners = new Map();
+  const classes = new Set();
+  return {
+    hidden: false,
+    textContent: '',
+    className: '',
+    style: { setProperty() {}, removeProperty() {} },
+    attributes: new Map(),
+    classList: {
+      add(...names) { names.forEach((name) => classes.add(name)); },
+      remove(...names) { names.forEach((name) => classes.delete(name)); },
+      toggle(name, enabled) { if (enabled) classes.add(name); else classes.delete(name); },
+      contains(name) { return classes.has(name); }
+    },
+    setAttribute(name, value) { this.attributes.set(name, String(value)); },
+    getAttribute(name) { return this.attributes.get(name) || null; },
+    addEventListener(type, listener) { listeners.set(type, listener); },
+    dispatch(type) { const listener = listeners.get(type); if (listener) listener({ key: type }); },
+    querySelector() { return null; },
+    appendChild() {},
+    focus() {}
+  };
+}
+
+function createChatContext() {
+  const elements = {};
+  [
+    'chat-launcher', 'chat-panel', 'chat-log', 'chat-form', 'chat-input', 'chat-chips',
+    'chat-status', 'chat-ai', 'chat-ai-enable', 'chat-ai-cancel', 'chat-model-cloud',
+    'chat-model-local', 'chat-model-tooltip'
+  ].forEach((id) => { elements[id] = createElement(); });
+  const statusText = createElement();
+  const aiPitch = createElement();
+  const progress = createElement();
+  const progressBar = createElement();
+  const progressText = createElement();
+  const close = createElement();
+  const stored = new Map();
+
+  elements['chat-status'].querySelector = () => statusText;
+  elements['chat-ai'].querySelector = () => aiPitch;
+  elements['chat-panel'].querySelector = (selector) => ({
+    '.chat-progress': progress,
+    '.chat-progress-bar': progressBar,
+    '.chat-progress-text': progressText,
+    '.chat-close': close
+  })[selector] || null;
+
+  const root = createElement();
+  root.dataset = {};
+  const document = {
+    documentElement: root,
+    readyState: 'complete',
+    getElementById(id) { return elements[id] || null; },
+    addEventListener() {},
+    createElement
+  };
+  const window = {
+    console: { warn() {} },
+    addEventListener() {}
+  };
+  const context = {
+    window,
+    document,
+    navigator: {
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+      platform: 'Win32',
+      maxTouchPoints: 0,
+      connection: { saveData: true },
+      gpu: {
+        requestAdapter() {
+          return Promise.resolve({ limits: { maxBufferSize: 1_500_000_000 } });
+        }
+      }
+    },
+    localStorage: {
+      getItem(key) { return stored.get(key) || null; },
+      setItem(key, value) { stored.set(key, String(value)); },
+      removeItem(key) { stored.delete(key); }
+    },
+    MutationObserver: class { constructor() {} observe() {} },
+    setTimeout() { return 1; },
+    clearTimeout() {},
+    Promise
+  };
+  return { context, elements, stored };
+}
 
 test('chat header exposes cloud and local model choices with accessible state', () => {
   const header = html.match(/<header class="chat-head">([\s\S]*?)<\/header>/);
@@ -40,4 +131,30 @@ test('Bahasa Melayu provides distinct labels and compatibility help for the mode
   assert.equal(context.window.I18N_MS['chat.model.cloud.label'], 'Guna AI awan selamat');
   assert.equal(context.window.I18N_MS['chat.model.local.label'], 'Guna AI pada peranti');
   assert.match(context.window.I18N_MS['chat.model.local.hint'], /tidak serasi/i);
+});
+
+test('selecting eligible local AI presents Local while the active route is cloud', async () => {
+  const { context, elements, stored } = createChatContext();
+  vm.runInNewContext(chatbot, context);
+  await new Promise(setImmediate);
+
+  assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'true');
+  elements['chat-model-local'].dispatch('click');
+
+  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'true');
+  assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'false');
+  assert.equal(stored.get('aimeer-route'), 'local');
+});
+
+test('model segments retain 44px touch targets in narrow panels', () => {
+  assert.match(
+    css,
+    /\.chat-model-choice\s*\{[\s\S]*?width:\s*44px;[\s\S]*?min-height:\s*44px;/,
+    'each segment should provide a 44px touch target'
+  );
+  assert.doesNotMatch(
+    css,
+    /@media\s*\(max-width:\s*390px\)\s*\{[\s\S]*?\.chat-model-choice\s*\{[\s\S]*?(?:width|min-height):\s*(?:3[0-9]|[12][0-9])px;/,
+    'the narrow-panel rule should not shrink touch targets below 44px'
+  );
 });
