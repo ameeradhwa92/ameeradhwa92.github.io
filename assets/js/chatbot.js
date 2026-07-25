@@ -1,66 +1,50 @@
-/* AIMeer — Ameer's AI twin. Two-tier portfolio chatbot.
+/* AIMeer — Ameer's AI twin. Hybrid three-tier portfolio chatbot.
    Tier 1: instant keyword answers, zero download, works everywhere.
-   Tier 2: opt-in WebLLM (Llama 3.2 1B) running fully in-browser via WebGPU —
-           the only external requests this site ever makes, and only after
-           the visitor explicitly enables AI mode. */
+   Tier 2: WebLLM (Llama 3.2 1B) running fully in-browser via WebGPU on capable
+           devices — auto-downloads in the background, cancellable in the panel.
+   Tier 3: devices that can't run the local model (iPhones, old GPUs, no WebGPU)
+           are routed to a Cloudflare Worker relay (cloud/aimeer-worker.js) so
+           AI answers are always available. The active route is shown in the
+           chat status line. */
 (function () {
   "use strict";
 
   var WEBLLM_CDN = "https://esm.run/@mlc-ai/web-llm@0.2.79";
+  var KB_URL = "assets/data/aimeer-kb.txt";
+  /* Cloudflare Worker relay for devices that can't run the local model.
+     Deploy cloud/aimeer-worker.js, then paste its workers.dev URL here. */
+  var CLOUD_ENDPOINT = typeof window.AIMEER_CLOUD_ENDPOINT === "string"
+    ? window.AIMEER_CLOUD_ENDPOINT
+    : "https://aimeer-ai.ameer-adhwa.workers.dev/";
+  var cloudOk = !!CLOUD_ENDPOINT;
   var root = document.documentElement;
 
-  /* ---------------- knowledge base (system prompt for AI mode) ---------------- */
-  var KB =
-    "FACTS ABOUT AMEER ADHWA BIN MOHAMAD\n" +
-    "Identity: Full Stack Web Specialist based in Shah Alam, Malaysia. 12+ years shipping software, " +
-    "25+ production systems, work used by 20+ FMCG brands in 4 countries. Languages: Bahasa Malaysia (native), " +
-    "English (professional). Contact: ameeradhwa92@gmail.com, linkedin.com/in/ameeradhwa92, github.com/ameeradhwa92, " +
-    "+60 13-961 0053. A resume PDF is downloadable on this site. Open to hard problems in web, mobile and multi-tenant SaaS.\n\n" +
-    "Education: SPM 2009, SMK Balai Besar Dungun (Pure Sciences, A+ in Mathematics). Diploma in Computer Science, " +
-    "UiTM Dungun 2010-2013, CGPA 3.03, final-year project: Bus Ticketing System in PHP. B.IT (Hons.) Intelligent Systems " +
-    "Engineering, UiTM Shah Alam 2013-2016, final-year project: Mobile Road Tax Sticker Recognizer (Tesseract OCR, Android). " +
-    "MUET Band 3 (2015).\n\n" +
-    "Career history:\n" +
-    "- 2013-2014 MyEMRO Sdn. Bhd., Kuala Lumpur — Web Application Developer. Aircraft MRO (maintenance, repair & overhaul) " +
-    "scheduling system in Ruby on Rails (retired, internal).\n" +
-    "- 2015-2023 TRM Nett Systems, Petaling Jaya (7 years 10 months) — Web & Mobile Application Developer, Junior to Senior. " +
-    "Built 15+ systems for Malaysian government agencies (CIDB, SPAN, SIRIM, Royal Malaysian Customs, Port Klang Authority, LPPEH). " +
-    "Introduced Git company-wide and pioneered Flutter adoption. Projects: Service 73 real-time GPS team management (retired); " +
-    "LPPEH Board Information System + public verification apps (live, lpeph.gov.my); MARii EEV Label vehicle star-rating (live, " +
-    "eev.marii.my); CIDB CCPM construction certification (live, ccpm.cidb.gov.my); SPAN eCLAPS licensing in Laravel (live, " +
-    "eclaps.span.gov.my); Kastam eCAF electronic customs forms for PKFZ, North Port & Westport (live, restricted); SIRIM " +
-    "Check Your Label IMEI-verification app (live on Google Play and the App Store); Port Klang Authority eDCFZ dangerous-cargo " +
-    "declarations (live, edcfz.pka.gov.my); PKFZ PIMS gate & cargo system (live, pkfz.com); ClinicPlus clinic management " +
-    "(retired); Senai Airport City FZ, the company's first Flutter production app (retired); Contractor4U CIDB contractor " +
-    "marketplace (retired).\n" +
-    "- Feb-Aug 2023 NCS Global Technology (remote contract) — Android/iOS Developer on Motorola Solutions' mission-critical " +
-    "public-safety Android platform (Kotlin, Java, NDK, JUnit4, defense-in-depth security).\n" +
-    "- Aug 2023-present RetailAIM Malaysia Sdn. Bhd. (formerly Always Marketing), Kuala Lumpur — Web Application Developer, " +
-    "promoted to Full Stack Web Specialist in Jan 2025. Sole developer of RetailAIM Plus, a multi-tenant ASP.NET Core SaaS " +
-    "for 20+ FMCG brands (Nestle, Unilever, Abbott, Farm Fresh) across Malaysia, Singapore, Thailand and the Philippines " +
-    "(live, retailaim.com). Also: legacy BackOffice & QuickView admin portal (live, private); next-gen Plus BackOffice in " +
-    "React 18 + TypeScript + FastAPI (in development); Abbott CRM — React PWA + .NET 10 clean-architecture monorepo with a " +
-    "14-step Salesforce API v60.0 integration and WhatsApp OTP via Bird API (live, private); Promoter Payment System — " +
-    "five-level approval payroll with Maybank bulk-payment exports (live, private).\n\n" +
-    "Personal: Born in 1992 and raised in Dungun, Terengganu — kindergarten, primary school and secondary school " +
-    "(SMK Balai Besar) all in Dungun. Half a life in a small town never limited his ambitions beyond being 'just a " +
-    "programmer'. Family: married with three children — one daughter and two sons. Being a hands-on husband and father " +
-    "around the clock sharpened his multitasking and his habit of finding the most efficient solution to any problem. " +
-    "His dream is seeing his family live a comfortably good life.\n\n" +
-    "Salary: not published — Ameer discusses compensation directly and his expectations are negotiable. Never state " +
-    "any salary figure; point visitors to email or the WhatsApp button instead.\n\n" +
-    "Skills: ASP.NET Core & Framework, C#, Entity Framework, Python FastAPI, Laravel/PHP, REST & SOAP APIs; React, TypeScript, " +
-    "Vite, TailwindCSS, ShadCN/Radix, React Query, DevExpress; Flutter/Dart, Android (Kotlin, Java), iOS (Swift), Ionic; " +
-    "MS SQL Server, Azure SQL, MySQL, SQLite; Azure DevOps CI/CD, Azure App Service, ARM/Bicep IaC, Git; integrations with " +
-    "Salesforce, SAP, AutoCount ERP, iPay88, SenangPay, eGHL, PayPal, WhatsApp Business API, FCM/Pushwoosh.";
+  /* ---------------- knowledge base (fetched, shared with the cloud worker) ---------------- */
+  var KB = "", kbPromise = null;
+  function ensureKB() {
+    if (KB) return Promise.resolve(KB);
+    if (!kbPromise) {
+      kbPromise = fetch(KB_URL).then(function (r) {
+        if (!r.ok) throw new Error("kb-" + r.status);
+        return r.text();
+      }).then(function (txt) {
+        KB = txt;
+        return KB;
+      }).catch(function (err) {
+        kbPromise = null;
+        throw err;
+      });
+    }
+    return kbPromise;
+  }
 
-  var SYSTEM_PROMPT =
+  var PROMPT_HEAD =
     "You are AIMeer, the AI twin of Ameer Adhwa on his portfolio website. You speak about Ameer in the third person, " +
     "warmly and professionally. Answer visitors' questions using ONLY the facts below. " +
     "Keep answers short (2-5 sentences), factual and friendly. If the question is in Bahasa Malaysia, reply in formal " +
     "Bahasa Malaysia; otherwise reply in English. If the answer is not in the facts, say you do not have that " +
     "information and suggest asking Ameer directly — the chat will show WhatsApp and email buttons for that. " +
-    "Never invent projects, employers, dates or links.\n\n" + KB;
+    "Never invent projects, employers, dates or links.\n\n";
 
   var WA_NUMBER = "60139610053"; /* +60 13-961 0053 in wa.me format */
   var EMAIL = "ameeradhwa92@gmail.com";
@@ -68,15 +52,28 @@
   /* ---------------- ui strings (dynamic ones JS must swap itself) ---------------- */
   var T = {
     en: {
-      greeting: "Hi, I'm AIMeer — Ameer's AI twin. Ask me about his career, projects and skills. Tap a suggestion below — or enable full AI mode for free-form questions, running entirely in your browser.",
+      greeting: "Hi, I'm AIMeer — Ameer's AI twin. Ask me about his career, projects and skills, or tap a suggestion below. Full AI mode gets ready by itself — on your device when it can, via secure cloud when it can't.",
       placeholder: "Ask AIMeer…",
       statusInstant: "Instant answers · no download",
-      statusAI: "AI mode · runs locally on your device",
+      statusAI: "AI mode · on your device",
+      statusCloud: "AI mode · secure cloud",
       statusLoading: "Downloading model… ",
       statusPreparing: "Preparing model… (first load compiles GPU shaders)",
+      aiDownloading: "AIMeer is preparing its on-device AI in the background (≈ 0.9 GB, one time — your questions will never leave this device). You can already chat while it downloads.",
+      aiPitchManual: "On-device AI runs a small language model entirely in your browser — your questions never leave this device. One-time download ≈ 0.9 GB.",
+      enableBtn: "Enable on-device AI",
+      cancelCloud: "Cancel — use cloud AI",
+      cancelPlain: "Cancel download",
       aiReady: "AI mode is on. Everything runs on your device — ask me anything about Ameer's work.",
+      aiReadyCloud: "AI mode is on via secure cloud — this device can't run the on-device model, so answers are generated by a cloud model instead. Ask me anything about Ameer's work.",
+      aiInterim: "Answers come from the secure cloud for now — the on-device model is still downloading and takes over automatically when it's ready.",
+      cloudInterim: "The on-device model is taking a while to download, so I'll answer through the secure cloud in the meantime — I'll switch over automatically once it's ready.",
+      aiUpgraded: "The on-device model is ready — I've switched from cloud to on-device AI, so your questions now stay on this device.",
+      canceledCloud: "Download canceled — switched to cloud AI. Everything still works.",
+      canceledPlain: "Download canceled. Instant answers keep working — you can enable on-device AI anytime above.",
       aiError: "AI mode failed to load — your connection may have dropped, or the device ran out of memory. Instant answers still work.",
-      unsupported: "This browser or device doesn't support WebGPU, so AI mode isn't available here. Instant answers below still work — or email ameeradhwa92@gmail.com.",
+      aiErrorCloud: "The on-device model couldn't load, so I've switched to cloud AI — everything still works.",
+      unsupported: "This device can't run the on-device AI model and the cloud AI service isn't available right now, so free-form AI answers are off. Instant answers below still work — or email ameeradhwa92@gmail.com.",
       fallbackDefault: "I don't have an instant answer for that one — sounds like a question for Ameer himself. Send him this chat with the buttons below, or try a suggested topic.",
       thinking: "Thinking…",
       handoffPrompt: "Ask Ameer directly — I'll attach a short summary of this chat:",
@@ -90,15 +87,28 @@
       sumVia: "sent via AIMeer · ameeradhwa92.github.io"
     },
     ms: {
-      greeting: "Salam sejahtera! Saya AIMeer — kembar AI Ameer. Tanya saya tentang kerjaya, projek dan kemahiran beliau. Tekan cadangan di bawah — atau aktifkan mod AI penuh untuk soalan bebas, berjalan sepenuhnya dalam pelayar anda.",
+      greeting: "Salam sejahtera! Saya AIMeer — kembar AI Ameer. Tanya saya tentang kerjaya, projek dan kemahiran beliau, atau tekan cadangan di bawah. Mod AI penuh disediakan secara automatik — pada peranti anda jika mampu, melalui awan selamat jika tidak.",
       placeholder: "Tanya AIMeer…",
       statusInstant: "Jawapan segera · tanpa muat turun",
-      statusAI: "Mod AI · berjalan setempat pada peranti anda",
+      statusAI: "Mod AI · pada peranti anda",
+      statusCloud: "Mod AI · awan selamat",
       statusLoading: "Memuat turun model… ",
       statusPreparing: "Menyediakan model… (muatan pertama mengompil pelorek GPU)",
+      aiDownloading: "AIMeer sedang menyediakan AI setempat di latar belakang (≈ 0.9 GB, sekali sahaja — soalan anda tidak akan meninggalkan peranti ini). Anda sudah boleh bersembang sementara ia dimuat turun.",
+      aiPitchManual: "AI setempat menjalankan model bahasa kecil sepenuhnya dalam pelayar anda — soalan anda tidak meninggalkan peranti ini. Muat turun sekali sahaja ≈ 0.9 GB.",
+      enableBtn: "Aktifkan AI setempat",
+      cancelCloud: "Batal — guna AI awan",
+      cancelPlain: "Batal muat turun",
       aiReady: "Mod AI telah diaktifkan. Semuanya berjalan pada peranti anda — tanyalah apa-apa sahaja tentang kerja Ameer.",
+      aiReadyCloud: "Mod AI diaktifkan melalui awan selamat — peranti ini tidak dapat menjalankan model setempat, jadi jawapan dijana oleh model awan. Tanyalah apa-apa sahaja tentang kerja Ameer.",
+      aiInterim: "Buat masa ini jawapan datang daripada awan selamat — model setempat masih dimuat turun dan akan mengambil alih secara automatik apabila siap.",
+      cloudInterim: "Model setempat mengambil masa untuk dimuat turun, jadi buat sementara waktu saya menjawab melalui awan selamat — saya akan bertukar secara automatik apabila ia siap.",
+      aiUpgraded: "Model setempat sudah siap — saya beralih daripada awan kepada AI setempat, jadi soalan anda kini kekal pada peranti ini.",
+      canceledCloud: "Muat turun dibatalkan — beralih kepada AI awan. Semuanya masih berfungsi.",
+      canceledPlain: "Muat turun dibatalkan. Jawapan segera masih berfungsi — anda boleh mengaktifkan AI setempat pada bila-bila masa di atas.",
       aiError: "Mod AI gagal dimuatkan — sambungan mungkin terputus, atau memori peranti tidak mencukupi. Jawapan segera masih berfungsi.",
-      unsupported: "Pelayar atau peranti ini tidak menyokong WebGPU, jadi mod AI tidak tersedia di sini. Jawapan segera di bawah masih berfungsi — atau e-mel ameeradhwa92@gmail.com.",
+      aiErrorCloud: "Model setempat gagal dimuatkan, jadi saya beralih kepada AI awan — semuanya masih berfungsi.",
+      unsupported: "Peranti ini tidak dapat menjalankan model AI setempat dan perkhidmatan AI awan tidak tersedia buat masa ini, jadi jawapan AI bebas dimatikan. Jawapan segera di bawah masih berfungsi — atau e-mel ameeradhwa92@gmail.com.",
       fallbackDefault: "Saya tiada jawapan segera untuk soalan itu — nampaknya soalan untuk Ameer sendiri. Hantar sembang ini kepada beliau dengan butang di bawah, atau cuba topik yang dicadangkan.",
       thinking: "Sedang berfikir…",
       handoffPrompt: "Tanya Ameer secara terus — saya akan lampirkan ringkasan sembang ini:",
@@ -116,7 +126,7 @@
   function t(key) { return T[lang()][key]; }
 
   /* ---------------- tier 1: instant keyword answers ---------------- */
-  /* salary questions always offer the WhatsApp/email handoff, in both tiers */
+  /* salary questions always offer the WhatsApp/email handoff, in every tier */
   var SALARY_KEYS = /\b(salary|pay|paid|earn(s|ing)?|expected|compensation|remuneration|package|gaji|pendapatan|rm|ringgit)\b/;
 
   var TOPICS = [
@@ -208,13 +218,22 @@
   var status = document.getElementById("chat-status");
   var statusText = status.querySelector(".chat-status-text");
   var aiBox = document.getElementById("chat-ai");
+  var aiPitch = aiBox.querySelector(".chat-ai-pitch");
   var aiEnable = document.getElementById("chat-ai-enable");
+  var cancelBtn = document.getElementById("chat-ai-cancel");
   var progress = panel.querySelector(".chat-progress");
   var progressBar = panel.querySelector(".chat-progress-bar");
   var progressText = panel.querySelector(".chat-progress-text");
 
   var open = false, greeted = false, busy = false;
-  var engine = null, aiState = "off"; /* off | loading | ready | failed */
+  var engine = null, canceled = false;
+  var dlActive = false;      /* the on-device download is running */
+  var fallbackTimer = null;  /* switches answers to cloud if the download is slow */
+  var LOCAL_TIMEOUT = window.AIMEER_LOCAL_TIMEOUT || 20000; /* ms of downloading before cloud takes over answering */
+  var route = "pending"; /* pending | local | cloud | none */
+  var localOK = false;   /* device could run the on-device model (for manual retry) */
+  var announcedCloud = false;
+  var aiState = "off"; /* off | loading | ready (local) | cloud | failed */
   var history = []; /* {role, content} — capped so prefill stays fast */
   var transcript = []; /* full visitor conversation, for the WhatsApp/email handoff */
   var lastUnanswered = ""; /* the question AIMeer couldn't answer */
@@ -232,18 +251,71 @@
     status.className = "chat-status chat-status-" + mode;
     statusText.textContent =
       mode === "ai" ? t("statusAI") :
-      mode === "loading" ? (extra || t("statusLoading")) :
-      t("statusInstant");
+        mode === "cloud" ? t("statusCloud") :
+          mode === "loading" ? (extra || t("statusLoading")) :
+            t("statusInstant");
+  }
+
+  function refreshStatus() {
+    if (aiState === "ready") setStatus("ai");
+    else if (aiState === "cloud") setStatus("cloud");
+    else if (aiState !== "loading") setStatus("instant");
+  }
+
+  /* ---------------- launcher ring: grey → progress fill → teal glow ---------------- */
+  function ringPending() { launcher.classList.add("ai-pending"); }
+  function ringProgress(pct) {
+    launcher.classList.add("ai-downloading");
+    launcher.style.setProperty("--dl", pct);
+  }
+  function ringReady() {
+    launcher.classList.remove("ai-pending", "ai-downloading");
+    launcher.style.removeProperty("--dl");
+  }
+
+  /* ---------------- the AI box under the header ---------------- */
+  function applyAiBox() {
+    aiBox.classList.remove("unsupported");
+    if (aiState === "cloud" && dlActive) {
+      /* interim: cloud answers while the on-device download keeps going */
+      aiBox.hidden = false;
+      aiPitch.textContent = t("aiInterim");
+      aiEnable.hidden = true;
+      progress.hidden = false;
+      cancelBtn.hidden = false;
+      cancelBtn.textContent = t("cancelPlain");
+      return;
+    }
+    if (aiState === "ready" || aiState === "cloud") { aiBox.hidden = true; return; }
+    aiBox.hidden = false;
+    if (aiState === "loading") {
+      aiPitch.textContent = t("aiDownloading");
+      aiEnable.hidden = true;
+      progress.hidden = false;
+      cancelBtn.hidden = false;
+      cancelBtn.textContent = cloudOk ? t("cancelCloud") : t("cancelPlain");
+    } else if (aiState === "failed" || (route === "none" && localOK)) {
+      aiPitch.textContent = aiState === "failed" ? t("aiError") : t("aiPitchManual");
+      aiEnable.hidden = false;
+      aiEnable.textContent = t("enableBtn");
+      progress.hidden = true;
+    } else if (route === "none") {
+      aiBox.classList.add("unsupported");
+      aiPitch.textContent = t("unsupported");
+      aiEnable.hidden = true;
+      progress.hidden = true;
+    } else {
+      /* route pending, or local download not started yet */
+      aiPitch.textContent = t("aiDownloading");
+      aiEnable.hidden = true;
+      progress.hidden = true;
+    }
   }
 
   function refreshLangBits() {
     input.placeholder = t("placeholder");
-    if (aiState === "ready") setStatus("ai");
-    else if (aiState !== "loading") setStatus("instant");
-    /* setLang() rewrites the pitch from the dictionary; restore the notice */
-    if (aiBox.classList.contains("unsupported")) {
-      aiBox.querySelector(".chat-ai-pitch").textContent = t("unsupported");
-    }
+    refreshStatus();
+    applyAiBox();
   }
 
   /* keep dynamic strings in step with the EN/BM toggle */
@@ -257,12 +329,12 @@
     if (!callout || callout.hidden) return;
     callout.classList.remove("show");
     setTimeout(function () { callout.hidden = true; }, 400);
-    if (persist) { try { localStorage.setItem("aimeer-callout", "1"); } catch (e) {} }
+    if (persist) { try { localStorage.setItem("aimeer-callout", "1"); } catch (e) { } }
   }
 
   if (callout) {
     var calloutSeen = null;
-    try { calloutSeen = localStorage.getItem("aimeer-callout"); } catch (e) {}
+    try { calloutSeen = localStorage.getItem("aimeer-callout"); } catch (e) { }
     if (!calloutSeen) {
       setTimeout(function () {
         if (open) return;
@@ -289,13 +361,15 @@
     if (!greeted) {
       greeted = true;
       addMsg("bot", t("greeting"));
-      if (!("gpu" in navigator)) {
-        aiBox.classList.add("unsupported");
-        aiEnable.hidden = true;
-        aiBox.querySelector(".chat-ai-pitch").textContent = t("unsupported");
-      } else if (localStorage.getItem("chat-ai") === "on") {
-        enableAI(); /* returning visitor: weights are already in browser cache */
+      if (aiState === "cloud" && !announcedCloud) {
+        announcedCloud = true;
+        addMsg("bot", t("aiReadyCloud"));
       }
+    }
+    /* opening the chat is intent — start the local download right away */
+    if (route === "local" && aiState === "off") {
+      if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
+      startLocalAI();
     }
     refreshLangBits();
     input.focus();
@@ -316,15 +390,75 @@
     if (e.key === "Escape" && open) closePanel();
   });
 
-  /* ---------------- tier 2: webllm ---------------- */
-  function enableAI() {
-    if (aiState === "loading" || aiState === "ready") return;
-    aiState = "loading";
-    aiEnable.hidden = true;
-    progress.hidden = false;
-    setStatus("loading");
+  /* ---------------- route decision: local model, cloud relay, or neither ---------------- */
+  function decideRoute() {
+    var pref = null;
+    try { pref = localStorage.getItem("aimeer-route"); } catch (e) { }
+    /* iPhones and iPads expose WebGPU but Safari's per-tab memory ceiling kills
+       the model mid-load, so they always go to the cloud */
+    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent || "") ||
+      (/Mac/.test(navigator.platform || "") && (navigator.maxTouchPoints || 0) > 1);
+    if (!("gpu" in navigator) || isIOS) {
+      return Promise.resolve(cloudOk ? "cloud" : "none");
+    }
+    return navigator.gpu.requestAdapter().then(function (adapter) {
+      var maxBuf = adapter && adapter.limits ? (adapter.limits.maxBufferSize || 0) : 0;
+      localOK = !!adapter && (!maxBuf || maxBuf >= 1500000000);
+      if (!localOK) return cloudOk ? "cloud" : "none";
+      if (pref === "cloud" && cloudOk) return "cloud";
+      if (pref === "off") return "none"; /* visitor canceled before; manual enable still offered */
+      if (navigator.connection && navigator.connection.saveData) {
+        return cloudOk ? "cloud" : "none";
+      }
+      return "local";
+    }).catch(function () {
+      localOK = false;
+      return cloudOk ? "cloud" : "none";
+    });
+  }
 
-    navigator.gpu.requestAdapter().then(function (adapter) {
+  function switchToCloud(msgKey) {
+    route = "cloud";
+    aiState = "cloud";
+    ringReady();
+    refreshStatus();
+    applyAiBox();
+    if (greeted && msgKey) {
+      announcedCloud = true;
+      addMsg("bot", t(msgKey));
+    }
+  }
+
+  /* ---------------- tier 2: on-device webllm, auto-started ---------------- */
+  function startLocalAI() {
+    if (dlActive || aiState === "ready") return;
+    aiState = "loading";
+    route = "local";
+    canceled = false;
+    dlActive = true;
+    try { localStorage.removeItem("aimeer-route"); } catch (e) { }
+    ringProgress(0);
+    setStatus("loading");
+    applyAiBox();
+
+    /* if the download takes longer than ~20s, cloud takes over answering while
+       the download keeps going in the background — local swaps back in when done */
+    if (cloudOk) {
+      fallbackTimer = setTimeout(function () {
+        fallbackTimer = null;
+        if (aiState !== "loading" || canceled) return;
+        aiState = "cloud";
+        refreshStatus();
+        applyAiBox();
+        if (greeted) {
+          announcedCloud = true;
+          addMsg("bot", t("cloudInterim"));
+        }
+      }, LOCAL_TIMEOUT);
+    }
+
+    Promise.all([ensureKB(), navigator.gpu.requestAdapter()]).then(function (r) {
+      var adapter = r[1];
       if (!adapter) throw new Error("no-webgpu-adapter");
       /* f16 shaders halve memory; fall back to f32 weights where unsupported */
       var model = adapter.features.has("shader-f16")
@@ -333,41 +467,111 @@
       return import(WEBLLM_CDN).then(function (webllm) {
         return webllm.CreateMLCEngine(model, {
           initProgressCallback: function (p) {
+            if (canceled) return;
             var pct = Math.round((p.progress || 0) * 100);
+            ringProgress(pct);
             progressBar.style.width = pct + "%";
-            if (pct >= 100) {
-              progressText.textContent = t("statusPreparing");
-              setStatus("loading", t("statusPreparing"));
-            } else {
-              progressText.textContent = pct + "%";
-              setStatus("loading", t("statusLoading") + pct + "%");
+            progressText.textContent = pct >= 100 ? t("statusPreparing") : pct + "%";
+            /* don't clobber the status line once cloud has taken over answering */
+            if (aiState === "loading") {
+              setStatus("loading", pct >= 100 ? t("statusPreparing") : t("statusLoading") + pct + "%");
             }
           }
         });
       });
     }).then(function (e) {
+      if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
+      if (canceled) {
+        /* visitor bailed while this resolved — drop the engine again */
+        try { if (e && e.unload) e.unload(); } catch (err) { }
+        return;
+      }
+      var wasInterim = aiState === "cloud";
       engine = e;
       aiState = "ready";
-      try { localStorage.setItem("chat-ai", "on"); } catch (err) {}
-      aiBox.hidden = true;
+      dlActive = false;
+      ringReady();
       setStatus("ai");
-      addMsg("bot", t("aiReady"));
+      applyAiBox();
+      if (greeted) addMsg("bot", t(wasInterim ? "aiUpgraded" : "aiReady"));
     }).catch(function (err) {
-      aiState = "failed";
-      try { localStorage.removeItem("chat-ai"); } catch (e2) {}
-      progress.hidden = true;
-      aiEnable.hidden = false;
-      setStatus("instant");
-      addMsg("bot", t("aiError"));
+      if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
+      dlActive = false;
+      if (canceled) return;
       if (window.console && console.warn) console.warn("WebLLM init failed:", err);
+      if (aiState === "cloud") {
+        /* cloud already answering — just stop showing the download UI */
+        route = "cloud";
+        ringReady();
+        applyAiBox();
+      } else if (cloudOk) {
+        switchToCloud("aiErrorCloud");
+      } else {
+        aiState = "failed";
+        route = "none";
+        ringReady();
+        setStatus("instant");
+        applyAiBox();
+        if (greeted) addMsg("bot", t("aiError"));
+      }
     });
   }
-  aiEnable.addEventListener("click", enableAI);
+  aiEnable.addEventListener("click", startLocalAI);
+
+  cancelBtn.addEventListener("click", function () {
+    if (!dlActive) return;
+    canceled = true;
+    dlActive = false;
+    if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
+    progressBar.style.width = "0";
+    progress.hidden = true;
+    try { localStorage.setItem("aimeer-route", cloudOk ? "cloud" : "off"); } catch (e) { }
+    if (cloudOk) {
+      switchToCloud("canceledCloud");
+    } else {
+      aiState = "off";
+      route = "none";
+      ringReady();
+      setStatus("instant");
+      applyAiBox();
+      if (greeted) addMsg("bot", t("canceledPlain"));
+    }
+  });
+
+  var autoTimer = null;
+  function scheduleAutoStart() {
+    var kick = function () {
+      autoTimer = setTimeout(function () { startLocalAI(); }, 2200);
+    };
+    if (document.readyState === "complete") kick();
+    else window.addEventListener("load", kick);
+  }
+
+  ringPending();
+  decideRoute().then(function (r) {
+    if (aiState !== "off") return; /* a manual/auto start already won the race */
+    route = r;
+    if (r === "local") {
+      if (open) startLocalAI();
+      else scheduleAutoStart();
+    } else {
+      if (r === "cloud") {
+        aiState = "cloud";
+        if (greeted && !announcedCloud) {
+          announcedCloud = true;
+          addMsg("bot", t("aiReadyCloud"));
+        }
+      }
+      ringReady();
+    }
+    if (open) { refreshStatus(); applyAiBox(); }
+  });
 
   async function askLLM(text, bubble) {
+    if (!KB) await ensureKB();
     history.push({ role: "user", content: text });
     if (history.length > 8) history = history.slice(-8);
-    var messages = [{ role: "system", content: SYSTEM_PROMPT }].concat(history);
+    var messages = [{ role: "system", content: PROMPT_HEAD + KB }].concat(history);
     var reply = "";
     var stream = await engine.chat.completions.create({
       messages: messages,
@@ -388,6 +592,25 @@
     return reply;
   }
 
+  /* ---------------- tier 3: cloud relay ---------------- */
+  function askCloud(text) {
+    history.push({ role: "user", content: text });
+    if (history.length > 8) history = history.slice(-8);
+    return fetch(CLOUD_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "chat", messages: history })
+    }).then(function (r) {
+      if (!r.ok) throw new Error("cloud-" + r.status);
+      return r.json();
+    }).then(function (d) {
+      var reply = (d.reply || "").trim();
+      if (!reply) throw new Error("cloud-empty");
+      history.push({ role: "assistant", content: reply });
+      return reply;
+    });
+  }
+
   /* ---------------- whatsapp / email handoff ---------------- */
   function mechanicalSummary() {
     var qs = [];
@@ -401,27 +624,48 @@
     return s + "\n\n— " + t("sumVia");
   }
 
+  function decorateSummary(body) {
+    var s = t("sumIntro") + "\n\n" + body.trim();
+    if (lastUnanswered) s += "\n\n" + t("sumOpen") + ' "' + lastUnanswered.slice(0, 200) + '"';
+    return s + "\n\n— " + t("sumVia");
+  }
+
   function getSummary() {
-    if (aiState !== "ready" || !engine) return Promise.resolve(mechanicalSummary());
     var convo = transcript.slice(-12).map(function (m) {
       return (m.role === "user" ? "Visitor: " : "AIMeer: ") + m.content;
     }).join("\n");
-    return engine.chat.completions.create({
-      messages: [
-        { role: "system", content:
-          "Summarize this chat between a website visitor and AIMeer (Ameer's portfolio assistant) " +
-          "in at most 3 short sentences addressed to Ameer, in the visitor's language " +
-          "(English or Bahasa Malaysia). Plain text only, no preamble." },
-        { role: "user", content: convo }
-      ],
-      stream: false,
-      temperature: 0.2,
-      max_tokens: 160
-    }).then(function (res) {
-      var s = t("sumIntro") + "\n\n" + res.choices[0].message.content.trim();
-      if (lastUnanswered) s += "\n\n" + t("sumOpen") + ' "' + lastUnanswered.slice(0, 200) + '"';
-      return s + "\n\n— " + t("sumVia");
-    }).catch(function () { return mechanicalSummary(); });
+    if (aiState === "ready" && engine) {
+      return engine.chat.completions.create({
+        messages: [
+          {
+            role: "system", content:
+              "Summarize this chat between a website visitor and AIMeer (Ameer's portfolio assistant) " +
+              "in at most 3 short sentences addressed to Ameer, in the visitor's language " +
+              "(English or Bahasa Malaysia). Plain text only, no preamble."
+          },
+          { role: "user", content: convo }
+        ],
+        stream: false,
+        temperature: 0.2,
+        max_tokens: 160
+      }).then(function (res) {
+        return decorateSummary(res.choices[0].message.content);
+      }).catch(function () { return mechanicalSummary(); });
+    }
+    if (aiState === "cloud") {
+      return fetch(CLOUD_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "summary", messages: [{ role: "user", content: convo }] })
+      }).then(function (r) {
+        if (!r.ok) throw new Error("cloud-" + r.status);
+        return r.json();
+      }).then(function (d) {
+        if (!d.reply) throw new Error("cloud-empty");
+        return decorateSummary(d.reply);
+      }).catch(function () { return mechanicalSummary(); });
+    }
+    return Promise.resolve(mechanicalSummary());
   }
 
   function sendToAmeer(channel, btn) {
@@ -499,6 +743,14 @@
         finishReply(bubble, reply, DONT_KNOW.test(reply), text);
       }).catch(function (err) {
         if (window.console && console.warn) console.warn("WebLLM chat failed:", err);
+        var a = instantAnswer(text);
+        finishReply(bubble, a.text, !a.matched, text);
+      });
+    } else if (aiState === "cloud") {
+      askCloud(text).then(function (reply) {
+        finishReply(bubble, reply, DONT_KNOW.test(reply), text);
+      }).catch(function (err) {
+        if (window.console && console.warn) console.warn("Cloud AI failed:", err);
         var a = instantAnswer(text);
         finishReply(bubble, a.text, !a.matched, text);
       });

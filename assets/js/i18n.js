@@ -142,9 +142,7 @@ window.I18N_MS = {
   "footer.built": "Dibina dengan tangan — satu fail HTML, tanpa rangka kerja.",
 
   "chat.title": "<em>AI</em>Meer",
-  "chat.callout": "Kenali <b>AIMeer</b> — kembar AI saya. Tanyakannya tentang perjalanan 16 tahun saya; ia berjalan 100% dalam pelayar anda.",
-  "chat.ai.pitch": "Mod AI menjalankan model bahasa kecil sepenuhnya dalam pelayar anda — soalan anda tidak meninggalkan peranti ini. Muat turun sekali sahaja ≈ 0.9 GB.",
-  "chat.ai.enable": "Aktifkan mod AI",
+  "chat.callout": "Kenali <b>AIMeer</b> — kembar AI saya. Tanyakannya tentang perjalanan 16 tahun saya; jawapan AI sebenar, pada peranti anda atau melalui awan.",
   "chat.chip1": "Apakah tugas beliau sekarang?",
   "chat.chip2": "Projek mana yang masih beroperasi?",
   "chat.chip3": "Apakah tindanan teknologi beliau?",

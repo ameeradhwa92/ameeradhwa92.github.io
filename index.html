@@ -588,7 +588,7 @@
     <button class="chat-callout-close" type="button" aria-label="Dismiss">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>
     </button>
-    <p data-i18n="chat.callout">Meet <b>AIMeer</b> — my AI twin. Ask it about my 16-year journey; it runs 100% in your browser.</p>
+    <p data-i18n="chat.callout">Meet <b>AIMeer</b> — my AI twin. Ask it about my 16-year journey; real AI answers, on your device or via cloud.</p>
   </div>
 
   <section class="chat-panel" id="chat-panel" role="dialog" aria-label="AIMeer" hidden>
@@ -606,12 +606,13 @@
     </header>
 
     <div class="chat-ai" id="chat-ai">
-      <p class="chat-ai-pitch" data-i18n="chat.ai.pitch">AI mode runs a small language model entirely in your
-         browser — your questions never leave this device. One-time download ≈ 0.9 GB.</p>
-      <button class="chat-ai-btn" id="chat-ai-enable" type="button" data-i18n="chat.ai.enable">Enable AI mode</button>
+      <p class="chat-ai-pitch">AIMeer is preparing its on-device AI in the background (≈ 0.9 GB, one time — your
+         questions will never leave this device). You can already chat while it downloads.</p>
+      <button class="chat-ai-btn" id="chat-ai-enable" type="button" hidden>Enable on-device AI</button>
       <div class="chat-progress" hidden>
         <div class="chat-progress-track"><div class="chat-progress-bar"></div></div>
         <span class="chat-progress-text">0%</span>
+        <button class="chat-cancel" id="chat-ai-cancel" type="button" hidden>Cancel — use cloud AI</button>
       </div>
     </div>
 

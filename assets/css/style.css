@@ -563,19 +563,43 @@ body.modal-open { overflow: hidden; }
 .chat-launcher img {
   position: absolute; inset: 3px; width: calc(100% - 6px); height: calc(100% - 6px);
   border-radius: 50%; object-fit: cover; border: 2px solid var(--ink);
+  z-index: 2;
 }
-/* rotating AI aura */
+/* rotating AI aura — grey while the on-device model is pending/downloading,
+   with a teal conic arc filling up like a progress bar, then full teal glow */
+@property --dl { syntax: "<number>"; inherits: true; initial-value: 0; }
 .chat-launcher-ring {
   position: absolute; inset: 0; border-radius: 50%;
   background: conic-gradient(from 0deg,
     var(--teal), rgba(var(--teal-rgb), 0.05), var(--teal),
     rgba(var(--teal-rgb), 0.05), var(--teal));
   animation: aimeer-spin 5s linear infinite;
+  transition: filter 0.6s ease;
 }
+.chat-launcher.ai-pending .chat-launcher-ring,
+.chat-launcher.ai-downloading .chat-launcher-ring {
+  filter: grayscale(1) opacity(0.55);
+}
+/* the non-spinning progress arc that fills grey → teal */
+.chat-launcher::before {
+  content: ""; position: absolute; inset: 0; border-radius: 50%; z-index: 1;
+  background: conic-gradient(var(--teal) calc(var(--dl, 0) * 1%), transparent 0);
+  filter: drop-shadow(0 0 6px rgba(var(--teal-rgb), 0.8));
+  opacity: 0;
+  transition: opacity 0.5s ease, --dl 0.4s ease;
+  pointer-events: none;
+}
+.chat-launcher.ai-downloading::before { opacity: 1; }
 .chat-launcher::after {
   content: ""; position: absolute; inset: -4px; border-radius: 50%; pointer-events: none;
   box-shadow: 0 14px 38px var(--shadow), 0 0 22px rgba(var(--teal-rgb), 0.45);
   animation: aimeer-breathe 3.2s ease-in-out infinite;
+  transition: box-shadow 0.6s ease;
+}
+.chat-launcher.ai-pending::after,
+.chat-launcher.ai-downloading::after {
+  box-shadow: 0 14px 38px var(--shadow), 0 0 18px rgba(148, 158, 166, 0.35);
+  animation: none;
 }
 @keyframes aimeer-spin { to { transform: rotate(1turn); } }
 @keyframes aimeer-breathe {
@@ -584,7 +608,7 @@ body.modal-open { overflow: hidden; }
 .chat-launcher:hover { transform: translateY(-2px) scale(1.04); }
 .chat-launcher.hidden { opacity: 0; transform: scale(0.6); pointer-events: none; }
 .chat-launcher-badge {
-  position: absolute; top: -7px; right: -6px; z-index: 1;
+  position: absolute; top: -7px; right: -6px; z-index: 3;
   font-family: var(--mono); font-size: 0.56rem; font-weight: 700; letter-spacing: 0.08em;
   color: var(--ink); background: var(--teal); border: 2px solid var(--ink);
   padding: 2px 7px; border-radius: 999px;
@@ -649,6 +673,8 @@ body.modal-open { overflow: hidden; }
 .chat-status-ai .dot { background: var(--teal); box-shadow: 0 0 8px rgba(var(--teal-rgb), 0.8); animation: pulse 2.4s infinite; }
 .chat-status-loading { color: var(--amber); }
 .chat-status-loading .dot { background: var(--amber); animation: pulse 1.2s infinite; }
+.chat-status-cloud { color: var(--teal); }
+.chat-status-cloud .dot { background: var(--teal); box-shadow: 0 0 8px rgba(var(--teal-rgb), 0.8); animation: pulse 2.4s infinite; }
 
 .chat-ai {
   padding: 14px 18px; border-bottom: 1px solid var(--line);
@@ -665,8 +691,17 @@ body.modal-open { overflow: hidden; }
 }
 .chat-ai-btn:hover { background: var(--teal); color: var(--ink); }
 .chat-ai-btn[hidden] { display: none; }
-.chat-progress { margin-top: 12px; display: flex; align-items: center; gap: 10px; }
+.chat-progress { margin-top: 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .chat-progress[hidden] { display: none; }
+.chat-cancel {
+  flex-basis: 100%; align-self: flex-start; width: fit-content;
+  padding: 5px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: none; color: var(--muted);
+  font-size: 0.72rem; font-family: var(--body);
+  transition: border-color 0.2s, color 0.2s;
+}
+.chat-cancel:hover { border-color: var(--amber); color: var(--amber); }
+.chat-cancel[hidden] { display: none; }
 .chat-progress-track {
   flex: 1; height: 5px; border-radius: 999px; background: var(--line); overflow: hidden;
 }
@@ -751,5 +786,7 @@ body.modal-open { overflow: hidden; }
   .chat-panel, .chat-callout { transition: none; transform: none; }
   .chat-launcher { transition: none; }
   .chat-launcher-ring, .chat-launcher::after,
-  .chat-msg.thinking, .chat-status-ai .dot, .chat-status-loading .dot { animation: none; }
+  .chat-msg.thinking, .chat-status-ai .dot, .chat-status-cloud .dot,
+  .chat-status-loading .dot { animation: none; }
+  .chat-launcher::before { transition: none; }
 }
