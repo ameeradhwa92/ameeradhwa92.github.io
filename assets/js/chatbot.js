@@ -267,18 +267,52 @@
     syncModelSwitch();
   }
 
-  /* The visible control only records a preference in this task. Task 4 owns
-     translating that preference into download cancellation and route changes. */
-  function setPreferredRoute(mode) {
-    if (mode !== "cloud" && mode !== "local") return;
-    preferredMode = mode;
-    try { localStorage.setItem("aimeer-route", mode); } catch (e) { }
-    syncModelSwitch();
-  }
-
   function showLocalCompatibilityHint() {
     if (!modelTooltip || localOK) return;
     modelTooltip.hidden = false;
+  }
+
+  function persistPreferredRoute(mode) {
+    preferredMode = mode;
+    try { localStorage.setItem("aimeer-route", mode); } catch (e) { }
+  }
+
+  function clearPreferredRoute() {
+    preferredMode = null;
+    try { localStorage.removeItem("aimeer-route"); } catch (e) { }
+  }
+
+  function cancelLocalDownload() {
+    if (!dlActive) return false;
+    canceled = true;
+    dlActive = false;
+    if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
+    progressBar.style.width = "0";
+    progress.hidden = true;
+    ringReady();
+    syncModelSwitch();
+    return true;
+  }
+
+  function setPreferredRoute(mode) {
+    if (mode !== "cloud" && mode !== "local") return;
+    if (mode === "cloud") {
+      var canceledDownload = cancelLocalDownload();
+      persistPreferredRoute("cloud");
+      switchToCloud(canceledDownload ? "canceledCloud" : null);
+      return;
+    }
+    if (!localOK) {
+      if (preferredMode === "local") clearPreferredRoute();
+      showLocalCompatibilityHint();
+      if (cloudOk && aiState !== "cloud") switchToCloud();
+      else syncModelSwitch();
+      return;
+    }
+    persistPreferredRoute("local");
+    hideLocalCompatibilityHint();
+    if (!dlActive && aiState !== "ready") startLocalAI();
+    else syncModelSwitch();
   }
 
   function hideLocalCompatibilityHint() {
@@ -304,7 +338,6 @@
   if (modelCloud && modelLocal) {
     modelCloud.addEventListener("click", function () { setPreferredRoute("cloud"); });
     modelLocal.addEventListener("click", function () {
-      if (!localOK) { showLocalCompatibilityHint(); return; }
       setPreferredRoute("local");
     });
     modelLocal.addEventListener("focus", showLocalCompatibilityHint);
@@ -450,26 +483,36 @@
     var pref = null;
     try { pref = localStorage.getItem("aimeer-route"); } catch (e) { }
     if (pref === "cloud" || pref === "local") preferredMode = pref;
-    /* iPhones and iPads expose WebGPU but Safari's per-tab memory ceiling kills
-       the model mid-load, so they always go to the cloud */
-    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent || "") ||
-      (/Mac/.test(navigator.platform || "") && (navigator.maxTouchPoints || 0) > 1);
-    if (!("gpu" in navigator) || isIOS) {
-      return Promise.resolve(cloudOk ? "cloud" : "none");
-    }
-    return navigator.gpu.requestAdapter().then(function (adapter) {
-      var maxBuf = adapter && adapter.limits ? (adapter.limits.maxBufferSize || 0) : 0;
-      localOK = !!adapter && (!maxBuf || maxBuf >= 1500000000);
-      if (!localOK) return cloudOk ? "cloud" : "none";
+    var requestAdapter = navigator.gpu && navigator.gpu.requestAdapter
+      ? navigator.gpu.requestAdapter()
+      : Promise.resolve(null);
+    return requestAdapter.then(function (adapter) {
+      var policy = window.AIMEER_DEVICE.evaluate({
+        userAgent: navigator.userAgent || "",
+        platform: navigator.platform || "",
+        maxTouchPoints: navigator.maxTouchPoints || 0,
+        hasWebGPU: !!adapter,
+        maxBufferSize: adapter && adapter.limits ? (adapter.limits.maxBufferSize || 0) : 0,
+        saveData: !!(navigator.connection && navigator.connection.saveData)
+      });
+      localOK = policy.localEligible;
+      if (pref === "local" && !localOK) {
+        clearPreferredRoute();
+        pref = null;
+      }
+      syncModelSwitch();
       if (pref === "cloud" && cloudOk) return "cloud";
+      if (pref === "local" && localOK) return "local";
       if (pref === "off") return "none"; /* visitor canceled before; manual enable still offered */
-      if (navigator.connection && navigator.connection.saveData) {
+      if (policy.cloudPreferred) {
         return cloudOk ? "cloud" : "none";
       }
-      return "local";
+      return localOK ? "local" : (cloudOk ? "cloud" : "none");
     }).catch(function () {
       localOK = false;
-      return cloudOk ? "cloud" : "none";
+      if (pref === "local") clearPreferredRoute();
+      syncModelSwitch();
+      return Promise.resolve(cloudOk ? "cloud" : "none");
     });
   }
 
@@ -479,6 +522,7 @@
     ringReady();
     refreshStatus();
     applyAiBox();
+    syncModelSwitch();
     if (greeted && msgKey) {
       announcedCloud = true;
       addMsg("bot", t(msgKey));
@@ -492,7 +536,6 @@
     route = "local";
     canceled = false;
     dlActive = true;
-    try { localStorage.removeItem("aimeer-route"); } catch (e) { }
     ringProgress(0);
     setStatus("loading");
     applyAiBox();
@@ -576,12 +619,9 @@
 
   cancelBtn.addEventListener("click", function () {
     if (!dlActive) return;
-    canceled = true;
-    dlActive = false;
-    if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
-    progressBar.style.width = "0";
-    progress.hidden = true;
+    cancelLocalDownload();
     try { localStorage.setItem("aimeer-route", cloudOk ? "cloud" : "off"); } catch (e) { }
+    preferredMode = cloudOk ? "cloud" : null;
     if (cloudOk) {
       switchToCloud("canceledCloud");
     } else {

@@ -8,6 +8,7 @@ const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const i18n = fs.readFileSync(path.join(__dirname, '..', 'assets', 'js', 'i18n.js'), 'utf8');
 const chatbot = fs.readFileSync(path.join(__dirname, '..', 'assets', 'js', 'chatbot.js'), 'utf8');
 const css = fs.readFileSync(path.join(__dirname, '..', 'assets', 'css', 'style.css'), 'utf8');
+const { evaluate } = require('../assets/js/aimeer-device.js');
 
 function createElement() {
   const listeners = new Map();
@@ -27,14 +28,14 @@ function createElement() {
     setAttribute(name, value) { this.attributes.set(name, String(value)); },
     getAttribute(name) { return this.attributes.get(name) || null; },
     addEventListener(type, listener) { listeners.set(type, listener); },
-    dispatch(type) { const listener = listeners.get(type); if (listener) listener({ key: type }); },
+    dispatch(type) { const listener = listeners.get(type); if (listener) listener({ key: type, target: this }); },
     querySelector() { return null; },
     appendChild() {},
     focus() {}
   };
 }
 
-function createChatContext() {
+function createChatContext(options = {}) {
   const elements = {};
   [
     'chat-launcher', 'chat-panel', 'chat-log', 'chat-form', 'chat-input', 'chat-chips',
@@ -47,7 +48,10 @@ function createChatContext() {
   const progressBar = createElement();
   const progressText = createElement();
   const close = createElement();
-  const stored = new Map();
+  const stored = new Map(Object.entries(options.storage || {}));
+  const timers = [];
+  const clearedTimers = [];
+  let adapterRequests = 0;
 
   elements['chat-status'].querySelector = () => statusText;
   elements['chat-ai'].querySelector = () => aiPitch;
@@ -69,21 +73,29 @@ function createChatContext() {
   };
   const window = {
     console: { warn() {} },
+    AIMEER_DEVICE: { evaluate },
     addEventListener() {}
   };
+  const userAgent = options.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)';
+  const platform = options.platform || 'Win32';
+  const maxTouchPoints = options.maxTouchPoints || 0;
+  const maxBufferSize = options.maxBufferSize === undefined ? 1_500_000_000 : options.maxBufferSize;
+  const hasWebGPU = options.hasWebGPU !== false;
+  progress.hidden = true;
   const context = {
     window,
     document,
     navigator: {
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-      platform: 'Win32',
-      maxTouchPoints: 0,
-      connection: { saveData: true },
-      gpu: {
+      userAgent,
+      platform,
+      maxTouchPoints,
+      connection: { saveData: options.saveData !== false },
+      gpu: hasWebGPU ? {
         requestAdapter() {
-          return Promise.resolve({ limits: { maxBufferSize: 1_500_000_000 } });
+          adapterRequests += 1;
+          return Promise.resolve({ limits: { maxBufferSize }, features: new Set(['shader-f16']) });
         }
-      }
+      } : undefined
     },
     localStorage: {
       getItem(key) { return stored.get(key) || null; },
@@ -91,11 +103,30 @@ function createChatContext() {
       removeItem(key) { stored.delete(key); }
     },
     MutationObserver: class { constructor() {} observe() {} },
-    setTimeout() { return 1; },
-    clearTimeout() {},
+    setTimeout(fn, delay) {
+      const id = timers.length + 1;
+      timers.push({ id, fn, delay });
+      return id;
+    },
+    clearTimeout(id) { clearedTimers.push(id); },
+    fetch() { return new Promise(() => {}); },
     Promise
   };
-  return { context, elements, stored };
+  return {
+    context,
+    elements,
+    stored,
+    timers,
+    clearedTimers,
+    progress,
+    statusText,
+    get adapterRequests() { return adapterRequests; }
+  };
+}
+
+async function loadChat(context) {
+  vm.runInNewContext(chatbot, context);
+  await new Promise(setImmediate);
 }
 
 test('chat header exposes cloud and local model choices with accessible state', () => {
@@ -135,8 +166,7 @@ test('Bahasa Melayu provides distinct labels and compatibility help for the mode
 
 test('selecting eligible local AI presents Local while the active route is cloud', async () => {
   const { context, elements, stored } = createChatContext();
-  vm.runInNewContext(chatbot, context);
-  await new Promise(setImmediate);
+  await loadChat(context);
 
   assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'true');
   elements['chat-model-local'].dispatch('click');
@@ -144,6 +174,73 @@ test('selecting eligible local AI presents Local while the active route is cloud
   assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'true');
   assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'false');
   assert.equal(stored.get('aimeer-route'), 'local');
+});
+
+test('explicit cloud preference keeps eligible desktop on cloud without starting local', async () => {
+  const { context, elements, progress } = createChatContext({
+    storage: { 'aimeer-route': 'cloud' },
+    saveData: false
+  });
+
+  await loadChat(context);
+  elements['chat-launcher'].dispatch('click');
+
+  assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'true');
+  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'false');
+  assert.equal(elements['chat-status'].className, 'chat-status chat-status-cloud');
+  assert.equal(progress.hidden, true);
+});
+
+test('explicit local preference overrides Save-Data on eligible desktop and starts local when opened', async () => {
+  const { context, elements, stored, progress } = createChatContext({
+    storage: { 'aimeer-route': 'local' },
+    saveData: true
+  });
+
+  await loadChat(context);
+  elements['chat-launcher'].dispatch('click');
+
+  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'true');
+  assert.equal(stored.get('aimeer-route'), 'local');
+  assert.equal(progress.hidden, false);
+  assert.equal(elements['chat-status'].className, 'chat-status chat-status-loading');
+});
+
+test('stale local preference on ineligible Android is invalidated and routed to cloud', async () => {
+  const { context, elements, stored } = createChatContext({
+    storage: { 'aimeer-route': 'local' },
+    userAgent: 'Mozilla/5.0 (Linux; Android 15; Generic Phone) AppleWebKit/537.36',
+    platform: 'Linux armv8l',
+    maxTouchPoints: 5,
+    saveData: false
+  });
+
+  await loadChat(context);
+  elements['chat-launcher'].dispatch('click');
+
+  assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'true');
+  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'false');
+  assert.equal(stored.has('aimeer-route'), false);
+  assert.equal(elements['chat-status'].className, 'chat-status chat-status-cloud');
+});
+
+test('switching to cloud while local download is active cancels the download state', async () => {
+  const { context, elements, stored, progress, timers, clearedTimers } = createChatContext({
+    saveData: false
+  });
+
+  await loadChat(context);
+  elements['chat-launcher'].dispatch('click');
+  assert.equal(progress.hidden, false);
+
+  elements['chat-model-cloud'].dispatch('click');
+
+  assert.equal(stored.get('aimeer-route'), 'cloud');
+  assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'true');
+  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'false');
+  assert.equal(progress.hidden, true);
+  assert.equal(elements['chat-status'].className, 'chat-status chat-status-cloud');
+  assert.ok(clearedTimers.includes(timers.find((timer) => timer.delay === 20000).id));
 });
 
 test('model segments retain 44px touch targets in narrow panels', () => {
