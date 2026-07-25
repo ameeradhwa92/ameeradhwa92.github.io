@@ -229,7 +229,7 @@
   var modelTooltip = document.getElementById("chat-model-tooltip");
 
   var open = false, greeted = false, busy = false;
-  var engine = null, canceled = false;
+  var engine = null, canceled = false, downloadGeneration = 0;
   var dlActive = false;      /* the on-device download is running */
   var fallbackTimer = null;  /* switches answers to cloud if the download is slow */
   var LOCAL_TIMEOUT = window.AIMEER_LOCAL_TIMEOUT || 20000; /* ms of downloading before cloud takes over answering */
@@ -284,6 +284,7 @@
 
   function cancelLocalDownload() {
     if (!dlActive) return false;
+    downloadGeneration += 1;
     canceled = true;
     dlActive = false;
     if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
@@ -532,6 +533,7 @@
   /* ---------------- tier 2: on-device webllm, auto-started ---------------- */
   function startLocalAI() {
     if (dlActive || aiState === "ready") return;
+    var generation = ++downloadGeneration;
     aiState = "loading";
     route = "local";
     canceled = false;
@@ -545,7 +547,7 @@
     if (cloudOk) {
       fallbackTimer = setTimeout(function () {
         fallbackTimer = null;
-        if (aiState !== "loading" || canceled) return;
+        if (generation !== downloadGeneration || aiState !== "loading" || canceled) return;
         aiState = "cloud";
         refreshStatus();
         applyAiBox();
@@ -566,7 +568,7 @@
       return import(WEBLLM_CDN).then(function (webllm) {
         return webllm.CreateMLCEngine(model, {
           initProgressCallback: function (p) {
-            if (canceled) return;
+            if (generation !== downloadGeneration || canceled) return;
             var pct = Math.round((p.progress || 0) * 100);
             ringProgress(pct);
             progressBar.style.width = pct + "%";
@@ -579,12 +581,12 @@
         });
       });
     }).then(function (e) {
-      if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
-      if (canceled) {
+      if (generation !== downloadGeneration || canceled) {
         /* visitor bailed while this resolved — drop the engine again */
         try { if (e && e.unload) e.unload(); } catch (err) { }
         return;
       }
+      if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
       var wasInterim = aiState === "cloud";
       engine = e;
       aiState = "ready";
@@ -594,6 +596,7 @@
       applyAiBox();
       if (greeted) addMsg("bot", t(wasInterim ? "aiUpgraded" : "aiReady"));
     }).catch(function (err) {
+      if (generation !== downloadGeneration) return;
       if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
       dlActive = false;
       if (canceled) return;

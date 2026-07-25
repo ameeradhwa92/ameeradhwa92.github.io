@@ -109,7 +109,13 @@ function createChatContext(options = {}) {
       return id;
     },
     clearTimeout(id) { clearedTimers.push(id); },
-    fetch() { return new Promise(() => {}); },
+    fetch() {
+      if (options.fetchText === undefined) return new Promise(() => {});
+      return Promise.resolve({
+        ok: true,
+        text: () => Promise.resolve(options.fetchText)
+      });
+    },
     Promise
   };
   return {
@@ -124,9 +130,26 @@ function createChatContext(options = {}) {
   };
 }
 
-async function loadChat(context) {
-  vm.runInNewContext(chatbot, context);
+async function loadChat(context, options = {}) {
+  vm.runInNewContext(options.source || chatbot, context);
   await new Promise(setImmediate);
+}
+
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+async function flushAsync() {
+  for (let i = 0; i < 5; i += 1) {
+    await Promise.resolve();
+    await new Promise(setImmediate);
+  }
 }
 
 test('chat header exposes cloud and local model choices with accessible state', () => {
@@ -243,6 +266,55 @@ test('switching to cloud while local download is active cancels the download sta
   assert.ok(clearedTimers.includes(timers.find((timer) => timer.delay === 20000).id));
 });
 
+test('a stale canceled local download cannot mark a later local start ready', async () => {
+  const firstEngine = deferred();
+  const secondEngine = deferred();
+  const engineCalls = [];
+  let firstUnloaded = false;
+  const chatbotWithControlledWebLLM = chatbot.replace(
+    'return import(WEBLLM_CDN).then(function (webllm) {',
+    'return window.__importWebLLM(WEBLLM_CDN).then(function (webllm) {'
+  );
+  assert.notEqual(chatbotWithControlledWebLLM, chatbot, 'the test harness should control the WebLLM import');
+  const { context, elements, progress } = createChatContext({
+    saveData: false,
+    fetchText: 'AIMeer test knowledge base'
+  });
+  context.window.__importWebLLM = (specifier) => {
+    assert.equal(specifier, 'https://esm.run/@mlc-ai/web-llm@0.2.79');
+    return Promise.resolve({
+      CreateMLCEngine(model, options) {
+        return createEngine(model, options);
+      }
+    });
+  };
+  function createEngine(model, options) {
+    engineCalls.push({ model, options });
+    return engineCalls.length === 1 ? firstEngine.promise : secondEngine.promise;
+  }
+
+  await loadChat(context, { source: chatbotWithControlledWebLLM });
+  await flushAsync();
+  elements['chat-launcher'].dispatch('click');
+  await flushAsync();
+  assert.equal(engineCalls.length, 1, 'the first local start should begin WebLLM init');
+
+  elements['chat-model-cloud'].dispatch('click');
+  elements['chat-model-local'].dispatch('click');
+  await flushAsync();
+  assert.equal(engineCalls.length, 2, 'selecting Local again should begin a fresh WebLLM init');
+  assert.equal(elements['chat-status'].className, 'chat-status chat-status-loading');
+  assert.equal(progress.hidden, false);
+
+  firstEngine.resolve({ unload() { firstUnloaded = true; } });
+  await flushAsync();
+
+  assert.equal(firstUnloaded, true, 'the stale engine should be unloaded when it resolves');
+  assert.equal(elements['chat-status'].className, 'chat-status chat-status-loading');
+  assert.equal(progress.hidden, false);
+  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'true');
+});
+
 test('model segments retain 44px touch targets in narrow panels', () => {
   assert.match(
     css,
@@ -253,5 +325,21 @@ test('model segments retain 44px touch targets in narrow panels', () => {
     css,
     /@media\s*\(max-width:\s*390px\)\s*\{[\s\S]*?\.chat-model-choice\s*\{[\s\S]*?(?:width|min-height):\s*(?:3[0-9]|[12][0-9])px;/,
     'the narrow-panel rule should not shrink touch targets below 44px'
+  );
+});
+
+test('shared press feedback includes theme-safe brightness and shadow adjustments', () => {
+  assert.match(
+    css,
+    /\.btn:active,[\s\S]*?\.chat-send:active\s*\{[\s\S]*?transform:\s*translateY\(1px\) scale\(0\.98\);[\s\S]*?filter:\s*brightness\([^)]*\);[\s\S]*?box-shadow:\s*[^;]*var\(--shadow\)[^;]*;/,
+    'the shared active rule should combine scale, brightness, and token-based shadow feedback'
+  );
+});
+
+test('reduced motion removes chat model choice press scale', () => {
+  assert.match(
+    css,
+    /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*?\.chat-model-choice:active[\s\S]*?\{[^}]*transform:\s*none;/,
+    'the global reduced-motion active override should include chat model choices'
   );
 });

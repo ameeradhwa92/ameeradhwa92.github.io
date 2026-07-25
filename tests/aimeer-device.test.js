@@ -64,9 +64,23 @@ test('allows a recognized flagship Android family to use local AI', () => {
   assert.equal(result.cloudPreferred, false);
 });
 
+test('allows a human-readable Samsung Galaxy S flagship to use local AI', () => {
+  const result = evaluate({
+    ...capable,
+    userAgent: 'Mozilla/5.0 (Linux; Android 16; Samsung Galaxy S25) AppleWebKit/537.36',
+    platform: 'Linux armv8l',
+    maxTouchPoints: 5
+  });
+
+  assert.equal(result.androidTier, 'flagship');
+  assert.equal(result.localEligible, true);
+  assert.equal(result.cloudPreferred, false);
+});
+
 test('allows each conservative flagship family representative to use local AI', () => {
   const models = [
     'SM-F956B',
+    'Galaxy Z Fold7',
     'Pixel XL',
     'OnePlus 13',
     'OPPO Find X8 Pro',

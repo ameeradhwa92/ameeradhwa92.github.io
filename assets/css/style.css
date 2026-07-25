@@ -208,6 +208,8 @@ img { max-width: 100%; display: block; }
 .chat-handoff-btns button:active, .chat-chips button:active, .chat-model-choice:active,
 .chat-send:active {
   transform: translateY(1px) scale(0.98);
+  filter: brightness(0.96);
+  box-shadow: 0 2px 8px var(--shadow);
 }
 /* show the icon of the theme you would switch to */
 .ic-moon { display: none; }
@@ -560,7 +562,8 @@ body.modal-open { overflow: hidden; }
   .nav-resume-tooltip { transition: none; }
   .btn:active, .nav-cta:active, .icon-btn:active, .chat-launcher:active,
   .chat-callout-close:active, .chat-ai-btn:active, .chat-cancel:active,
-  .chat-handoff-btns button:active, .chat-chips button:active, .chat-send:active { transform: none; }
+  .chat-handoff-btns button:active, .chat-chips button:active, .chat-model-choice:active,
+  .chat-send:active { transform: none; filter: none; box-shadow: none; }
 }
 @media (hover: none), (pointer: coarse) {
   .cursor-glow { display: none; }
