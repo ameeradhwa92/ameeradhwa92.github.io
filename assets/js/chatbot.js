@@ -559,6 +559,7 @@
     }
 
     Promise.all([ensureKB(), navigator.gpu.requestAdapter()]).then(function (r) {
+      if (generation !== downloadGeneration || canceled) return null;
       var adapter = r[1];
       if (!adapter) throw new Error("no-webgpu-adapter");
       /* f16 shaders halve memory; fall back to f32 weights where unsupported */
@@ -566,6 +567,7 @@
         ? "Llama-3.2-1B-Instruct-q4f16_1-MLC"
         : "Llama-3.2-1B-Instruct-q4f32_1-MLC";
       return import(WEBLLM_CDN).then(function (webllm) {
+        if (generation !== downloadGeneration || canceled) return null;
         return webllm.CreateMLCEngine(model, {
           initProgressCallback: function (p) {
             if (generation !== downloadGeneration || canceled) return;

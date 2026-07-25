@@ -36,3 +36,29 @@ Implemented the final review fixes in the `resume-chat-model-controls` worktree.
 
 - Manual browser checks at 375/768/1440px were not repeated in this agent environment.
 - No Worker files were changed; the live Cloudflare Worker remains untouched.
+
+---
+
+## Scoped re-review fix — pending setup cancellation
+
+### Fix
+
+- Added generation/cancellation checks immediately after `ensureKB()` + `requestAdapter()` resolve and again after the WebLLM import resolves, before `CreateMLCEngine()` can start a model download.
+- Added a regression harness case that delays both setup promises, cancels to cloud while setup is pending, then resolves setup and verifies WebLLM is not imported and no engine is created.
+
+### TDD evidence
+
+- Red: `node --test tests\chat-model-switcher.test.js` failed with `importCalls` equal to `1`, proving canceled pending setup still imported WebLLM.
+- Green: the same focused test passed after the pre-import and pre-engine generation guards were added.
+
+### Verification
+
+- `node --check assets\js\aimeer-device.js` — exit 0
+- `node --check assets\js\chatbot.js` — exit 0
+- `node --check assets\js\main.js` — exit 0
+- `node --check assets\js\i18n.js` — exit 0
+- `node --test tests\aimeer-device.test.js` — 9/9 passed
+- `node --test tests\chat-model-switcher.test.js` — 12/12 passed
+- `node --test tests\resume-control.test.js` — 2/2 passed
+- `node --test tests\*.test.js` — 23/23 passed
+- `git diff --check` — exit 0; Git printed expected CRLF normalization warnings for touched files.

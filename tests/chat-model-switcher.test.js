@@ -81,6 +81,7 @@ function createChatContext(options = {}) {
   const maxTouchPoints = options.maxTouchPoints || 0;
   const maxBufferSize = options.maxBufferSize === undefined ? 1_500_000_000 : options.maxBufferSize;
   const hasWebGPU = options.hasWebGPU !== false;
+  const adapterResults = options.adapterResults ? options.adapterResults.slice() : null;
   progress.hidden = true;
   const context = {
     window,
@@ -93,6 +94,7 @@ function createChatContext(options = {}) {
       gpu: hasWebGPU ? {
         requestAdapter() {
           adapterRequests += 1;
+          if (adapterResults && adapterResults.length) return adapterResults.shift();
           return Promise.resolve({ limits: { maxBufferSize }, features: new Set(['shader-f16']) });
         }
       } : undefined
@@ -110,6 +112,7 @@ function createChatContext(options = {}) {
     },
     clearTimeout(id) { clearedTimers.push(id); },
     fetch() {
+      if (options.fetchPromise) return options.fetchPromise;
       if (options.fetchText === undefined) return new Promise(() => {});
       return Promise.resolve({
         ok: true,
@@ -313,6 +316,56 @@ test('a stale canceled local download cannot mark a later local start ready', as
   assert.equal(elements['chat-status'].className, 'chat-status chat-status-loading');
   assert.equal(progress.hidden, false);
   assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'true');
+});
+
+test('canceling while local setup is pending does not import WebLLM or create an engine', async () => {
+  const setupKb = deferred();
+  const setupAdapter = deferred();
+  let importCalls = 0;
+  let engineCalls = 0;
+  const chatbotWithControlledWebLLM = chatbot.replace(
+    'return import(WEBLLM_CDN).then(function (webllm) {',
+    'return window.__importWebLLM(WEBLLM_CDN).then(function (webllm) {'
+  );
+  const capableAdapter = { limits: { maxBufferSize: 1_500_000_000 }, features: new Set(['shader-f16']) };
+  const { context, elements, progress } = createChatContext({
+    saveData: false,
+    fetchPromise: setupKb.promise,
+    adapterResults: [
+      Promise.resolve(capableAdapter),
+      setupAdapter.promise
+    ]
+  });
+  context.window.__importWebLLM = () => {
+    importCalls += 1;
+    return Promise.resolve({
+      CreateMLCEngine() {
+        engineCalls += 1;
+        return new Promise(() => {});
+      }
+    });
+  };
+
+  await loadChat(context, { source: chatbotWithControlledWebLLM });
+  await flushAsync();
+  elements['chat-launcher'].dispatch('click');
+  await flushAsync();
+  assert.equal(progress.hidden, false);
+
+  elements['chat-model-cloud'].dispatch('click');
+  assert.equal(elements['chat-status'].className, 'chat-status chat-status-cloud');
+  assert.equal(progress.hidden, true);
+
+  setupKb.resolve({
+    ok: true,
+    text: () => Promise.resolve('AIMeer delayed setup knowledge base')
+  });
+  setupAdapter.resolve(capableAdapter);
+  await flushAsync();
+
+  assert.equal(importCalls, 0, 'canceled setup must not import WebLLM');
+  assert.equal(engineCalls, 0, 'canceled setup must not create a WebLLM engine');
+  assert.equal(elements['chat-status'].className, 'chat-status chat-status-cloud');
 });
 
 test('model segments retain 44px touch targets in narrow panels', () => {
