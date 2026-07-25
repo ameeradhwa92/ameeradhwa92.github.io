@@ -9,7 +9,7 @@
 
   var MIN_BUFFER_SIZE = 1500000000;
 
-  var flagshipPattern = /(?:galaxy\s*[sz]\b|sm-[sz]\d+|pixel\s+\d+\s*(?:pro|xl)|pixel\s+fold|oneplus\s+\d+\b|oppo\s+find\s+[xn]\b|vivo\s+x\d+\b|vivo\s+x\s*fold|honor\s+magic\b|xiaomi\s+\d+\s+(?:ultra|pro\s+max)\b|huawei\s+(?:pura|mate)\b|asus\s+(?:rog|zenfone)\b|sony\s+xperia\s+1\b|redmagic\b)/i;
+  var flagshipPattern = /(?:galaxy\s*[sz]\b|sm-[szf]\d+|pixel\s+(?:\d+\s*(?:pro|xl)|xl|fold)|oneplus\s+\d+\b|oppo\s+find\s+[xn]\d*\b|vivo\s+x\d+\b|vivo\s+x\s*fold|honor\s+magic\b|xiaomi\s+\d+\s+(?:ultra|pro\s+max)\b|huawei\s+(?:pura|mate)\b|asus\s+(?:rog|zenfone)\b|sony\s+xperia\s+1\b|redmagic\b)/i;
 
   var midRangePattern = /(?:galaxy\s+[amf]\d+\b|sm-[amf]\d+|pixel\s+[a-z]\b)/i;
 
