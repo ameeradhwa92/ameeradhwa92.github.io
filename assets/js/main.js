@@ -83,7 +83,9 @@
       if (e.key === "Escape") dismissResumeTooltip();
     });
     if (!reduced && !resumeSeen) {
-      window.setTimeout(function () { resumeLink.classList.add("resume-tooltip-intro"); }, 500);
+      window.setTimeout(function () {
+        if (!resumeSeen) resumeLink.classList.add("resume-tooltip-intro");
+      }, 500);
     }
     var priorSetLang = setLang;
     setLang = function (lang) {
