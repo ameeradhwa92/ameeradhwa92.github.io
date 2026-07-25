@@ -9,6 +9,8 @@ window.I18N_MS = {
   "nav.skills": "Kemahiran",
   "nav.contact": "Hubungi",
   "nav.resume": "Resume&nbsp;(PDF)",
+  "nav.resume.label": "Muat turun resume (PDF)",
+  "nav.resume.tooltip": "Muat turun resume",
 
   "hero.eyebrow": "Shah Alam, Malaysia — Pakar Web Tindanan Penuh",
   "hero.h1": "Daripada bilik kuliah diploma di <em>Dungun</em> kepada SaaS berbilang penyewa di seluruh <em>Asia Tenggara</em>.",

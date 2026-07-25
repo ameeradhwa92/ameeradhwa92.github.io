@@ -170,6 +170,26 @@ img { max-width: 100%; display: block; }
   padding: 7px 14px; border-radius: 999px; transition: background 0.2s, color 0.2s;
 }
 .nav-cta:hover { background: var(--teal); color: var(--ink) !important; }
+.nav-resume {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  min-width: 32px; min-height: 32px; padding: 7px 10px;
+}
+.nav-resume-icon { flex: 0 0 auto; }
+.nav-resume-label {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+.nav-resume-tooltip {
+  position: absolute; top: calc(100% + 10px); right: 0; z-index: 51;
+  width: max-content; max-width: min(220px, calc(100vw - 28px)); padding: 6px 9px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--paper);
+  box-shadow: 0 8px 20px var(--shadow); font-family: var(--mono); font-size: 0.62rem;
+  letter-spacing: 0.04em; line-height: 1.35; opacity: 0; pointer-events: none;
+  transform: translateY(-4px); transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.nav-resume:hover .nav-resume-tooltip,
+.nav-resume:focus-visible .nav-resume-tooltip,
+.nav-resume.resume-tooltip-intro .nav-resume-tooltip { opacity: 1; transform: none; }
 
 /* theme + language toggles */
 .icon-btn {
@@ -181,6 +201,13 @@ img { max-width: 100%; display: block; }
 }
 .icon-btn:hover { color: var(--teal); border-color: var(--teal-deep); }
 .lang-btn { width: auto; padding: 0 11px; }
+
+/* pressed controls retain their existing focus outlines while confirming activation */
+.btn:active, .nav-cta:active, .icon-btn:active, .chat-launcher:active,
+.chat-callout-close:active, .chat-ai-btn:active, .chat-cancel:active,
+.chat-handoff-btns button:active, .chat-chips button:active, .chat-send:active {
+  transform: translateY(1px) scale(0.98);
+}
 /* show the icon of the theme you would switch to */
 .ic-moon { display: none; }
 .ic-sun { display: inline; }
@@ -529,6 +556,10 @@ body.modal-open { overflow: hidden; }
   .cursor-glow { display: none; }
   .card::after, .skill-group::after, .edu-card::after { display: none; }
   .cert-modal-backdrop, .cert-modal-box { transition: none; transform: none; }
+  .nav-resume-tooltip { transition: none; }
+  .btn:active, .nav-cta:active, .icon-btn:active, .chat-launcher:active,
+  .chat-callout-close:active, .chat-ai-btn:active, .chat-cancel:active,
+  .chat-handoff-btns button:active, .chat-chips button:active, .chat-send:active { transform: none; }
 }
 @media (hover: none), (pointer: coarse) {
   .cursor-glow { display: none; }
@@ -550,6 +581,7 @@ body.modal-open { overflow: hidden; }
   .era { padding-left: calc(var(--spine-x) + 30px); }
   .skills-grid, .edu-grid { grid-template-columns: 1fr; }
   .nav-links a:not(.nav-cta) { display: none; }
+  .nav-resume { gap: 0; padding: 7px 8px; }
   .cards { grid-template-columns: 1fr; }
 }
 
