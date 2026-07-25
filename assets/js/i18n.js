@@ -139,5 +139,14 @@ window.I18N_MS = {
   "contact.h2": "Garis masa ini belum selesai — <em>mari tulis hentian seterusnya.</em>",
   "contact.p": "Terbuka kepada masalah sukar dalam web, mudah alih dan SaaS berbilang penyewa. Laluan terpantas ialah e-mel; selebihnya ada dalam resume.",
   "contact.resume": "Resume (PDF)",
-  "footer.built": "Dibina dengan tangan — satu fail HTML, tanpa rangka kerja."
+  "footer.built": "Dibina dengan tangan — satu fail HTML, tanpa rangka kerja.",
+
+  "chat.title": "<em>AI</em>Meer",
+  "chat.callout": "Kenali <b>AIMeer</b> — kembar AI saya. Tanyakannya tentang perjalanan 16 tahun saya; ia berjalan 100% dalam pelayar anda.",
+  "chat.ai.pitch": "Mod AI menjalankan model bahasa kecil sepenuhnya dalam pelayar anda — soalan anda tidak meninggalkan peranti ini. Muat turun sekali sahaja ≈ 0.9 GB.",
+  "chat.ai.enable": "Aktifkan mod AI",
+  "chat.chip1": "Apakah tugas beliau sekarang?",
+  "chat.chip2": "Projek mana yang masih beroperasi?",
+  "chat.chip3": "Apakah tindanan teknologi beliau?",
+  "chat.chip4": "Bagaimana hendak menghubungi beliau?"
 };
