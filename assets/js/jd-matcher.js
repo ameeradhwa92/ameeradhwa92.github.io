@@ -18,7 +18,7 @@
     domainIntegrations: { label: "Domain and integrations", weight: 10 },
     mobile: { label: "Mobile delivery", weight: 5 },
     educationCoursework: { label: "Education and coursework", weight: 10 },
-    languagesCommunication: { label: "Languages and communication", weight: 5 }
+    languagesCommunication: { label: "Communication and collaboration", weight: 5 }
   };
 
   var STRENGTH_FACTOR = {
@@ -77,6 +77,62 @@
       category: "languagesCommunication",
       evidenceType: "user-provided",
       evidence: ["Language ability is represented as Bahasa Malaysia native and English professional."]
+    },
+    {
+      canonical: "Agile",
+      aliases: ["agile", "agile methodologies", "agile environment", "scrum", "iterative delivery"],
+      category: "professionalExperience",
+      evidenceType: "user-provided",
+      evidence: ["Ameer reports that the current company practices Agile methodology."]
+    },
+    {
+      canonical: "AI-assisted development",
+      aliases: ["ai-assisted coding", "genai-assisted coding", "genai-assisted development", "ai tools", "claude code", "codex", "github copilot", "cursor", "gemini cli"],
+      category: "coreTechnologies",
+      evidenceType: "user-provided",
+      evidence: ["Ameer reports using Claude Code and Codex extensively for portfolio and application development."]
+    },
+    {
+      canonical: "Enterprise web application development",
+      aliases: ["enterprise web application development", "enterprise web applications", "web application development", "software application development"],
+      category: "professionalExperience",
+      evidenceType: "professional",
+      evidence: ["Published career history documents 12+ years delivering enterprise web and mobile systems."]
+    },
+    {
+      canonical: "Requirements analysis",
+      aliases: ["business requirements", "requirements analysis", "analyse business requirements", "analyze business requirements"],
+      category: "professionalExperience",
+      evidenceType: "professional",
+      evidence: ["Published project history documents delivery of business and government systems across multiple domains."]
+    },
+    {
+      canonical: "SQL databases",
+      aliases: ["sql databases", "sql database", "sql queries", "relational databases"],
+      category: "coreTechnologies",
+      evidenceType: "professional",
+      evidence: ["Published skills and projects document MS SQL Server, Azure SQL, MySQL and SQLite delivery."]
+    },
+    {
+      canonical: "Application quality",
+      aliases: ["testing", "code reviews", "code review", "performance optimisation", "performance optimization", "secure coding", "secure coding practices", "troubleshooting"],
+      category: "professionalExperience",
+      evidenceType: "professional",
+      evidence: ["Published resume documents testing, code review, incident response, secure delivery and continuous improvement work."]
+    },
+    {
+      canonical: "Production delivery",
+      aliases: ["ci/cd", "cicd", "application deployments", "deployments", "production support", "system enhancements", "technical documentation", "user guides", "system specifications"],
+      category: "architectureDeliveryCloud",
+      evidenceType: "professional",
+      evidence: ["Published project history documents Azure DevOps pipelines, production deployments, system enhancements and delivery documentation."]
+    },
+    {
+      canonical: "Stakeholder collaboration",
+      aliases: ["collaborate with business users", "business users", "vendors", "product owners", "cross-functional teams", "stakeholder collaboration", "stakeholder communication"],
+      category: "languagesCommunication",
+      evidenceType: "professional",
+      evidence: ["Published career history documents delivery with government agencies, FMCG brands and cross-functional project stakeholders."]
     }
   ];
 
@@ -188,7 +244,7 @@
     if (/\b(android|ios|flutter|kotlin|java|swift|ionic|mobile|ocr|tesseract)\b/.test(key)) return "mobile";
     if (/\b(rest|soap|salesforce|sap|autocount|payment|whatsapp|push notification|integration)\b/.test(key)) return "domainIntegrations";
     if (/\b(english|bahasa|malay|communication|stakeholder)\b/.test(key)) return "languagesCommunication";
-    if (/\b(degree|diploma|bachelor|coursework|subject|cgpa|algorithm|computer science|information technology)\b/.test(key)) return "educationCoursework";
+    if (/\b(degree|diploma|bachelor|coursework|subject|cgpa|algorithm|computer science|software engineering|information technology)\b/.test(key)) return "educationCoursework";
     return "coreTechnologies";
   }
 
@@ -240,7 +296,7 @@
     var skills = Array.isArray(profile && profile.skills) ? profile.skills : [];
     for (var skillIndex = 0; skillIndex < skills.length; skillIndex += 1) {
       var skill = skills[skillIndex];
-      var entry = createSkillEntry(skill.name, inferCategory(skill.name));
+      var entry = createSkillEntry(skill.name, skill.category || inferCategory(skill.name));
       var evidenceRecords = Array.isArray(skill.evidenceRecords) && skill.evidenceRecords.length
         ? skill.evidenceRecords
         : (skill.evidence || []).map(function (name) {
@@ -372,6 +428,15 @@
       .split(/[;,]\s*/g)
       .map(function (part) { return part.trim(); })
       .filter(Boolean);
+  }
+
+  function isAdministrativeSection(heading) {
+    return normalizeKey(heading) === "administrative";
+  }
+
+  function isAdministrativeLine(text) {
+    var key = normalizeKey(text);
+    return /^(employer questions|application questions|work location|location|salary|expected monthly basic salary|right to work|which of the following)/.test(key);
   }
 
   function hasAliasBoundaries(normalizedText, aliasKey, startIndex) {
@@ -545,6 +610,16 @@
   }
 
   function createYearsRequirement(yearsMatch, source, strength, heading) {
+    var sourceText = String(source || "");
+    var matchIndex = sourceText.indexOf(yearsMatch[0]);
+    var matchLength = yearsMatch[0].length;
+    if (matchIndex < 0) {
+      var locatePattern = new RegExp("(?:\\(\\s*)?\\b" + yearsMatch[1] + "\\s*(?:\\+|plus)?\\s*\\)?\\s+years?\\b", "i");
+      var located = locatePattern.exec(sourceText);
+      matchIndex = located ? located.index : (yearsMatch.index || 0);
+      matchLength = located ? located[0].length : matchLength;
+    }
+    var suffix = sourceText.slice(matchIndex + matchLength);
     return {
       term: yearsMatch[1] + (yearsMatch[2] ? "+ years" : " years"),
       original: String(source || "").replace(/\s+/g, " ").trim(),
@@ -553,13 +628,16 @@
       category: "professionalExperience",
       aliasEntry: null,
       yearsRequired: Number(yearsMatch[1]),
-      normalizedText: normalizeKey(source)
+      normalizedText: normalizeKey(source),
+      specificHandsOn: /^\s*of\s+hands[- ]on\s+experience\s+(?:with|in)\b/i.test(suffix),
+      specificHandsOnText: suffix
     };
   }
 
   function createGenericRequirement(source, strength, heading, index) {
     var text = String(source || "").replace(/\s+/g, " ").trim();
     if (!text) return null;
+    if (/^or\s+(a\s+)?related\s+field\.?$/i.test(text)) return { ignored: true };
     if (hasPrivacyTerm(text, index.privacyExclusions)) return { ignored: true };
     var resolved = resolveAlias(text, index);
     if (resolved) return createAliasRequirement(resolved, text, strength, heading);
@@ -639,15 +717,18 @@
     var sourceSections = sections.length ? sections : [{ heading: null, strength: "neutral", lines: String(normalizedJd && normalizedJd.normalizedText || "").split("\n") }];
     for (var sectionIndex = 0; sectionIndex < sourceSections.length; sectionIndex += 1) {
       var section = sourceSections[sectionIndex];
+      if (isAdministrativeSection(section.heading)) continue;
       var lines = Array.isArray(section.lines) ? section.lines : [];
       for (var lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+        if (isAdministrativeLine(lines[lineIndex])) continue;
         var parts = splitLine(lines[lineIndex]);
         if (!parts.length) parts = [String(lines[lineIndex] || "").trim()];
         for (var partIndex = 0; partIndex < parts.length; partIndex += 1) {
           var source = parts[partIndex];
           var foundSpecific = false;
-          var yearsMatch = String(source || "").match(/\b(\d+)\s*(\+|plus)?\s+years?\b/i);
-          if (yearsMatch) {
+          var yearsPattern = /(?:\(\s*)?\b(\d+)\s*(\+|plus)?\s*\)?\s+years?\b/gi;
+          var yearsMatch;
+          while ((yearsMatch = yearsPattern.exec(String(source || ""))) !== null) {
             addRequirement(createYearsRequirement(yearsMatch, source, section.strength, section.heading));
             foundSpecific = true;
           }
@@ -656,7 +737,9 @@
             addRequirement(createAliasRequirement(aliases[aliasIndex].entry, source, section.strength, section.heading, aliases[aliasIndex]));
             foundSpecific = true;
           }
-          if (!foundSpecific) addRequirement(createGenericRequirement(source, section.strength, section.heading, index));
+          if (!foundSpecific && normalizeKey(section.heading) !== "responsibilities") {
+            addRequirement(createGenericRequirement(source, section.strength, section.heading, index));
+          }
         }
       }
     }
@@ -724,6 +807,24 @@
   function classifyRequirement(requirement, index) {
     var strengthFactor = STRENGTH_FACTOR[requirement.strength] || STRENGTH_FACTOR.neutral;
     if (requirement.yearsRequired !== null) {
+      if (requirement.specificHandsOn) {
+        var handsOnMatches = findAliasMatches(requirement.specificHandsOnText, index);
+        var professionalHandsOn = handsOnMatches.find(function (match) {
+          return match.entry && match.entry.hasProfessional;
+        });
+        if (professionalHandsOn) {
+          return {
+            term: requirement.term,
+            label: "Partial match (professional evidence; specific duration is not published)",
+            category: requirement.category,
+            classification: "partial",
+            evidenceType: "professional",
+            evidence: professionalHandsOn.entry.evidence.slice(),
+            strength: requirement.strength,
+            strengthFactor: strengthFactor
+          };
+        }
+      }
       if (index.documentedYears >= requirement.yearsRequired) {
         return {
           term: requirement.term,
@@ -873,6 +974,7 @@
       key: categoryKey,
       label: meta.label,
       weight: meta.weight,
+      active: categoryRequirements.length > 0,
       score: roundScore(score),
       matchedRequirements: categoryClassifications.length,
       totalRequirements: categoryRequirements.length,
@@ -945,10 +1047,14 @@
     var unverified = mergeMatches([], classifications.filter(function (item) { return item.classification === "unverified"; }));
 
     var totalScore = 0;
+    var activeWeight = 0;
     for (var scoreIndex = 0; scoreIndex < CATEGORY_ORDER.length; scoreIndex += 1) {
-      totalScore += categoryScores[CATEGORY_ORDER[scoreIndex]].score;
+      var category = categoryScores[CATEGORY_ORDER[scoreIndex]];
+      if (!category.active) continue;
+      totalScore += category.score;
+      activeWeight += category.weight;
     }
-    totalScore = Math.round(clampScore(totalScore));
+    totalScore = activeWeight ? Math.round(clampScore((totalScore / activeWeight) * 100)) : 0;
 
     var professionalEvidence = [];
     var academicEvidence = [];

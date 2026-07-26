@@ -284,6 +284,7 @@
       jdResultConfidenceMedium: "Medium",
       jdResultConfidenceLow: "Low",
       jdResultCategories: "Weighted category breakdown",
+      jdResultNotSpecified: "Not specified in this JD",
       jdResultStrong: "Strong matches",
       jdResultPartial: "Partial or transferable matches",
       jdResultGaps: "Requirements with published evidence gaps",
@@ -302,7 +303,7 @@
       jdCategoryDomainIntegrations: "Domain and integrations",
       jdCategoryMobile: "Mobile delivery",
       jdCategoryEducationCoursework: "Education and coursework",
-      jdCategoryLanguagesCommunication: "Languages and communication",
+      jdCategoryLanguagesCommunication: "Communication and collaboration",
       jdExplainAction: "Explain this result with AIMeer",
       jdExplainLoading: "Generating explanation…",
       jdExplainTitle: "AIMeer explanation",
@@ -377,6 +378,7 @@
       jdResultConfidenceMedium: "Sederhana",
       jdResultConfidenceLow: "Rendah",
       jdResultCategories: "Pecahan kategori berwajaran",
+      jdResultNotSpecified: "Tidak dinyatakan dalam JD ini",
       jdResultStrong: "Padanan kukuh",
       jdResultPartial: "Padanan separa atau boleh dipindahkan",
       jdResultGaps: "Keperluan dengan jurang bukti terbitan",
@@ -395,7 +397,7 @@
       jdCategoryDomainIntegrations: "Domain dan integrasi",
       jdCategoryMobile: "Penyampaian mudah alih",
       jdCategoryEducationCoursework: "Pendidikan dan kerja kursus",
-      jdCategoryLanguagesCommunication: "Bahasa dan komunikasi",
+      jdCategoryLanguagesCommunication: "Komunikasi dan kolaborasi",
       jdExplainAction: "Terangkan keputusan ini dengan AIMeer",
       jdExplainLoading: "Sedang menjana penjelasan…",
       jdExplainTitle: "Penjelasan AIMeer",
@@ -833,11 +835,11 @@
       var row = createJdNode("div", "chat-jd-category-row");
       row.appendChild(createJdNode("span", "chat-jd-category-label", categoryLabel(key)));
       row.appendChild(createJdNode("span", "chat-jd-category-score",
-        formatScore(item.score) + " / " + formatScore(item.weight)));
+        item.active ? formatScore(item.score) + " / " + formatScore(item.weight) : t("jdResultNotSpecified")));
       card.appendChild(row);
       var bar = createJdNode("div", "chat-jd-category-bar");
       var fill = createJdNode("span", "", "");
-      fill.style.width = (item.weight ? Math.max(0, Math.min(100, (item.score / item.weight) * 100)) : 0) + "%";
+      fill.style.width = (item.active && item.weight ? Math.max(0, Math.min(100, (item.score / item.weight) * 100)) : 0) + "%";
       bar.appendChild(fill);
       card.appendChild(bar);
       categories.appendChild(card);

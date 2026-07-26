@@ -13,6 +13,9 @@
     "preferred skills": "Preferred Skills",
     "preferred qualifications": "Preferred Skills",
     "nice to have": "Preferred Skills",
+    "employer questions": "Administrative",
+    "application questions": "Administrative",
+    "your application will include the following questions": "Administrative",
     "responsibilities": "Responsibilities",
     "responsibility": "Responsibilities",
     "years of experience": "Years of Experience",
@@ -330,8 +333,9 @@
         }
       }
     }
-    var years = line.match(/\b(\d+)\s*(\+|plus)?\s+years?\b/i);
-    if (years) {
+    var yearsPattern = /(?:\(\s*)?\b(\d+)\s*(\+|plus)?\s*\)?\s+years?\b/gi;
+    var years;
+    while ((years = yearsPattern.exec(line)) !== null) {
       var yearTerm = years[1] + (years[2] ? "+ years" : " years");
       var yearStrength = detectStrength(line, fallbackStrength);
       var yearKey = ["years", yearTerm, sectionHeading || "", yearStrength].join("|");

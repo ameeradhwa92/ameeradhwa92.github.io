@@ -11,6 +11,8 @@ Career history:
 
 Skills: ASP.NET Core & Framework, C#, Entity Framework, Python FastAPI, Laravel/PHP, REST & SOAP APIs; React, TypeScript, Vite, TailwindCSS, ShadCN/Radix, React Query, DevExpress; Flutter/Dart, Android (Kotlin, Java), iOS (Swift), Ionic; MS SQL Server, Azure SQL, MySQL, SQLite; Azure DevOps CI/CD, Azure App Service, ARM/Bicep IaC, Git; integrations with Salesforce, SAP, AutoCount ERP, iPay88, SenangPay, eGHL, PayPal, WhatsApp Business API, FCM/Pushwoosh.
 
+Recruiter-relevant delivery practices: enterprise web application development, business-requirement analysis, Agile delivery at the current company, testing, code review, performance optimisation, troubleshooting, secure coding, production support, technical documentation, stakeholder collaboration, CI/CD and application deployments. User-provided project context: Ameer reports extensive Claude Code and Codex usage for this GitHub Pages portfolio, Abbott CRM and React BackOffice work, including AI-assisted development and workflow automation. These AI-tool and Agile details are presented as user-provided context rather than independently verified employment-document evidence.
+
 RECRUITER EVIDENCE REGISTRY
 Professional evidence:
 - Verified tenure: 12+ years of professional software delivery across the published MyEMRO, TRM Nett Systems, NCS Global Technology, and RetailAIM Malaysia career intervals; overlapping August 2023 intervals count once.

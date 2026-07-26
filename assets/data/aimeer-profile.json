@@ -624,6 +624,62 @@
         "Mobile Road Tax Sticker Recognizer"
       ],
       "evidenceType": "academic"
+    },
+    {
+      "name": "Agile",
+      "aliases": ["agile", "agile methodologies", "agile environment", "scrum", "iterative delivery"],
+      "evidence": ["Ameer reports that the current company practices Agile methodology."],
+      "evidenceType": "user-provided",
+      "category": "professionalExperience"
+    },
+    {
+      "name": "AI-assisted development",
+      "aliases": ["ai-assisted coding", "genai-assisted coding", "genai-assisted development", "ai tools", "claude code", "codex", "github copilot", "cursor", "gemini cli"],
+      "evidence": ["Ameer reports using Claude Code and Codex extensively for the GitHub Pages portfolio, Abbott CRM and React BackOffice work."],
+      "evidenceType": "user-provided",
+      "category": "coreTechnologies"
+    },
+    {
+      "name": "Enterprise web application development",
+      "aliases": ["enterprise web application development", "enterprise web applications", "web application development", "software application development"],
+      "evidence": ["Published career history documents 12+ years delivering enterprise web and mobile systems."],
+      "evidenceType": "professional",
+      "category": "professionalExperience"
+    },
+    {
+      "name": "Requirements analysis",
+      "aliases": ["business requirements", "requirements analysis", "analyse business requirements", "analyze business requirements"],
+      "evidence": ["Published project history documents delivery of business and government systems across multiple domains."],
+      "evidenceType": "professional",
+      "category": "professionalExperience"
+    },
+    {
+      "name": "SQL databases",
+      "aliases": ["sql databases", "sql database", "sql queries", "relational databases"],
+      "evidence": ["Published skills and projects document MS SQL Server, Azure SQL, MySQL and SQLite delivery."],
+      "evidenceType": "professional",
+      "category": "coreTechnologies"
+    },
+    {
+      "name": "Application quality",
+      "aliases": ["testing", "code reviews", "code review", "performance optimisation", "performance optimization", "secure coding", "secure coding practices", "troubleshooting"],
+      "evidence": ["Published resume documents testing, code review, incident response, secure delivery and continuous improvement work."],
+      "evidenceType": "professional",
+      "category": "professionalExperience"
+    },
+    {
+      "name": "Production delivery",
+      "aliases": ["ci/cd", "cicd", "application deployments", "deployments", "production support", "system enhancements", "technical documentation", "user guides", "system specifications"],
+      "evidence": ["Published project history documents Azure DevOps pipelines, production deployments, system enhancements and delivery documentation."],
+      "evidenceType": "professional",
+      "category": "architectureDeliveryCloud"
+    },
+    {
+      "name": "Stakeholder collaboration",
+      "aliases": ["collaborate with business users", "business users", "vendors", "product owners", "cross-functional teams", "stakeholder collaboration", "stakeholder communication"],
+      "evidence": ["Published career history documents delivery with government agencies, FMCG brands and cross-functional project stakeholders."],
+      "evidenceType": "professional",
+      "category": "languagesCommunication"
     }
   ],
   "evidence": [

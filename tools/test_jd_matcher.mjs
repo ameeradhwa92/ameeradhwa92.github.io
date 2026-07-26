@@ -54,7 +54,7 @@ function categoryScore(result, key) {
   return result.categories[key] ? result.categories[key].score : undefined;
 }
 
-test("scores required modern .NET stack deterministically with explicit category weights", () => {
+test("scores required modern .NET stack against active JD categories", () => {
   const result = scoreText(`
     Required Skills
     ASP.NET Core
@@ -63,7 +63,7 @@ test("scores required modern .NET stack deterministically with explicit category
     Azure
   `);
 
-  assert.equal(result.score, 50);
+  assert.equal(result.score, 100);
   assert.equal(categoryScore(result, "coreTechnologies"), 35);
   assert.equal(categoryScore(result, "professionalExperience"), 0);
   assert.equal(categoryScore(result, "architectureDeliveryCloud"), 15);
@@ -299,4 +299,46 @@ test("does not award seniority or education points when the JD omits those categ
   assert.equal(categoryScore(result, "educationCoursework"), 0);
   assert.equal(result.categories.professionalExperience.totalRequirements, 0);
   assert.equal(result.categories.educationCoursework.totalRequirements, 0);
+});
+
+test("calibrates a Laravel enterprise JD without counting employer questions or generic prose as technology gaps", () => {
+  const result = scoreText(`
+    Responsibilities
+    Develop, maintain, and enhance enterprise web applications using the Laravel Framework and modern software development tools.
+    Integrate applications through APIs, web services, webhooks, and database integrations.
+    Design and implement AI-powered solutions, including GenAI-assisted applications, chatbots, and workflow automation.
+    Ensure quality through testing, code reviews, performance optimisation, troubleshooting, secure coding, deployments, production support, and technical documentation.
+    Collaborate with business users, vendors, product owners, and cross-functional teams using Agile methodologies.
+
+    Requirements
+    Bachelor's Degree in Computer Science, Software Engineering, Information Technology, or a related field.
+    Minimum five (5) years of experience in software application development, including at least two (2) years of hands-on experience with the Laravel Framework.
+    Experience in enterprise web application development, RESTful API integration, CI/CD, Git, SQL databases, and Agile methodologies.
+    Experience with GenAI-assisted coding tools such as Claude Code and AI application development is preferred.
+
+    Work location: Setia Alam
+    Employer questions
+    What's your expected monthly basic salary?
+    How many years' experience do you have as a Laravel Developer?
+  `);
+
+  const allMatches = [...result.strongMatches, ...result.partialMatches];
+  const allTerms = allMatches.map((match) => match.term);
+  const unverifiedTerms = result.unverified.map((match) => match.term);
+
+  assert.ok(result.score >= 65, `Expected calibrated score >= 65, got ${result.score}`);
+  assert.notEqual(result.confidence.label, "low");
+  assert.ok(allTerms.includes("Laravel"));
+  assert.ok(allTerms.includes("5 years"));
+  assert.ok(allTerms.includes("2 years"));
+  const laravelDuration = [...result.strongMatches, ...result.partialMatches].find((match) => match.term === "2 years");
+  assert.ok(laravelDuration);
+  assert.equal(laravelDuration.classification, "partial");
+  assert.match(laravelDuration.label, /duration is not published/i);
+  assert.ok(allTerms.includes("Agile"));
+  assert.ok(allTerms.includes("AI-assisted development"));
+  assert.equal(unverifiedTerms.some((term) => /salary|employer questions|work location/i.test(term)), false);
+  assert.equal(result.categories.mobile.active, false);
+  assert.equal(result.categories.languagesCommunication.active, true);
+  assert.ok(result.categories.languagesCommunication.score > 0);
 });
