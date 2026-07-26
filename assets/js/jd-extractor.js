@@ -375,7 +375,10 @@
           strength: getHeadingStrength(heading.heading),
           lines: []
         };
-        if (heading.remainder) current.lines.push(heading.remainder);
+        if (heading.remainder) {
+          current.lines.push(heading.remainder);
+          normalizeAlias(heading.remainder, current.strength, current.heading, terms, dedupe);
+        }
         continue;
       }
       if (!current) {
