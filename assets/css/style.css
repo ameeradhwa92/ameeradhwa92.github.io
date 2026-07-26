@@ -568,7 +568,7 @@ body.modal-open { overflow: hidden; }
   .btn:active, .nav-cta:active, .icon-btn:active, .chat-launcher:active,
   .chat-callout-close:active, .chat-ai-btn:active, .chat-cancel:active,
   .chat-handoff-btns button:active, .chat-chips button:active, .chat-model-choice:active,
-  .chat-send:active { transform: none; filter: none; box-shadow: none; }
+  .chat-send:active, .chat-jd-action:active { transform: none; filter: none; box-shadow: none; }
 }
 @media (hover: none), (pointer: coarse) {
   .cursor-glow { display: none; }
@@ -880,6 +880,12 @@ body.modal-open { overflow: hidden; }
 }
 .chat-jd-file-btn:hover, .chat-jd-action:hover {
   color: var(--teal); border-color: var(--teal-deep); text-decoration: none;
+}
+.chat-jd-file-btn:focus-visible, .chat-jd-action:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 3px;
+  border-color: var(--teal-deep);
+  box-shadow: 0 0 0 3px rgba(var(--teal-rgb), 0.12);
 }
 .chat-jd-action-primary {
   background: var(--teal); color: var(--ink); border-color: transparent;

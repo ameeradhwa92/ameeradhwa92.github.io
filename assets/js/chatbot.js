@@ -357,13 +357,14 @@
   var jdPanel = document.getElementById("chat-jd-panel");
   var jdInput = document.getElementById("chat-jd-input");
   var jdFile = document.getElementById("chat-jd-file");
+  var jdFileTrigger = document.getElementById("chat-jd-file-trigger");
   var jdFileName = document.getElementById("chat-jd-file-name");
   var jdAnalyze = document.getElementById("chat-jd-analyze");
   var jdClear = document.getElementById("chat-jd-clear");
   var jdDisclaimer = document.getElementById("chat-jd-disclaimer");
   var jdStatus = document.getElementById("chat-jd-status");
   var jdResult = document.getElementById("chat-jd-result");
-  var recruiterUI = !!(jdToggle && jdPanel && jdInput && jdFile && jdFileName &&
+  var recruiterUI = !!(jdToggle && jdPanel && jdInput && jdFile && jdFileTrigger && jdFileName &&
     jdAnalyze && jdClear && jdDisclaimer && jdStatus && jdResult);
 
   var open = false, greeted = false, busy = false;
@@ -1310,6 +1311,9 @@
   }
 
   if (recruiterUI) {
+    jdFileTrigger.addEventListener("click", function () {
+      jdFile.click();
+    });
     jdFile.addEventListener("change", function () {
       var file = jdFile.files && jdFile.files[0] ? jdFile.files[0] : null;
       var token = ++jdState.fileToken;
