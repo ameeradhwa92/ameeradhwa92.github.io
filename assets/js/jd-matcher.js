@@ -247,10 +247,17 @@
     var education = Array.isArray(profile && profile.education) ? profile.education : [];
     var educationTerms = Object.create(null);
     var hasRelevantDegree = false;
+    var highestQualificationLevel = 0;
+    var highestQualificationLabel = "undisclosed qualification";
     for (var educationIndex = 0; educationIndex < education.length; educationIndex += 1) {
       var item = education[educationIndex];
       if (/\b(computer science|information technology|intelligent systems)\b/i.test(item.qualification || "")) {
         hasRelevantDegree = true;
+      }
+      var qualificationLevel = inferQualificationLevel(item.qualification);
+      if (qualificationLevel > highestQualificationLevel) {
+        highestQualificationLevel = qualificationLevel;
+        highestQualificationLabel = item.qualification;
       }
       registerAlias(item.qualification, {
         canonical: item.qualification,
@@ -286,6 +293,8 @@
       aliasMap: aliasMap,
       skillMap: skillMap,
       hasRelevantDegree: hasRelevantDegree,
+      highestQualificationLevel: highestQualificationLevel,
+      highestQualificationLabel: highestQualificationLabel,
       educationTerms: educationTerms,
       privacyExclusions: Array.isArray(profile && profile.privacyExclusions) ? profile.privacyExclusions.slice() : [],
       professionalEvidence: professionalEvidence,
@@ -293,6 +302,15 @@
       userProvidedEvidence: userProvidedEvidence,
       documentedYears: roundScore(documentedMonths / 12)
     };
+  }
+
+  function inferQualificationLevel(text) {
+    var key = normalizeKey(text);
+    if (/\b(phd|doctorate)\b/.test(key)) return 4;
+    if (/\b(master|masters|msc|mba)\b/.test(key)) return 3;
+    if (/\b(bachelor|degree|hons)\b/.test(key)) return 2;
+    if (/\b(diploma)\b/.test(key)) return 1;
+    return 0;
   }
 
   function splitLine(line) {
@@ -388,10 +406,10 @@
       }
       return {
         term: requirement.term,
-        label: "Unverified (documented timeline does not fully establish this tenure threshold)",
+        label: "Gap (documented professional tenure is below this stated threshold)",
         category: requirement.category,
-        classification: "unverified",
-        evidenceType: "unverified",
+        classification: "gap",
+        evidenceType: "professional",
         evidence: ["Documented roles establish approximately " + index.documentedYears + " years of professional tenure."],
         strength: requirement.strength,
         strengthFactor: strengthFactor
@@ -415,7 +433,7 @@
       if (aliasEntry.hasAcademic) {
         return {
           term: aliasEntry.canonical,
-          label: "Partial match (academic evidence)",
+          label: "Partial match (academic exposure)",
           category: aliasEntry.category || requirement.category,
           classification: "partial",
           evidenceType: "academic",
@@ -438,12 +456,40 @@
       }
     }
 
+    var requiredQualificationLevel = inferQualificationLevel(requirement.term);
+    if (requiredQualificationLevel > 0 && requirement.category === "educationCoursework") {
+      if (index.highestQualificationLevel >= requiredQualificationLevel) {
+        return {
+          term: requirement.term,
+          label: "Strong match (academic exposure: published qualification evidence)",
+          category: requirement.category,
+          classification: "strong",
+          evidenceType: "academic",
+          evidence: [index.highestQualificationLabel],
+          strength: requirement.strength,
+          strengthFactor: strengthFactor
+        };
+      }
+      if (index.highestQualificationLevel > 0) {
+        return {
+          term: requirement.term,
+          label: "Gap (published qualification evidence does not reach this stated level)",
+          category: requirement.category,
+          classification: "gap",
+          evidenceType: "academic",
+          evidence: [index.highestQualificationLabel],
+          strength: requirement.strength,
+          strengthFactor: strengthFactor
+        };
+      }
+    }
+
     if (requirement.category === "educationCoursework" && index.hasRelevantDegree) {
       return {
         term: requirement.term,
-        label: "Strong match (relevant computing degree)",
+        label: "Partial match (academic exposure: relevant computing degree)",
         category: requirement.category,
-        classification: "strong",
+        classification: "partial",
         evidenceType: "academic",
         evidence: index.academicEvidence.slice(0, 2),
         strength: requirement.strength,
@@ -534,16 +580,18 @@
     var total = requirements.length;
     var strongCount = classifications.filter(function (item) { return item.classification === "strong"; }).length;
     var partialCount = classifications.filter(function (item) { return item.classification === "partial"; }).length;
+    var gapCount = classifications.filter(function (item) { return item.classification === "gap"; }).length;
     var unverifiedCount = classifications.filter(function (item) { return item.classification === "unverified"; }).length;
     var reasons = [];
 
     if (!strongCount) reasons.push("No direct evidence matched the requested stack.");
-    if (partialCount) reasons.push(partialCount + " requirement(s) rely on transferable or academic evidence.");
+    if (partialCount) reasons.push(partialCount + " requirement(s) rely on transferable or academic exposure.");
+    if (gapCount) reasons.push(gapCount + " requirement(s) conflict with published profile evidence.");
     if (unverifiedCount) reasons.push(unverifiedCount + " requirement(s) remain unverified in the profile.");
     if (!reasons.length) reasons.push("Most requested requirements have direct supporting evidence.");
 
     var label = "high";
-    if (!total || score < 25 || strongCount / total < 0.34) label = "low";
+    if (!total || score < 25 || strongCount / total < 0.34 || gapCount / total >= 0.34) label = "low";
     else if (score < 65 || strongCount / total < 0.67) label = "medium";
 
     return { label: label, reasons: reasons };

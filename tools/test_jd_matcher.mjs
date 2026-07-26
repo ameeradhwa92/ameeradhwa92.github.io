@@ -116,8 +116,45 @@ test("labels academic-only evidence as partial instead of professional certainty
 
   assert.equal(result.strongMatches.some((match) => match.term === "Tesseract OCR"), false);
   assert.ok(result.partialMatches.some((match) => match.term === "Tesseract OCR"));
-  assert.ok(result.partialMatches.some((match) => /academic/i.test(match.label)));
+  assert.ok(result.partialMatches.some((match) => /academic exposure/i.test(match.label)));
   assert.ok(result.partialMatches.every((match) => match.evidenceType === "academic"));
+});
+
+test("uses a real gaps bucket for explicitly unmet profile-addressable requirements while preserving unverified unknowns", () => {
+  const result = scoreText(`
+    Required Skills
+    5+ years building APIs
+    COBOL
+  `);
+
+  assert.ok(result.gaps.some((match) => match.term === "5+ years"));
+  assert.ok(result.gaps.some((match) => /documented professional tenure/i.test(match.label)));
+  assert.ok(result.unverified.some((match) => /cobol/i.test(match.term)));
+  assert.equal(result.gaps.some((match) => match.term === "Cobol"), false);
+});
+
+test("prefers professional evidence for mixed-source skills such as PHP and Android", () => {
+  const phpResult = scoreText(`
+    Required Skills
+    PHP
+  `);
+  const androidResult = scoreText(`
+    Required Skills
+    Android
+  `);
+
+  const phpMatch = phpResult.strongMatches.find((match) => match.term === "PHP");
+  const androidMatch = androidResult.strongMatches.find((match) => match.term === "Android");
+
+  assert.ok(phpMatch);
+  assert.equal(phpMatch.evidenceType, "professional");
+  assert.ok(/professional evidence/i.test(phpMatch.label));
+  assert.equal(phpResult.partialMatches.some((match) => match.term === "PHP"), false);
+
+  assert.ok(androidMatch);
+  assert.equal(androidMatch.evidenceType, "professional");
+  assert.ok(/professional evidence/i.test(androidMatch.label));
+  assert.equal(androidResult.partialMatches.some((match) => match.term === "Android"), false);
 });
 
 test("returns an explainable low-confidence result for mostly unknown job descriptions", () => {
