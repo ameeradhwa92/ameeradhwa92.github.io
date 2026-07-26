@@ -94,6 +94,68 @@ test("client helper builds a bounded jd-explanation payload without client syste
   assert.match(payload.disclaimer, /estimated compatibility score/i);
 });
 
+test("client helper keeps interim cloud fallback unavailable for local-capable devices but preserves genuine cloud routes", () => {
+  const helper = loadExplanationHelper();
+
+  assert.equal(helper.getExplanationMode({
+    hasResult: true,
+    hasNormalizedText: true,
+    aiState: "cloud",
+    localOK: true,
+    preferredMode: null,
+    route: "local",
+    cloudOk: true,
+    dlActive: true,
+    hasEngine: false
+  }), "waiting");
+
+  assert.equal(helper.getExplanationMode({
+    hasResult: true,
+    hasNormalizedText: true,
+    aiState: "loading",
+    localOK: true,
+    preferredMode: null,
+    route: "local",
+    cloudOk: true,
+    dlActive: true,
+    hasEngine: false
+  }), "waiting");
+
+  assert.equal(helper.getExplanationMode({
+    hasResult: true,
+    hasNormalizedText: true,
+    aiState: "cloud",
+    localOK: true,
+    preferredMode: "cloud",
+    route: "cloud",
+    cloudOk: true,
+    dlActive: false,
+    hasEngine: false
+  }), "cloud");
+
+  assert.equal(helper.getExplanationMode({
+    hasResult: true,
+    hasNormalizedText: true,
+    aiState: "cloud",
+    localOK: false,
+    preferredMode: null,
+    route: "cloud",
+    cloudOk: true,
+    dlActive: false,
+    hasEngine: false
+  }), "cloud");
+});
+
+test("client helper token guards reject stale explanation responses after invalidation", () => {
+  const helper = loadExplanationHelper();
+  const started = helper.nextExplanationToken(0);
+  const invalidated = helper.nextExplanationToken(started);
+
+  assert.equal(helper.canApplyExplanationToken(started, started), true);
+  assert.equal(helper.canApplyExplanationToken(started, invalidated), false);
+  assert.equal(helper.canApplyExplanationToken(invalidated, invalidated), true);
+});
+
 test("worker keeps existing CORS rules for preflight and rejects disallowed origins", async () => {
   const { worker } = loadWorkerHarness();
 

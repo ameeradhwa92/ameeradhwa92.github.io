@@ -140,8 +140,33 @@
     };
   }
 
+  function nextExplanationToken(current) {
+    return (Number(current) || 0) + 1;
+  }
+
+  function canApplyExplanationToken(requestToken, currentToken) {
+    return requestToken === currentToken;
+  }
+
+  function computeJdExplanationMode(state) {
+    if (!state || !state.hasResult || !state.hasNormalizedText) return "unavailable";
+    if (state.hasEngine && state.aiState === "ready") return "local";
+    if (state.localOK) {
+      if (state.preferredMode === "cloud") return state.cloudOk ? "cloud" : "unavailable";
+      if (state.dlActive || state.aiState === "loading" || state.route === "local" || state.preferredMode === "local") {
+        return "waiting";
+      }
+      return "unavailable";
+    }
+    if (state.cloudOk && (state.aiState === "cloud" || state.route === "cloud")) return "cloud";
+    return "unavailable";
+  }
+
   if (!window.AIMeerRecruiter) window.AIMeerRecruiter = {};
   window.AIMeerRecruiter.buildExplanationPayload = buildJdExplanationPayload;
+  window.AIMeerRecruiter.getExplanationMode = computeJdExplanationMode;
+  window.AIMeerRecruiter.nextExplanationToken = nextExplanationToken;
+  window.AIMeerRecruiter.canApplyExplanationToken = canApplyExplanationToken;
   window.AIMeerRecruiter.jdExplanationLimits = {
     jdText: JD_EXPLANATION_JD_MAX,
     resultChars: JD_EXPLANATION_RESULT_MAX
@@ -491,6 +516,7 @@
     explanationMode: "",
     explanationBusy: false,
     explanationError: "",
+    explanationRequestToken: 0,
     statusKind: "idle",
     statusLevel: "",
     statusSource: "",
@@ -564,6 +590,7 @@
   }
 
   function clearJdResult() {
+    jdState.explanationRequestToken = nextExplanationToken(jdState.explanationRequestToken);
     jdState.result = null;
     jdState.normalizedText = "";
     jdState.resultSource = "";
@@ -579,12 +606,17 @@
   }
 
   function getJdExplanationMode() {
-    if (!jdState.result || !jdState.normalizedText) return "unavailable";
-    if (aiState === "ready" && engine) return "local";
-    if (localOK && aiState === "loading" && preferredMode !== "cloud") return "waiting";
-    if (aiState === "cloud" || ((!localOK || preferredMode === "cloud" || route === "cloud") && cloudOk)) return "cloud";
-    if (localOK && (route === "local" || preferredMode === "local")) return "waiting";
-    return "unavailable";
+    return computeJdExplanationMode({
+      hasResult: !!jdState.result,
+      hasNormalizedText: !!jdState.normalizedText,
+      aiState: aiState,
+      localOK: localOK,
+      preferredMode: preferredMode,
+      route: route,
+      cloudOk: cloudOk,
+      dlActive: dlActive,
+      hasEngine: !!engine
+    });
   }
 
   function explanationHintKey(mode) {
@@ -1335,18 +1367,23 @@
       return;
     }
     var payload = buildJdExplanationPayload(jdState.normalizedText, jdState.result, explanationLanguage());
+    var requestToken = nextExplanationToken(jdState.explanationRequestToken);
+    jdState.explanationRequestToken = requestToken;
     jdState.explanationBusy = true;
     jdState.explanationError = "";
+    jdState.explanation = "";
     jdState.explanationMode = mode;
     renderJdResult();
 
     var runner = mode === "local" ? explainJdLocally(payload) : explainJdViaCloud(payload);
     runner.then(function (reply) {
+      if (!canApplyExplanationToken(requestToken, jdState.explanationRequestToken)) return;
       jdState.explanationBusy = false;
       jdState.explanation = reply;
       jdState.explanationError = "";
       renderJdResult();
     }).catch(function (err) {
+      if (!canApplyExplanationToken(requestToken, jdState.explanationRequestToken)) return;
       if (window.console && console.warn) console.warn("JD explanation failed:", err);
       jdState.explanationBusy = false;
       jdState.explanation = "";
