@@ -151,5 +151,19 @@ window.I18N_MS = {
   "chat.chip1": "Apakah tugas beliau sekarang?",
   "chat.chip2": "Projek mana yang masih beroperasi?",
   "chat.chip3": "Apakah tindanan teknologi beliau?",
-  "chat.chip4": "Bagaimana hendak menghubungi beliau?"
+  "chat.chip4": "Bagaimana hendak menghubungi beliau?",
+  "chat.jd.toggle": "Padankan huraian jawatan",
+  "chat.jd.title": "Mod padanan perekrut",
+  "chat.jd.body": "Tampal huraian jawatan atau baca PDF/DOCX setempat untuk anggaran keserasian yang deterministik.",
+  "chat.jd.pasteLabel": "Tampal huraian jawatan",
+  "chat.jd.pasteHint": "Teks yang ditampal kekal dalam tab pelayar ini sahaja.",
+  "chat.jd.fileLabel": "Muatkan PDF atau DOCX setempat",
+  "chat.jd.fileHint": "Fail dihuraikan secara setempat dan disimpan dalam ingatan sahaja.",
+  "chat.jd.fileAction": "Pilih atau ganti fail",
+  "chat.jd.fileEmpty": "Belum ada fail dipilih",
+  "chat.jd.analyze": "Analisis padanan",
+  "chat.jd.clear": "Kosongkan huraian jawatan",
+  "chat.jd.disclaimer": "Ini ialah skor keserasian anggaran yang berasaskan hanya pada huraian jawatan dan profil terbitan Ameer. Ia bukan keputusan pengambilan pekerja yang objektif, penilaian teknikal, atau jaminan kesesuaian.",
+  "chat.jd.status.idle": "Tampal huraian jawatan atau pilih PDF/DOCX setempat untuk bermula.",
+  "chat.jd.resultTitle": "Hasil padanan anggaran"
 };

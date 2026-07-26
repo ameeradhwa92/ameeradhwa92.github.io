@@ -11,6 +11,7 @@
 
   var WEBLLM_CDN = "https://esm.run/@mlc-ai/web-llm@0.2.79";
   var KB_URL = "assets/data/aimeer-kb.txt";
+  var PROFILE_URL = "assets/data/aimeer-profile.json";
   /* Cloudflare Worker relay for devices that can't run the local model.
      Deploy cloud/aimeer-worker.js, then paste its workers.dev URL here. */
   var CLOUD_ENDPOINT = typeof window.AIMEER_CLOUD_ENDPOINT === "string"
@@ -21,6 +22,7 @@
 
   /* ---------------- knowledge base (fetched, shared with the cloud worker) ---------------- */
   var KB = "", kbPromise = null;
+  var PROFILE = null, profilePromise = null;
   function ensureKB() {
     if (KB) return Promise.resolve(KB);
     if (!kbPromise) {
@@ -36,6 +38,23 @@
       });
     }
     return kbPromise;
+  }
+
+  function ensureProfile() {
+    if (PROFILE) return Promise.resolve(PROFILE);
+    if (!profilePromise) {
+      profilePromise = fetch(PROFILE_URL).then(function (r) {
+        if (!r.ok) throw new Error("profile-" + r.status);
+        return r.json();
+      }).then(function (data) {
+        PROFILE = data;
+        return PROFILE;
+      }).catch(function (err) {
+        profilePromise = null;
+        throw err;
+      });
+    }
+    return profilePromise;
   }
 
   var PROMPT_HEAD =
@@ -84,7 +103,57 @@
       sumIntro: "Hi Ameer! I've been chatting with AIMeer on your portfolio.",
       sumAsked: "What I asked:",
       sumOpen: "AIMeer couldn't answer this one:",
-      sumVia: "sent via AIMeer · ameeradhwa92.github.io"
+      sumVia: "sent via AIMeer · ameeradhwa92.github.io",
+      jdInputPlaceholder: "Paste the job description here…",
+      jdDisclaimer: "This is an estimated compatibility score based only on the job description and Ameer's published profile. It is not an objective hiring decision, technical assessment, or guarantee of suitability.",
+      jdFileEmpty: "No file selected",
+      jdStatusIdle: "Paste a job description or choose a local PDF/DOCX to start.",
+      jdStatusReading: "Reading the local document…",
+      jdStatusScoring: "Scoring the job description locally…",
+      jdStatusLoaded: "Local document ready: {source}.",
+      jdStatusLoadedWithWarnings: "Local document ready: {source}. Warnings: {warnings}",
+      jdStatusPasted: "Using the pasted job description text.",
+      jdStatusScored: "Deterministic match ready from {source}.",
+      jdSourcePaste: "pasted text",
+      jdSourcePdf: "PDF text",
+      jdSourceDocx: "DOCX text",
+      jdErrorMissingText: "Paste a job description or choose a local PDF/DOCX before analyzing.",
+      jdErrorUnavailable: "Recruiter matching is not ready in this tab yet. Please refresh and try again.",
+      jdErrorProfile: "The published recruiter profile could not be loaded for local scoring. Please refresh and try again.",
+      jdErrorFileType: "Only PDF and DOCX files are supported. Please paste the job description text instead.",
+      jdErrorFileSize: "This document is larger than 10 MB. Please paste the job description text instead.",
+      jdErrorPdf: "Could not read this PDF locally. Please paste the job description text instead.",
+      jdErrorDocx: "This DOCX file is unsupported, encrypted, or malformed. Please paste the job description text instead.",
+      jdWarnPdfNoText: "No readable text was found in this PDF. Please paste the job description text instead.",
+      jdWarnDocxNoText: "No readable text was found in this DOCX file. Please paste the job description text instead.",
+      jdWarnTrimmed: "Only the first 60,000 characters were analyzed locally.",
+      jdWarnGenericText: "No recognizable section headings were found; matching uses generic text only.",
+      jdResultScoreLabel: "Estimated compatibility",
+      jdResultSourceLabel: "Source",
+      jdResultConfidenceLabel: "Confidence",
+      jdResultConfidenceHigh: "High",
+      jdResultConfidenceMedium: "Medium",
+      jdResultConfidenceLow: "Low",
+      jdResultCategories: "Weighted category breakdown",
+      jdResultStrong: "Strong matches",
+      jdResultPartial: "Partial or transferable matches",
+      jdResultGaps: "Requirements with published evidence gaps",
+      jdResultUnverified: "Requirements not verified in the published profile",
+      jdResultInterview: "Suggested interview topics",
+      jdEvidenceProfessional: "Professional evidence",
+      jdEvidenceAcademic: "Academic exposure",
+      jdEvidenceUser: "User-provided context",
+      jdEvidenceGap: "Published evidence gap",
+      jdEvidenceUnverified: "Unverified",
+      jdNoMatches: "No items in this section.",
+      jdInterviewPrompt: "{term}: ask for concrete delivery examples and hands-on depth.",
+      jdCategoryCoreTechnologies: "Core technologies",
+      jdCategoryProfessionalExperience: "Professional experience and seniority",
+      jdCategoryArchitectureDeliveryCloud: "Production architecture, delivery, and cloud",
+      jdCategoryDomainIntegrations: "Domain and integrations",
+      jdCategoryMobile: "Mobile delivery",
+      jdCategoryEducationCoursework: "Education and coursework",
+      jdCategoryLanguagesCommunication: "Languages and communication"
     },
     ms: {
       greeting: "Salam sejahtera! Saya AIMeer — kembar AI Ameer. Tanya saya tentang kerjaya, projek dan kemahiran beliau, atau tekan cadangan di bawah. Mod AI penuh disediakan secara automatik — pada peranti anda jika mampu, melalui awan selamat jika tidak.",
@@ -119,11 +188,68 @@
       sumIntro: "Hai Ameer! Saya baru berbual dengan AIMeer di portfolio anda.",
       sumAsked: "Soalan saya:",
       sumOpen: "AIMeer tidak dapat menjawab soalan ini:",
-      sumVia: "dihantar melalui AIMeer · ameeradhwa92.github.io"
+      sumVia: "dihantar melalui AIMeer · ameeradhwa92.github.io",
+      jdInputPlaceholder: "Tampal huraian jawatan di sini…",
+      jdDisclaimer: "Ini ialah skor keserasian anggaran yang berasaskan hanya pada huraian jawatan dan profil terbitan Ameer. Ia bukan keputusan pengambilan pekerja yang objektif, penilaian teknikal, atau jaminan kesesuaian.",
+      jdFileEmpty: "Belum ada fail dipilih",
+      jdStatusIdle: "Tampal huraian jawatan atau pilih PDF/DOCX setempat untuk bermula.",
+      jdStatusReading: "Sedang membaca dokumen setempat…",
+      jdStatusScoring: "Sedang mengira skor huraian jawatan secara setempat…",
+      jdStatusLoaded: "Dokumen setempat sedia digunakan: {source}.",
+      jdStatusLoadedWithWarnings: "Dokumen setempat sedia digunakan: {source}. Amaran: {warnings}",
+      jdStatusPasted: "Menggunakan teks huraian jawatan yang ditampal.",
+      jdStatusScored: "Padanan deterministik siap daripada {source}.",
+      jdSourcePaste: "teks tampalan",
+      jdSourcePdf: "teks PDF",
+      jdSourceDocx: "teks DOCX",
+      jdErrorMissingText: "Tampal huraian jawatan atau pilih PDF/DOCX setempat sebelum menganalisis.",
+      jdErrorUnavailable: "Padanan perekrut belum sedia dalam tab ini. Muat semula dan cuba lagi.",
+      jdErrorProfile: "Profil perekrut terbitan tidak dapat dimuatkan untuk pemarkahan setempat. Muat semula dan cuba lagi.",
+      jdErrorFileType: "Hanya fail PDF dan DOCX disokong. Sila tampal teks huraian jawatan sebagai ganti.",
+      jdErrorFileSize: "Dokumen ini melebihi 10 MB. Sila tampal teks huraian jawatan sebagai ganti.",
+      jdErrorPdf: "PDF ini tidak dapat dibaca secara setempat. Sila tampal teks huraian jawatan sebagai ganti.",
+      jdErrorDocx: "Fail DOCX ini tidak disokong, disulitkan, atau rosak. Sila tampal teks huraian jawatan sebagai ganti.",
+      jdWarnPdfNoText: "Tiada teks yang boleh dibaca ditemui dalam PDF ini. Sila tampal teks huraian jawatan sebagai ganti.",
+      jdWarnDocxNoText: "Tiada teks yang boleh dibaca ditemui dalam fail DOCX ini. Sila tampal teks huraian jawatan sebagai ganti.",
+      jdWarnTrimmed: "Hanya 60,000 aksara pertama dianalisis secara setempat.",
+      jdWarnGenericText: "Tiada tajuk seksyen yang dapat dikenal pasti; padanan menggunakan teks umum sahaja.",
+      jdResultScoreLabel: "Keserasian anggaran",
+      jdResultSourceLabel: "Sumber",
+      jdResultConfidenceLabel: "Tahap keyakinan",
+      jdResultConfidenceHigh: "Tinggi",
+      jdResultConfidenceMedium: "Sederhana",
+      jdResultConfidenceLow: "Rendah",
+      jdResultCategories: "Pecahan kategori berwajaran",
+      jdResultStrong: "Padanan kukuh",
+      jdResultPartial: "Padanan separa atau boleh dipindahkan",
+      jdResultGaps: "Keperluan dengan jurang bukti terbitan",
+      jdResultUnverified: "Keperluan yang belum disahkan dalam profil terbitan",
+      jdResultInterview: "Topik temu duga yang dicadangkan",
+      jdEvidenceProfessional: "Bukti profesional",
+      jdEvidenceAcademic: "Pendedahan akademik",
+      jdEvidenceUser: "Konteks yang dibekalkan pengguna",
+      jdEvidenceGap: "Jurang bukti terbitan",
+      jdEvidenceUnverified: "Belum disahkan",
+      jdNoMatches: "Tiada item dalam seksyen ini.",
+      jdInterviewPrompt: "{term}: minta contoh penyampaian sebenar dan kedalaman pengalaman langsung.",
+      jdCategoryCoreTechnologies: "Teknologi teras",
+      jdCategoryProfessionalExperience: "Pengalaman profesional dan senioriti",
+      jdCategoryArchitectureDeliveryCloud: "Seni bina produksi, penyampaian, dan awan",
+      jdCategoryDomainIntegrations: "Domain dan integrasi",
+      jdCategoryMobile: "Penyampaian mudah alih",
+      jdCategoryEducationCoursework: "Pendidikan dan kerja kursus",
+      jdCategoryLanguagesCommunication: "Bahasa dan komunikasi"
     }
   };
   function lang() { return root.dataset.lang === "ms" ? "ms" : "en"; }
   function t(key) { return T[lang()][key]; }
+  function formatT(key, values) {
+    var text = t(key) || "";
+    Object.keys(values || {}).forEach(function (name) {
+      text = text.replace(new RegExp("\\{" + name + "\\}", "g"), values[name]);
+    });
+    return text;
+  }
 
   /* ---------------- tier 1: instant keyword answers ---------------- */
   /* salary questions always offer the WhatsApp/email handoff, in every tier */
@@ -227,6 +353,18 @@
   var modelCloud = document.getElementById("chat-model-cloud");
   var modelLocal = document.getElementById("chat-model-local");
   var modelTooltip = document.getElementById("chat-model-tooltip");
+  var jdToggle = document.getElementById("chat-jd-toggle");
+  var jdPanel = document.getElementById("chat-jd-panel");
+  var jdInput = document.getElementById("chat-jd-input");
+  var jdFile = document.getElementById("chat-jd-file");
+  var jdFileName = document.getElementById("chat-jd-file-name");
+  var jdAnalyze = document.getElementById("chat-jd-analyze");
+  var jdClear = document.getElementById("chat-jd-clear");
+  var jdDisclaimer = document.getElementById("chat-jd-disclaimer");
+  var jdStatus = document.getElementById("chat-jd-status");
+  var jdResult = document.getElementById("chat-jd-result");
+  var recruiterUI = !!(jdToggle && jdPanel && jdInput && jdFile && jdFileName &&
+    jdAnalyze && jdClear && jdDisclaimer && jdStatus && jdResult);
 
   var open = false, greeted = false, busy = false;
   var engine = null, canceled = false, downloadGeneration = 0;
@@ -241,6 +379,20 @@
   var history = []; /* {role, content} — capped so prefill stays fast */
   var transcript = []; /* full visitor conversation, for the WhatsApp/email handoff */
   var lastUnanswered = ""; /* the question AIMeer couldn't answer */
+  var jdState = {
+    open: false,
+    fileToken: 0,
+    fileName: "",
+    extractedText: "",
+    extractedSource: "",
+    result: null,
+    resultSource: "",
+    statusKind: "idle",
+    statusLevel: "",
+    statusSource: "",
+    statusWarnings: [],
+    errorKey: ""
+  };
 
   function addMsg(role, text) {
     var el = document.createElement("div");
@@ -249,6 +401,245 @@
     log.appendChild(el);
     log.scrollTop = log.scrollHeight;
     return el;
+  }
+
+  function formatScore(value) {
+    var rounded = Math.round((Number(value) || 0) * 10) / 10;
+    return String(rounded).replace(/\.0$/, "");
+  }
+
+  function sourceLabel(source) {
+    return source === "pdf" ? t("jdSourcePdf")
+      : source === "docx" ? t("jdSourceDocx")
+        : t("jdSourcePaste");
+  }
+
+  function categoryLabel(key) {
+    return key === "coreTechnologies" ? t("jdCategoryCoreTechnologies")
+      : key === "professionalExperience" ? t("jdCategoryProfessionalExperience")
+        : key === "architectureDeliveryCloud" ? t("jdCategoryArchitectureDeliveryCloud")
+          : key === "domainIntegrations" ? t("jdCategoryDomainIntegrations")
+            : key === "mobile" ? t("jdCategoryMobile")
+              : key === "educationCoursework" ? t("jdCategoryEducationCoursework")
+                : t("jdCategoryLanguagesCommunication");
+  }
+
+  function confidenceLabel(level) {
+    return level === "high" ? t("jdResultConfidenceHigh")
+      : level === "medium" ? t("jdResultConfidenceMedium")
+        : t("jdResultConfidenceLow");
+  }
+
+  function localizeExtractorMessage(message) {
+    var text = String(message || "");
+    if (text.indexOf("larger than 10 MB") !== -1) return t("jdErrorFileSize");
+    if (text.indexOf("Only PDF and DOCX files are supported") !== -1) return t("jdErrorFileType");
+    if (text.indexOf("Could not read this PDF locally") !== -1) return t("jdErrorPdf");
+    if (text.indexOf("No readable text was found in this PDF") !== -1) return t("jdWarnPdfNoText");
+    if (text.indexOf("This DOCX file is unsupported, encrypted, or malformed") !== -1) return t("jdErrorDocx");
+    if (text.indexOf("No readable text was found in this DOCX") !== -1) return t("jdWarnDocxNoText");
+    if (text.indexOf("Only the first 60,000 characters were analyzed locally") !== -1) return t("jdWarnTrimmed");
+    if (text.indexOf("No recognizable section headings were found") !== -1) return t("jdWarnGenericText");
+    return text;
+  }
+
+  function extractorErrorKey(message) {
+    var text = String(message || "");
+    if (text.indexOf("larger than 10 MB") !== -1) return "jdErrorFileSize";
+    if (text.indexOf("Only PDF and DOCX files are supported") !== -1) return "jdErrorFileType";
+    if (text.indexOf("Could not read this PDF locally") !== -1) return "jdErrorPdf";
+    if (text.indexOf("This DOCX file is unsupported, encrypted, or malformed") !== -1) return "jdErrorDocx";
+    if (text.indexOf("No readable text was found in this PDF") !== -1) return "jdWarnPdfNoText";
+    if (text.indexOf("No readable text was found in this DOCX") !== -1) return "jdWarnDocxNoText";
+    return "jdErrorUnavailable";
+  }
+
+  function setJdFileName() {
+    if (!recruiterUI) return;
+    jdFileName.textContent = jdState.fileName || t("jdFileEmpty");
+  }
+
+  function clearJdResult() {
+    jdState.result = null;
+    jdState.resultSource = "";
+    if (recruiterUI) jdResult.innerHTML = "";
+  }
+
+  function setJdStatus(kind, options) {
+    jdState.statusKind = kind || "idle";
+    jdState.statusLevel = options && options.level ? options.level : "";
+    jdState.statusSource = options && options.source ? options.source : "";
+    jdState.statusWarnings = options && options.warnings ? options.warnings.slice() : [];
+    jdState.errorKey = options && options.errorKey ? options.errorKey : "";
+    renderJdStatus();
+  }
+
+  function renderJdStatus() {
+    if (!recruiterUI) return;
+    var message = "";
+    if (jdState.statusKind === "reading") message = t("jdStatusReading");
+    else if (jdState.statusKind === "scoring") message = t("jdStatusScoring");
+    else if (jdState.statusKind === "loaded") {
+      message = formatT(
+        jdState.statusWarnings.length ? "jdStatusLoadedWithWarnings" : "jdStatusLoaded",
+        { source: sourceLabel(jdState.statusSource), warnings: jdState.statusWarnings.join(" ") }
+      );
+    } else if (jdState.statusKind === "pasted") {
+      message = t("jdStatusPasted");
+    } else if (jdState.statusKind === "scored") {
+      message = formatT("jdStatusScored", { source: sourceLabel(jdState.statusSource) });
+      if (jdState.statusWarnings.length) message += " " + jdState.statusWarnings.join(" ");
+    } else if (jdState.statusKind === "error") {
+      message = t(jdState.errorKey || "jdErrorUnavailable");
+    } else {
+      message = t("jdStatusIdle");
+    }
+    jdStatus.className = "chat-jd-status" +
+      (jdState.statusLevel === "error" ? " is-error" : jdState.statusLevel === "success" ? " is-success" : "");
+    jdStatus.textContent = message;
+  }
+
+  function createJdNode(tag, className, text) {
+    var el = document.createElement(tag);
+    if (className) el.className = className;
+    if (text != null) el.textContent = text;
+    return el;
+  }
+
+  function createJdBadge(text, className) {
+    return createJdNode("span", "chat-jd-badge " + className, text);
+  }
+
+  function appendEvidenceList(parent, evidence) {
+    if (!evidence || !evidence.length) return;
+    var list = createJdNode("ul", "chat-jd-evidence");
+    evidence.forEach(function (entry) {
+      list.appendChild(createJdNode("li", "", entry));
+    });
+    parent.appendChild(list);
+  }
+
+  function renderMatchItems(titleKey, items, modeClass) {
+    var section = createJdNode("section", "chat-jd-section");
+    section.appendChild(createJdNode("h6", "", t(titleKey)));
+    if (!items.length) {
+      section.appendChild(createJdNode("p", "chat-jd-empty", t("jdNoMatches")));
+      return section;
+    }
+    var list = createJdNode("ul", "chat-jd-match-list");
+    items.forEach(function (item) {
+      var li = createJdNode("li", "chat-jd-match-item");
+      var head = createJdNode("div", "chat-jd-match-head");
+      head.appendChild(createJdNode("span", "chat-jd-term", item.term));
+      if (modeClass === "gap") head.appendChild(createJdBadge(t("jdEvidenceGap"), "is-gap"));
+      else if (modeClass === "unverified") head.appendChild(createJdBadge(t("jdEvidenceUnverified"), "is-unverified"));
+      else if (item.evidenceType === "academic") head.appendChild(createJdBadge(t("jdEvidenceAcademic"), "is-academic"));
+      else if (item.evidenceType === "user-provided") head.appendChild(createJdBadge(t("jdEvidenceUser"), "is-user"));
+      else head.appendChild(createJdBadge(t("jdEvidenceProfessional"), "is-professional"));
+      li.appendChild(head);
+      appendEvidenceList(li, item.evidence);
+      list.appendChild(li);
+    });
+    section.appendChild(list);
+    return section;
+  }
+
+  function renderInterviewTopics(items) {
+    var section = createJdNode("section", "chat-jd-section");
+    section.appendChild(createJdNode("h6", "", t("jdResultInterview")));
+    if (!items.length) {
+      section.appendChild(createJdNode("p", "chat-jd-empty", t("jdNoMatches")));
+      return section;
+    }
+    var list = createJdNode("ul", "chat-jd-topic-list");
+    items.forEach(function (item) {
+      list.appendChild(createJdNode("li", "", formatT("jdInterviewPrompt", { term: item.term })));
+    });
+    section.appendChild(list);
+    return section;
+  }
+
+  function renderJdResult() {
+    if (!recruiterUI) return;
+    jdResult.innerHTML = "";
+    if (!jdState.result) return;
+
+    var result = jdState.result;
+    jdResult.appendChild(createJdNode("p", "chat-jd-result-disclaimer", t("jdDisclaimer")));
+
+    var summary = createJdNode("section", "chat-jd-result-card");
+    var scoreRow = createJdNode("div", "chat-jd-score-row");
+    var scoreBlock = createJdNode("div", "");
+    scoreBlock.appendChild(createJdNode("div", "chat-jd-score-label", t("jdResultScoreLabel")));
+    scoreBlock.appendChild(createJdNode("div", "chat-jd-score", formatScore(result.score) + "%"));
+    scoreRow.appendChild(scoreBlock);
+    var meta = createJdNode("div", "chat-jd-meta");
+    meta.textContent = t("jdResultSourceLabel") + ": " + sourceLabel(jdState.resultSource || "paste");
+    scoreRow.appendChild(meta);
+    summary.appendChild(scoreRow);
+    summary.appendChild(createJdNode("p", "chat-jd-confidence",
+      t("jdResultConfidenceLabel") + ": " + confidenceLabel(result.confidence && result.confidence.label)));
+    jdResult.appendChild(summary);
+
+    var categories = createJdNode("section", "chat-jd-category-list");
+    categories.appendChild(createJdNode("h6", "", t("jdResultCategories")));
+    [
+      "coreTechnologies",
+      "professionalExperience",
+      "architectureDeliveryCloud",
+      "domainIntegrations",
+      "mobile",
+      "educationCoursework",
+      "languagesCommunication"
+    ].forEach(function (key) {
+      var item = result.categories && result.categories[key];
+      if (!item) return;
+      var card = createJdNode("div", "chat-jd-category-item");
+      var row = createJdNode("div", "chat-jd-category-row");
+      row.appendChild(createJdNode("span", "chat-jd-category-label", categoryLabel(key)));
+      row.appendChild(createJdNode("span", "chat-jd-category-score",
+        formatScore(item.score) + " / " + formatScore(item.weight)));
+      card.appendChild(row);
+      var bar = createJdNode("div", "chat-jd-category-bar");
+      var fill = createJdNode("span", "", "");
+      fill.style.width = (item.weight ? Math.max(0, Math.min(100, (item.score / item.weight) * 100)) : 0) + "%";
+      bar.appendChild(fill);
+      card.appendChild(bar);
+      categories.appendChild(card);
+    });
+    jdResult.appendChild(categories);
+
+    jdResult.appendChild(renderMatchItems("jdResultStrong", result.strongMatches || [], "strong"));
+    jdResult.appendChild(renderMatchItems("jdResultPartial", result.partialMatches || [], "partial"));
+    jdResult.appendChild(renderMatchItems("jdResultGaps", result.gaps || [], "gap"));
+    jdResult.appendChild(renderMatchItems("jdResultUnverified", result.unverified || [], "unverified"));
+    jdResult.appendChild(renderInterviewTopics(result.interviewTopics || []));
+  }
+
+  function resetRecruiterState() {
+    if (!recruiterUI) return;
+    jdState.fileToken += 1;
+    jdState.fileName = "";
+    jdState.extractedText = "";
+    jdState.extractedSource = "";
+    if (jdInput) jdInput.value = "";
+    if (jdFile) jdFile.value = "";
+    setJdFileName();
+    clearJdResult();
+    setJdStatus("idle");
+  }
+
+  function setRecruiterOpen(nextOpen) {
+    if (!recruiterUI) return;
+    jdState.open = !!nextOpen;
+    jdPanel.hidden = !jdState.open;
+    jdToggle.setAttribute("aria-expanded", jdState.open ? "true" : "false");
+    jdToggle.classList.toggle("is-active", jdState.open);
+    if (jdState.open) {
+      jdInput.focus();
+      renderJdStatus();
+      renderJdResult();
+    }
   }
 
   function setStatus(mode, extra) {
@@ -405,11 +796,23 @@
     input.placeholder = t("placeholder");
     refreshStatus();
     applyAiBox();
+    if (recruiterUI) {
+      jdInput.placeholder = t("jdInputPlaceholder");
+      jdDisclaimer.textContent = t("jdDisclaimer");
+      setJdFileName();
+      renderJdStatus();
+      renderJdResult();
+    }
   }
 
   /* keep dynamic strings in step with the EN/BM toggle */
   new MutationObserver(refreshLangBits)
     .observe(root, { attributes: true, attributeFilter: ["data-lang"] });
+
+  if (recruiterUI) {
+    setRecruiterOpen(false);
+    refreshLangBits();
+  }
 
   /* ---------------- attention callout (marketing nudge, shows once) ---------------- */
   var callout = document.getElementById("chat-callout");
@@ -865,12 +1268,112 @@
     }
   }
 
+  function analyzeRecruiterMatch() {
+    if (!recruiterUI) return;
+    if (!window.JDExtractor || !window.JDMatcher ||
+      typeof window.JDExtractor.extract !== "function" ||
+      typeof window.JDExtractor.normalize !== "function" ||
+      typeof window.JDMatcher.scoreJobDescription !== "function") {
+      setJdStatus("error", { level: "error", errorKey: "jdErrorUnavailable" });
+      return;
+    }
+
+    var pasted = jdInput.value.replace(/\s+/g, " ").trim();
+    var source = pasted ? "paste" : jdState.extractedSource;
+    var text = pasted ? jdInput.value.trim() : jdState.extractedText;
+    if (!text) {
+      setJdStatus("error", { level: "error", errorKey: "jdErrorMissingText" });
+      clearJdResult();
+      return;
+    }
+
+    clearJdResult();
+    setJdStatus("scoring", { source: source });
+
+    ensureProfile().then(function (profile) {
+      var normalized = window.JDExtractor.normalize(text);
+      var warnings = (normalized.warnings || []).map(localizeExtractorMessage);
+      var result = window.JDMatcher.scoreJobDescription(normalized, profile);
+      jdState.result = result;
+      jdState.resultSource = source || "paste";
+      renderJdResult();
+      setJdStatus("scored", {
+        level: "success",
+        source: jdState.resultSource,
+        warnings: warnings
+      });
+    }).catch(function (err) {
+      if (window.console && console.warn) console.warn("Recruiter scoring failed:", err);
+      clearJdResult();
+      setJdStatus("error", { level: "error", errorKey: "jdErrorProfile" });
+    });
+  }
+
+  if (recruiterUI) {
+    jdFile.addEventListener("change", function () {
+      var file = jdFile.files && jdFile.files[0] ? jdFile.files[0] : null;
+      var token = ++jdState.fileToken;
+      jdState.fileName = file && file.name ? file.name : "";
+      jdState.extractedText = "";
+      jdState.extractedSource = "";
+      setJdFileName();
+      clearJdResult();
+
+      if (!file) {
+        setJdStatus("idle");
+        return;
+      }
+
+      var lowerName = jdState.fileName.toLowerCase();
+      if (!/\.pdf$|\.docx$/.test(lowerName)) {
+        setJdStatus("error", { level: "error", errorKey: "jdErrorFileType" });
+        return;
+      }
+      if (typeof file.size === "number" && file.size > (10 * 1024 * 1024)) {
+        setJdStatus("error", { level: "error", errorKey: "jdErrorFileSize" });
+        return;
+      }
+      if (!window.JDExtractor || typeof window.JDExtractor.extract !== "function") {
+        setJdStatus("error", { level: "error", errorKey: "jdErrorUnavailable" });
+        return;
+      }
+
+      setJdStatus("reading");
+      window.JDExtractor.extract(file).then(function (payload) {
+        if (token !== jdState.fileToken) return;
+        jdState.extractedText = payload && payload.text ? payload.text : "";
+        jdState.extractedSource = payload && payload.source === "docx" ? "docx" : "pdf";
+        setJdStatus("loaded", {
+          level: jdState.extractedText ? "success" : "error",
+          source: jdState.extractedSource,
+          warnings: (payload && payload.warnings ? payload.warnings : []).map(localizeExtractorMessage)
+        });
+      }).catch(function (err) {
+        if (token !== jdState.fileToken) return;
+        jdState.extractedText = "";
+        jdState.extractedSource = /\.docx$/.test(lowerName) ? "docx" : "pdf";
+        setJdStatus("error", {
+          level: "error",
+          errorKey: extractorErrorKey(err && err.message)
+        });
+      });
+    });
+
+    jdAnalyze.addEventListener("click", analyzeRecruiterMatch);
+    jdClear.addEventListener("click", resetRecruiterState);
+  }
+
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     send(input.value);
   });
   chips.addEventListener("click", function (e) {
     var btn = e.target.closest("button");
-    if (btn) send(btn.textContent);
+    if (!btn) return;
+    if (btn.id === "chat-jd-toggle") {
+      setRecruiterOpen(!jdState.open);
+      return;
+    }
+    send(btn.textContent);
   });
 })();
