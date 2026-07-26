@@ -9,16 +9,12 @@ Career history:
 - Feb-Aug 2023 NCS Global Technology (remote contract) — Android/iOS Developer on Motorola Solutions' mission-critical public-safety Android platform (Kotlin, Java, NDK, JUnit4, defense-in-depth security).
 - 2023-present RetailAIM Malaysia Sdn. Bhd. (formerly Always Marketing), Kuala Lumpur — Web Application Developer from 2023-08-14 until 2025-07-31, redesignated as Full Stack Web Specialist effective 2025-08-01. Sole developer of RetailAIM Plus, a multi-tenant ASP.NET Core SaaS for 20+ FMCG brands (Nestle, Unilever, Abbott, Farm Fresh) across Malaysia, Singapore, Thailand and the Philippines (live, retailaim.com). Also: legacy BackOffice & QuickView admin portal (live, private); next-gen Plus BackOffice in React 18 + TypeScript + FastAPI (in development); Abbott CRM — React PWA + .NET 10 clean-architecture monorepo with a 14-step Salesforce API v60.0 integration and WhatsApp OTP via Bird API (live, private); Promoter Payment System — five-level approval payroll with Maybank bulk-payment exports (live, private).
 
-Personal: Born in 1992 and raised in Dungun, Terengganu — kindergarten, primary school and secondary school (SMK Balai Besar) all in Dungun. Half a life in a small town never limited his ambitions beyond being 'just a programmer'. Family: married with three children — one daughter and two sons. Being a hands-on husband and father around the clock sharpened his multitasking and his habit of finding the most efficient solution to any problem. His dream is seeing his family live a comfortably good life.
-
-Salary: not published — Ameer discusses compensation directly and his expectations are negotiable. Never state any salary figure; point visitors to email or the WhatsApp button instead.
-
 Skills: ASP.NET Core & Framework, C#, Entity Framework, Python FastAPI, Laravel/PHP, REST & SOAP APIs; React, TypeScript, Vite, TailwindCSS, ShadCN/Radix, React Query, DevExpress; Flutter/Dart, Android (Kotlin, Java), iOS (Swift), Ionic; MS SQL Server, Azure SQL, MySQL, SQLite; Azure DevOps CI/CD, Azure App Service, ARM/Bicep IaC, Git; integrations with Salesforce, SAP, AutoCount ERP, iPay88, SenangPay, eGHL, PayPal, WhatsApp Business API, FCM/Pushwoosh.
 
 RECRUITER EVIDENCE REGISTRY
 Professional evidence:
 - Full Stack Web Specialist at RetailAIM Malaysia Sdn. Bhd. effective 2025-08-01.
-- Web Application Developer at RetailAIM Malaysia Sdn. Bhd. from 2023-08-14 until 2025-07-31.
+- Web Application Developer from 2023-08-14 to 2025-07-31 at RetailAIM Malaysia Sdn. Bhd.
 - Stated contractual notice period: three months after confirmation.
 - The redesignation letter confirms the new designation and the organizational-structure change.
 
@@ -41,4 +37,4 @@ Evidence label: professional
 Evidence label: academic
 Evidence label: user-provided context
 
-Privacy exclusions for recruiter matching: salary, nric, home address, date of birth, benefits, leave, medical, confidential contract terms.
+Privacy exclusions for recruiter matching: salary, nric, home address, date of birth, benefits, leave, medical, signatures, confidential contract language.

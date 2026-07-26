@@ -19,7 +19,15 @@
       "employer": "RetailAIM Malaysia Sdn. Bhd.",
       "from": "2025-08-01",
       "evidenceType": "employment-document",
-      "context": "Redesignation followed outstanding performance in the previous role and organizational restructuring."
+      "sourceDistinction": {
+        "letterConfirmedFacts": [
+          "Full Stack Web Specialist effective 2025-08-01.",
+          "The redesignation letter confirms the organizational-structure change."
+        ],
+        "userProvidedContext": [
+          "Outstanding performance in the previous role."
+        ]
+      }
     }
   ],
   "education": [
@@ -160,7 +168,20 @@
         "ClinicPlus",
         "Contractor4U"
       ],
-      "evidenceType": "mixed"
+      "evidenceRecords": [
+        {
+          "name": "Bus Ticketing System",
+          "evidenceType": "academic"
+        },
+        {
+          "name": "ClinicPlus",
+          "evidenceType": "professional"
+        },
+        {
+          "name": "Contractor4U",
+          "evidenceType": "professional"
+        }
+      ]
     },
     {
       "name": "React",
@@ -380,7 +401,20 @@
         "SIRIM Check Your Label",
         "Mobile Road Tax Sticker Recognizer"
       ],
-      "evidenceType": "mixed"
+      "evidenceRecords": [
+        {
+          "name": "Motorola Public Safety Platform",
+          "evidenceType": "professional"
+        },
+        {
+          "name": "SIRIM Check Your Label",
+          "evidenceType": "professional"
+        },
+        {
+          "name": "Mobile Road Tax Sticker Recognizer",
+          "evidenceType": "academic"
+        }
+      ]
     },
     {
       "name": "Kotlin",
@@ -598,6 +632,7 @@
     "benefits",
     "leave",
     "medical",
-    "confidential contract terms"
+    "signatures",
+    "confidential contract language"
   ]
 }

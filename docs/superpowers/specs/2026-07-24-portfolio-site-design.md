@@ -41,9 +41,10 @@ If regenerating the site from scratch, feed this whole document to the builder.
 ## Recruiter evidence registry notes
 
 - RetailAIM role transition for recruiter-facing materials: Web Application Developer from 2023-08-14 to 2025-07-31, then Full Stack Web Specialist effective 2025-08-01.
-- Public notice wording for recruiter-facing materials: stated contractual notice period of three months after confirmation.
-- The redesignation letter confirms the Full Stack Web Specialist effective 2025-08-01 change and the organizational-structure change; the outstanding-performance context is user-provided context supplied by Ameer.
+- Public notice wording for recruiter-facing materials: Stated contractual notice period: three months after confirmation.
+- The redesignation letter confirms the Full Stack Web Specialist effective 2025-08-01 change and the organizational-structure change; the outstanding performance context is user-provided context supplied by Ameer.
 - Recruiter-facing education facts: Diploma in Computer Science, UiTM Dungun, completed May 2013, CGPA 3.03; Bachelor of Information Technology (Hons.) Intelligent Systems Engineering, UiTM Shah Alam, completed April 2016, CGPA 2.79.
+- Recruiter-facing privacy exclusions: salary, nric, home address, date of birth, benefits, leave, medical, signatures, confidential contract language.
 - Recruiter-facing academic subject clusters:
   - Diploma: Structured Programming, Object-Oriented Programming, Web Application Development, Database Management Systems, Data Structures, Operating Systems, Information Systems Development, Networking, Visual Programming, Programming Paradigms.
   - Degree: Algorithms, Algorithm Analysis, Artificial Intelligence Programming Paradigms, Artificial Neural Networks, Knowledge-Based Systems, Fuzzy Logic, Data Mining, Evolutionary Algorithms, Intelligent Decision Support Systems, Intelligent Agents, IT Project Management, Ethical, Social and Professional Issues, Industrial Attachment.
