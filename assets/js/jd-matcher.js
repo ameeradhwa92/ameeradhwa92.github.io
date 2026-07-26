@@ -171,6 +171,7 @@
     return {
       canonical: name,
       category: category || inferCategory(name),
+      aliases: [],
       evidence: [],
       evidenceType: null,
       hasProfessional: false,
@@ -223,6 +224,8 @@
     function registerAlias(alias, entry) {
       var key = normalizeKey(alias);
       if (!key) return;
+      if (!Array.isArray(entry.aliases)) entry.aliases = [];
+      if (entry.aliases.indexOf(alias) === -1) entry.aliases.push(alias);
       aliasMap[key] = entry;
     }
 
@@ -402,23 +405,132 @@
     return false;
   }
 
+  function collectAliasOccurrences(source, index) {
+    var normalized = normalizeKey(source);
+    if (!normalized) return [];
+
+    var occurrences = [];
+    var keys = Object.keys(index.aliasMap).sort(function (left, right) { return right.length - left.length || left.localeCompare(right); });
+    for (var keyIndex = 0; keyIndex < keys.length; keyIndex += 1) {
+      var key = keys[keyIndex];
+      var fromIndex = 0;
+      while (fromIndex <= normalized.length - key.length) {
+        var foundAt = normalized.indexOf(key, fromIndex);
+        if (foundAt === -1) break;
+        if (hasAliasBoundaries(normalized, key, foundAt)) {
+          if (!AMBIGUOUS_SHORT_ALIASES[key] || hasUppercaseShortAlias(source, key)) {
+            occurrences.push({
+              entry: index.aliasMap[key],
+              aliasKey: key,
+              start: foundAt,
+              end: foundAt + key.length
+            });
+          }
+        }
+        fromIndex = foundAt + 1;
+      }
+    }
+
+    occurrences.sort(function (left, right) {
+      var leftLength = left.end - left.start;
+      var rightLength = right.end - right.start;
+      return left.start - right.start ||
+        rightLength - leftLength ||
+        left.aliasKey.localeCompare(right.aliasKey) ||
+        left.entry.canonical.localeCompare(right.entry.canonical);
+    });
+
+    var kept = [];
+    var seen = Object.create(null);
+    for (var occurrenceIndex = 0; occurrenceIndex < occurrences.length; occurrenceIndex += 1) {
+      var candidate = occurrences[occurrenceIndex];
+      var candidateKey = [
+        normalizeKey(candidate.entry.canonical),
+        candidate.start,
+        candidate.end
+      ].join("|");
+      if (seen[candidateKey]) continue;
+
+      var contained = false;
+      for (var keptIndex = 0; keptIndex < kept.length; keptIndex += 1) {
+        var existing = kept[keptIndex];
+        if (candidate.start >= existing.start && candidate.end <= existing.end) {
+          contained = true;
+          break;
+        }
+      }
+      if (contained) continue;
+
+      seen[candidateKey] = true;
+      kept.push(candidate);
+    }
+    return kept;
+  }
+
   function findAliasMatches(source, index) {
     var matches = [];
     var seen = Object.create(null);
-    var keys = Object.keys(index.aliasMap).sort(function (left, right) { return right.length - left.length; });
-    for (var keyIndex = 0; keyIndex < keys.length; keyIndex += 1) {
-      var key = keys[keyIndex];
-      if (!aliasMatches(source, key)) continue;
-      var entry = index.aliasMap[key];
-      var canonicalKey = normalizeKey(entry.canonical);
-      if (seen[canonicalKey]) continue;
-      seen[canonicalKey] = true;
-      matches.push(entry);
+    var occurrences = collectAliasOccurrences(source, index);
+    for (var occurrenceIndex = 0; occurrenceIndex < occurrences.length; occurrenceIndex += 1) {
+      var occurrence = occurrences[occurrenceIndex];
+      var matchKey = [
+        normalizeKey(occurrence.entry.canonical),
+        occurrence.start,
+        occurrence.end
+      ].join("|");
+      if (seen[matchKey]) continue;
+      seen[matchKey] = true;
+      matches.push(occurrence);
     }
     return matches;
   }
 
-  function createAliasRequirement(entry, source, strength, heading) {
+  function findBestAliasOccurrence(source, entry, preferredAlias) {
+    var variants = [];
+    var seen = Object.create(null);
+
+    function addVariant(value) {
+      var key = normalizeKey(value);
+      if (!key || seen[key]) return;
+      seen[key] = true;
+      variants.push(key);
+    }
+
+    addVariant(preferredAlias);
+    addVariant(entry && entry.canonical);
+    var aliases = Array.isArray(entry && entry.aliases) ? entry.aliases : [];
+    for (var aliasIndex = 0; aliasIndex < aliases.length; aliasIndex += 1) addVariant(aliases[aliasIndex]);
+
+    var normalized = normalizeKey(source);
+    var best = null;
+    for (var variantIndex = 0; variantIndex < variants.length; variantIndex += 1) {
+      var key = variants[variantIndex];
+      var fromIndex = 0;
+      while (fromIndex <= normalized.length - key.length) {
+        var foundAt = normalized.indexOf(key, fromIndex);
+        if (foundAt === -1) break;
+        if (hasAliasBoundaries(normalized, key, foundAt)) {
+          if (!AMBIGUOUS_SHORT_ALIASES[key] || hasUppercaseShortAlias(source, key)) {
+            var candidate = {
+              aliasKey: key,
+              start: foundAt,
+              end: foundAt + key.length
+            };
+            if (!best ||
+              candidate.start < best.start ||
+              (candidate.start === best.start && (candidate.end - candidate.start) > (best.end - best.start)) ||
+              (candidate.start === best.start && candidate.end === best.end && candidate.aliasKey === normalizeKey(preferredAlias))) {
+              best = candidate;
+            }
+          }
+        }
+        fromIndex = foundAt + 1;
+      }
+    }
+    return best;
+  }
+
+  function createAliasRequirement(entry, source, strength, heading, aliasMatch) {
     return {
       term: entry.canonical,
       original: String(source || "").replace(/\s+/g, " ").trim(),
@@ -426,6 +538,7 @@
       heading: heading || null,
       category: entry.category,
       aliasEntry: entry,
+      aliasMatch: aliasMatch || findBestAliasOccurrence(source, entry, entry.canonical),
       yearsRequired: null,
       normalizedText: normalizeKey(source)
     };
@@ -511,7 +624,15 @@
         continue;
       }
       var atomicEntry = index.aliasMap[normalizeKey(atomic.term)] || resolveAlias(atomic.term, index);
-      if (atomicEntry) addRequirement(createAliasRequirement(atomicEntry, sourceText, atomic.strength, atomic.section));
+      if (atomicEntry) {
+        addRequirement(createAliasRequirement(
+          atomicEntry,
+          sourceText,
+          atomic.strength,
+          atomic.section,
+          findBestAliasOccurrence(sourceText, atomicEntry, atomic.term)
+        ));
+      }
     }
 
     var sections = Array.isArray(normalizedJd && normalizedJd.sections) ? normalizedJd.sections : [];
@@ -532,14 +653,72 @@
           }
           var aliases = findAliasMatches(source, index);
           for (var aliasIndex = 0; aliasIndex < aliases.length; aliasIndex += 1) {
-            addRequirement(createAliasRequirement(aliases[aliasIndex], source, section.strength, section.heading));
+            addRequirement(createAliasRequirement(aliases[aliasIndex].entry, source, section.strength, section.heading, aliases[aliasIndex]));
             foundSpecific = true;
           }
           if (!foundSpecific) addRequirement(createGenericRequirement(source, section.strength, section.heading, index));
         }
       }
     }
-    return requirements;
+    return dedupeNestedAliasRequirements(requirements);
+  }
+
+  function dedupeNestedAliasRequirements(requirements) {
+    var keep = [];
+    var groups = Object.create(null);
+
+    for (var index = 0; index < requirements.length; index += 1) {
+      var requirement = requirements[index];
+      if (!requirement || !requirement.aliasEntry || !requirement.aliasMatch) {
+        keep.push(requirement);
+        continue;
+      }
+      var groupKey = [
+        requirement.normalizedText,
+        normalizeKey(requirement.heading),
+        requirement.strength
+      ].join("|");
+      if (!groups[groupKey]) groups[groupKey] = [];
+      groups[groupKey].push(requirement);
+    }
+
+    var groupKeys = Object.keys(groups);
+    for (var groupIndex = 0; groupIndex < groupKeys.length; groupIndex += 1) {
+      var group = groups[groupKeys[groupIndex]];
+      group.sort(function (left, right) {
+        var leftLength = left.aliasMatch.end - left.aliasMatch.start;
+        var rightLength = right.aliasMatch.end - right.aliasMatch.start;
+        return rightLength - leftLength ||
+          left.aliasMatch.start - right.aliasMatch.start ||
+          left.term.localeCompare(right.term);
+      });
+
+      var kept = [];
+      for (var itemIndex = 0; itemIndex < group.length; itemIndex += 1) {
+        var candidate = group[itemIndex];
+        var contained = false;
+        for (var keptIndex = 0; keptIndex < kept.length; keptIndex += 1) {
+          var existing = kept[keptIndex];
+          if (candidate.aliasMatch.start >= existing.aliasMatch.start &&
+              candidate.aliasMatch.end <= existing.aliasMatch.end &&
+              normalizeKey(candidate.term) !== normalizeKey(existing.term)) {
+            contained = true;
+            break;
+          }
+        }
+        if (!contained) kept.push(candidate);
+      }
+
+      kept.sort(function (left, right) {
+        return left.aliasMatch.start - right.aliasMatch.start ||
+          left.term.localeCompare(right.term);
+      });
+      for (var keptRequirementIndex = 0; keptRequirementIndex < kept.length; keptRequirementIndex += 1) {
+        keep.push(kept[keptRequirementIndex]);
+      }
+    }
+
+    return keep;
   }
 
   function classifyRequirement(requirement, index) {

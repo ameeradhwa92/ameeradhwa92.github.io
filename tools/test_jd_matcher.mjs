@@ -108,6 +108,44 @@ test("collapses aliases into one canonical skill match", () => {
   assert.equal(categoryScore(result, "coreTechnologies"), 35);
 });
 
+test("keeps Azure SQL as the only strong match when Azure is just a nested alias inside the same requirement", () => {
+  const result = scoreText(`
+    Required Skills
+    Azure SQL
+  `);
+  const strongTerms = Array.from(result.strongMatches, (match) => match.term);
+
+  assert.deepEqual(strongTerms, ["Azure SQL"]);
+  assert.equal(result.strongMatches.some((match) => match.term === "Azure"), false);
+  assert.equal(categoryScore(result, "architectureDeliveryCloud"), 15);
+});
+
+test("keeps React Query as the only strong match when React is just a nested alias inside the same requirement", () => {
+  const result = scoreText(`
+    Required Skills
+    React Query
+  `);
+  const strongTerms = Array.from(result.strongMatches, (match) => match.term);
+
+  assert.deepEqual(strongTerms, ["React Query"]);
+  assert.equal(result.strongMatches.some((match) => match.term === "React"), false);
+  assert.equal(categoryScore(result, "coreTechnologies"), 35);
+});
+
+test("preserves separate strong matches for unrelated technologies while dropping nested umbrella aliases", () => {
+  const result = scoreText(`
+    Required Skills
+    Azure SQL and React Query
+  `);
+  const strongTerms = Array.from(result.strongMatches, (match) => match.term);
+
+  assert.deepEqual(strongTerms, ["Azure SQL", "React Query"]);
+  assert.equal(result.strongMatches.some((match) => match.term === "Azure"), false);
+  assert.equal(result.strongMatches.some((match) => match.term === "React"), false);
+  assert.equal(categoryScore(result, "coreTechnologies"), 35);
+  assert.equal(categoryScore(result, "architectureDeliveryCloud"), 15);
+});
+
 test("labels academic-only evidence as partial instead of professional certainty", () => {
   const result = scoreText(`
     Required Skills
