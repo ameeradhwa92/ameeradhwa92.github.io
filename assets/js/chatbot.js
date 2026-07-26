@@ -65,6 +65,88 @@
     "information and suggest asking Ameer directly — the chat will show WhatsApp and email buttons for that. " +
     "Never invent projects, employers, dates or links.\n\n";
 
+  var JD_EXPLANATION_JD_MAX = 12000;
+  var JD_EXPLANATION_RESULT_MAX = 12000;
+  var JD_EXPLANATION_DISCLAIMERS = {
+    en: "This is an estimated compatibility score based only on the job description and Ameer's published profile. It is not an objective hiring decision, technical assessment, or guarantee of suitability.",
+    ms: "Ini ialah skor keserasian anggaran yang berasaskan hanya pada huraian jawatan dan profil terbitan Ameer. Ia bukan keputusan pengambilan pekerja yang objektif, penilaian teknikal, atau jaminan kesesuaian."
+  };
+
+  /* ---------------- recruiter explanation payload helpers ---------------- */
+  function cloneSimple(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function clipText(value, maxChars) {
+    return String(value || "").replace(/\s+/g, " ").trim().slice(0, maxChars);
+  }
+
+  function compactExplanationList(items, maxItems) {
+    return (Array.isArray(items) ? items : []).slice(0, maxItems).map(function (item) {
+      return {
+        term: clipText(item && item.term, 120),
+        label: clipText(item && item.label, 220),
+        evidenceType: clipText(item && item.evidenceType, 32),
+        evidence: (Array.isArray(item && item.evidence) ? item.evidence : []).slice(0, 3).map(function (entry) {
+          return clipText(entry, 140);
+        })
+      };
+    });
+  }
+
+  function compactExplanationResult(result) {
+    var compact = {
+      score: Math.round((Number(result && result.score) || 0) * 10) / 10,
+      confidence: {
+        label: clipText(result && result.confidence && result.confidence.label, 16),
+        reasons: (Array.isArray(result && result.confidence && result.confidence.reasons)
+          ? result.confidence.reasons : []).slice(0, 3).map(function (reason) {
+            return clipText(reason, 180);
+          })
+      },
+      categories: cloneSimple(result && result.categories ? result.categories : {}),
+      strongMatches: compactExplanationList(result && result.strongMatches, 6),
+      partialMatches: compactExplanationList(result && result.partialMatches, 6),
+      gaps: compactExplanationList(result && result.gaps, 6),
+      unverified: compactExplanationList(result && result.unverified, 6),
+      interviewTopics: compactExplanationList(result && result.interviewTopics, 6)
+    };
+    while (JSON.stringify(compact).length > JD_EXPLANATION_RESULT_MAX) {
+      if (compact.unverified.length) compact.unverified.pop();
+      else if (compact.gaps.length) compact.gaps.pop();
+      else if (compact.partialMatches.length) compact.partialMatches.pop();
+      else if (compact.strongMatches.length) compact.strongMatches.pop();
+      else if (compact.interviewTopics.length) compact.interviewTopics.pop();
+      else if (compact.confidence.reasons.length) compact.confidence.reasons.pop();
+      else break;
+    }
+    return compact;
+  }
+
+  function buildJdExplanationPayload(normalizedText, result, language) {
+    var lang = language === "ms" ? "ms" : "en";
+    return {
+      mode: "jd-explanation",
+      language: lang,
+      messages: [{
+        role: "user",
+        content: lang === "ms"
+          ? "Terangkan keputusan padanan huraian jawatan ini tanpa mengubah skor deterministik."
+          : "Explain this job-description match result without changing the deterministic score."
+      }],
+      jdText: clipText(normalizedText, JD_EXPLANATION_JD_MAX),
+      matchResult: compactExplanationResult(result || {}),
+      disclaimer: JD_EXPLANATION_DISCLAIMERS[lang]
+    };
+  }
+
+  if (!window.AIMeerRecruiter) window.AIMeerRecruiter = {};
+  window.AIMeerRecruiter.buildExplanationPayload = buildJdExplanationPayload;
+  window.AIMeerRecruiter.jdExplanationLimits = {
+    jdText: JD_EXPLANATION_JD_MAX,
+    resultChars: JD_EXPLANATION_RESULT_MAX
+  };
+
   var WA_NUMBER = "60139610053"; /* +60 13-961 0053 in wa.me format */
   var EMAIL = "ameeradhwa92@gmail.com";
 
@@ -153,7 +235,15 @@
       jdCategoryDomainIntegrations: "Domain and integrations",
       jdCategoryMobile: "Mobile delivery",
       jdCategoryEducationCoursework: "Education and coursework",
-      jdCategoryLanguagesCommunication: "Languages and communication"
+      jdCategoryLanguagesCommunication: "Languages and communication",
+      jdExplainAction: "Explain this result with AIMeer",
+      jdExplainLoading: "Generating explanation…",
+      jdExplainTitle: "AIMeer explanation",
+      jdExplainHintLocal: "This explanation stays on this device and uses the deterministic score shown above.",
+      jdExplainHintCloud: "This explanation uses secure cloud AI and sends only a bounded normalized JD plus the deterministic result to AIMeer's Worker.",
+      jdExplainHintWaiting: "On-device AIMeer is still getting ready. This explanation will stay on this device once the local model is ready.",
+      jdExplainHintUnavailable: "AI explanation is unavailable right now. The deterministic score above remains the authoritative result.",
+      jdExplainError: "AIMeer could not explain this result right now. The deterministic score above remains the authoritative result."
     },
     ms: {
       greeting: "Salam sejahtera! Saya AIMeer — kembar AI Ameer. Tanya saya tentang kerjaya, projek dan kemahiran beliau, atau tekan cadangan di bawah. Mod AI penuh disediakan secara automatik — pada peranti anda jika mampu, melalui awan selamat jika tidak.",
@@ -238,7 +328,15 @@
       jdCategoryDomainIntegrations: "Domain dan integrasi",
       jdCategoryMobile: "Penyampaian mudah alih",
       jdCategoryEducationCoursework: "Pendidikan dan kerja kursus",
-      jdCategoryLanguagesCommunication: "Bahasa dan komunikasi"
+      jdCategoryLanguagesCommunication: "Bahasa dan komunikasi",
+      jdExplainAction: "Terangkan keputusan ini dengan AIMeer",
+      jdExplainLoading: "Sedang menjana penjelasan…",
+      jdExplainTitle: "Penjelasan AIMeer",
+      jdExplainHintLocal: "Penjelasan ini kekal pada peranti ini dan menggunakan skor deterministik yang dipaparkan di atas.",
+      jdExplainHintCloud: "Penjelasan ini menggunakan AI awan selamat dan menghantar hanya JD ternormal terhad serta keputusan deterministik ke Worker AIMeer.",
+      jdExplainHintWaiting: "AIMeer setempat masih disediakan. Penjelasan ini akan kekal pada peranti ini sebaik sahaja model setempat siap.",
+      jdExplainHintUnavailable: "Penjelasan AI tidak tersedia sekarang. Skor deterministik di atas kekal sebagai keputusan autoritatif.",
+      jdExplainError: "AIMeer tidak dapat menerangkan keputusan ini sekarang. Skor deterministik di atas kekal sebagai keputusan autoritatif."
     }
   };
   function lang() { return root.dataset.lang === "ms" ? "ms" : "en"; }
@@ -387,7 +485,12 @@
     extractedText: "",
     extractedSource: "",
     result: null,
+    normalizedText: "",
     resultSource: "",
+    explanation: "",
+    explanationMode: "",
+    explanationBusy: false,
+    explanationError: "",
     statusKind: "idle",
     statusLevel: "",
     statusSource: "",
@@ -462,8 +565,33 @@
 
   function clearJdResult() {
     jdState.result = null;
+    jdState.normalizedText = "";
     jdState.resultSource = "";
+    jdState.explanation = "";
+    jdState.explanationMode = "";
+    jdState.explanationBusy = false;
+    jdState.explanationError = "";
     if (recruiterUI) jdResult.innerHTML = "";
+  }
+
+  function explanationLanguage() {
+    return root.getAttribute("data-lang") === "ms" ? "ms" : "en";
+  }
+
+  function getJdExplanationMode() {
+    if (!jdState.result || !jdState.normalizedText) return "unavailable";
+    if (aiState === "ready" && engine) return "local";
+    if (localOK && aiState === "loading" && preferredMode !== "cloud") return "waiting";
+    if (aiState === "cloud" || ((!localOK || preferredMode === "cloud" || route === "cloud") && cloudOk)) return "cloud";
+    if (localOK && (route === "local" || preferredMode === "local")) return "waiting";
+    return "unavailable";
+  }
+
+  function explanationHintKey(mode) {
+    return mode === "local" ? "jdExplainHintLocal"
+      : mode === "cloud" ? "jdExplainHintCloud"
+        : mode === "waiting" ? "jdExplainHintWaiting"
+          : "jdExplainHintUnavailable";
   }
 
   function setJdStatus(kind, options) {
@@ -560,6 +688,34 @@
     return section;
   }
 
+  function renderJdExplanation(section) {
+    var mode = getJdExplanationMode();
+    var explainSection = createJdNode("section", "chat-jd-section");
+    explainSection.appendChild(createJdNode("h6", "", t("jdExplainTitle")));
+    explainSection.appendChild(createJdNode("p", "chat-jd-hint", t(explanationHintKey(mode))));
+
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "chat-jd-action" + (mode === "local" ? " chat-jd-action-primary" : "");
+    button.textContent = jdState.explanationBusy ? t("jdExplainLoading") : t("jdExplainAction");
+    button.disabled = jdState.explanationBusy || mode === "waiting" || mode === "unavailable";
+    button.addEventListener("click", requestJdExplanation);
+    explainSection.appendChild(button);
+
+    if (jdState.explanationError) {
+      explainSection.appendChild(createJdNode("p", "chat-jd-status is-error", jdState.explanationError));
+    }
+
+    if (jdState.explanation) {
+      jdState.explanation.split(/\n{2,}/).forEach(function (paragraph) {
+        var text = paragraph.replace(/\s+/g, " ").trim();
+        if (text) explainSection.appendChild(createJdNode("p", "", text));
+      });
+    }
+
+    section.appendChild(explainSection);
+  }
+
   function renderJdResult() {
     if (!recruiterUI) return;
     jdResult.innerHTML = "";
@@ -615,6 +771,7 @@
     jdResult.appendChild(renderMatchItems("jdResultGaps", result.gaps || [], "gap"));
     jdResult.appendChild(renderMatchItems("jdResultUnverified", result.unverified || [], "unverified"));
     jdResult.appendChild(renderInterviewTopics(result.interviewTopics || []));
+    renderJdExplanation(jdResult);
   }
 
   function resetRecruiterState() {
@@ -1117,6 +1274,87 @@
     });
   }
 
+  function explainJdLocally(payload) {
+    return ensureKB().then(function (kb) {
+      if (!engine) throw new Error("local-unavailable");
+      return engine.chat.completions.create({
+        messages: [
+          {
+            role: "system",
+            content:
+              PROMPT_HEAD + kb +
+              "\n\nYou are explaining a deterministic recruiter match result that was already scored locally. " +
+              "Do not recalculate the score or invent new evidence. Preserve distinctions between professional evidence, " +
+              "academic exposure, and user-provided context. Never present academic exposure as professional experience. " +
+              "Repeat this estimate disclaimer verbatim as the first sentence: \"" + payload.disclaimer + "\" " +
+              "Then explain the supplied score, category breakdown, strong matches, partial matches, published evidence gaps, " +
+              "unverified requirements, and suggested interview topics in 3-6 short sentences."
+          },
+          {
+            role: "user",
+            content:
+              payload.messages[0].content +
+              "\n\nNormalized JD:\n" + payload.jdText +
+              "\n\nDeterministic match result JSON:\n" + JSON.stringify(payload.matchResult)
+          }
+        ],
+        stream: false,
+        temperature: 0.2,
+        max_tokens: 320
+      });
+    }).then(function (res) {
+      var reply = res && res.choices && res.choices[0] && res.choices[0].message
+        ? String(res.choices[0].message.content || "").trim()
+        : "";
+      if (!reply) throw new Error("local-empty");
+      return reply;
+    });
+  }
+
+  function explainJdViaCloud(payload) {
+    return fetch(CLOUD_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(function (r) {
+      if (!r.ok) throw new Error("cloud-" + r.status);
+      return r.json();
+    }).then(function (d) {
+      var reply = String((d && d.reply) || "").trim();
+      if (!reply) throw new Error("cloud-empty");
+      return reply;
+    });
+  }
+
+  function requestJdExplanation() {
+    if (!jdState.result || !jdState.normalizedText || jdState.explanationBusy) return;
+    var mode = getJdExplanationMode();
+    if (mode === "waiting" || mode === "unavailable") {
+      jdState.explanationError = t("jdExplainError");
+      renderJdResult();
+      return;
+    }
+    var payload = buildJdExplanationPayload(jdState.normalizedText, jdState.result, explanationLanguage());
+    jdState.explanationBusy = true;
+    jdState.explanationError = "";
+    jdState.explanationMode = mode;
+    renderJdResult();
+
+    var runner = mode === "local" ? explainJdLocally(payload) : explainJdViaCloud(payload);
+    runner.then(function (reply) {
+      jdState.explanationBusy = false;
+      jdState.explanation = reply;
+      jdState.explanationError = "";
+      renderJdResult();
+    }).catch(function (err) {
+      if (window.console && console.warn) console.warn("JD explanation failed:", err);
+      jdState.explanationBusy = false;
+      jdState.explanation = "";
+      jdState.explanationError = t("jdExplainError");
+      renderJdResult();
+    });
+  }
+
   /* ---------------- whatsapp / email handoff ---------------- */
   function mechanicalSummary() {
     var qs = [];
@@ -1296,7 +1534,14 @@
       var warnings = (normalized.warnings || []).map(localizeExtractorMessage);
       var result = window.JDMatcher.scoreJobDescription(normalized, profile);
       jdState.result = result;
+      jdState.normalizedText = normalized && normalized.normalizedText
+        ? normalized.normalizedText
+        : (normalized && normalized.rawText ? normalized.rawText : text);
       jdState.resultSource = source || "paste";
+      jdState.explanation = "";
+      jdState.explanationMode = "";
+      jdState.explanationBusy = false;
+      jdState.explanationError = "";
       renderJdResult();
       setJdStatus("scored", {
         level: "success",
