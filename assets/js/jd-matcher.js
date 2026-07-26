@@ -44,10 +44,16 @@
     "salary expectations"
   ];
 
+  var AMBIGUOUS_SHORT_ALIASES = {
+    ts: true,
+    ef: true,
+    arm: true
+  };
+
   var UMBRELLA_ALIASES = [
     {
       canonical: "Azure",
-      aliases: ["azure", "cloud", "microsoft azure"],
+      aliases: ["azure", "microsoft azure"],
       category: "architectureDeliveryCloud",
       skillNames: ["Azure SQL", "Azure DevOps", "Azure App Service", "Bicep"]
     },
@@ -109,6 +115,38 @@
     var total = years * 12 + months;
     if (end.getUTCDate() >= start.getUTCDate()) total += 1;
     return Math.max(0, total);
+  }
+
+  function mergeCareerIntervals(intervals, fallbackEnd) {
+    var normalized = [];
+    for (var index = 0; index < intervals.length; index += 1) {
+      var interval = intervals[index] || {};
+      var start = new Date(String(interval.from || "") + "T00:00:00Z");
+      var endText = interval.to || fallbackEnd;
+      var end = new Date(String(endText || "") + "T00:00:00Z");
+      if (isNaN(start) || isNaN(end) || end < start) continue;
+      normalized.push({ start: start, end: end });
+    }
+    normalized.sort(function (left, right) { return left.start - right.start; });
+
+    var merged = [];
+    for (var itemIndex = 0; itemIndex < normalized.length; itemIndex += 1) {
+      var item = normalized[itemIndex];
+      var previous = merged.length ? merged[merged.length - 1] : null;
+      if (previous && item.start <= new Date(previous.end.getTime() + 86400000)) {
+        if (item.end > previous.end) previous.end = item.end;
+      } else {
+        merged.push({ start: item.start, end: item.end });
+      }
+    }
+    return merged;
+  }
+
+  function intervalMonths(interval) {
+    return monthsBetween(
+      interval.start.toISOString().slice(0, 10),
+      interval.end.toISOString().slice(0, 10)
+    );
   }
 
   function hasPrivacyTerm(text, exclusions) {
@@ -283,11 +321,22 @@
       }
     }
 
-    var roles = Array.isArray(profile && profile.roles) ? profile.roles : [];
+    var verifiedTenure = profile && profile.verifiedTenure && typeof profile.verifiedTenure === "object"
+      ? profile.verifiedTenure
+      : {};
+    var roles = Array.isArray(verifiedTenure.intervals) && verifiedTenure.intervals.length
+      ? verifiedTenure.intervals
+      : (Array.isArray(profile && profile.roles) ? profile.roles : []);
+    var mergedIntervals = mergeCareerIntervals(roles, verifiedTenure.asOf || profile.profileVersion || "2026-07-26");
     var documentedMonths = 0;
-    for (var roleIndex = 0; roleIndex < roles.length; roleIndex += 1) {
-      documentedMonths += monthsBetween(roles[roleIndex].from, roles[roleIndex].to || (profile.profileVersion || "2026-07-26"));
+    for (var roleIndex = 0; roleIndex < mergedIntervals.length; roleIndex += 1) {
+      documentedMonths += intervalMonths(mergedIntervals[roleIndex]);
     }
+    var minimumYears = Number(verifiedTenure.minimumYears) || 0;
+    var documentedYears = Math.max(roundScore(documentedMonths / 12), minimumYears);
+    var tenureEvidence = Array.isArray(verifiedTenure.evidence) && verifiedTenure.evidence.length
+      ? verifiedTenure.evidence.slice()
+      : ["Published role intervals establish approximately " + documentedYears + " years of professional tenure."];
 
     return {
       aliasMap: aliasMap,
@@ -300,7 +349,8 @@
       professionalEvidence: professionalEvidence,
       academicEvidence: academicEvidence,
       userProvidedEvidence: userProvidedEvidence,
-      documentedYears: roundScore(documentedMonths / 12)
+      documentedYears: documentedYears,
+      tenureEvidence: tenureEvidence
     };
   }
 
@@ -321,24 +371,94 @@
       .filter(Boolean);
   }
 
-  function createRequirement(source, strength, heading, index) {
+  function hasAliasBoundaries(normalizedText, aliasKey, startIndex) {
+    var before = startIndex > 0 ? normalizedText.charAt(startIndex - 1) : "";
+    var afterIndex = startIndex + aliasKey.length;
+    var after = afterIndex < normalizedText.length ? normalizedText.charAt(afterIndex) : "";
+    return !/[a-z0-9]/.test(before) && !/[a-z0-9]/.test(after);
+  }
+
+  function hasUppercaseShortAlias(source, aliasKey) {
+    var upper = aliasKey.toUpperCase();
+    var pattern = new RegExp("(^|[^A-Za-z0-9])" + upper + "([^A-Za-z0-9]|$)");
+    return pattern.test(String(source || ""));
+  }
+
+  function aliasMatches(source, alias) {
+    var normalized = normalizeKey(source);
+    var key = normalizeKey(alias);
+    if (!normalized || !key) return false;
+    if (normalized === key) return true;
+
+    var fromIndex = 0;
+    while (fromIndex <= normalized.length - key.length) {
+      var foundAt = normalized.indexOf(key, fromIndex);
+      if (foundAt === -1) return false;
+      if (hasAliasBoundaries(normalized, key, foundAt)) {
+        if (!AMBIGUOUS_SHORT_ALIASES[key] || hasUppercaseShortAlias(source, key)) return true;
+      }
+      fromIndex = foundAt + 1;
+    }
+    return false;
+  }
+
+  function findAliasMatches(source, index) {
+    var matches = [];
+    var seen = Object.create(null);
+    var keys = Object.keys(index.aliasMap).sort(function (left, right) { return right.length - left.length; });
+    for (var keyIndex = 0; keyIndex < keys.length; keyIndex += 1) {
+      var key = keys[keyIndex];
+      if (!aliasMatches(source, key)) continue;
+      var entry = index.aliasMap[key];
+      var canonicalKey = normalizeKey(entry.canonical);
+      if (seen[canonicalKey]) continue;
+      seen[canonicalKey] = true;
+      matches.push(entry);
+    }
+    return matches;
+  }
+
+  function createAliasRequirement(entry, source, strength, heading) {
+    return {
+      term: entry.canonical,
+      original: String(source || "").replace(/\s+/g, " ").trim(),
+      strength: strength || "neutral",
+      heading: heading || null,
+      category: entry.category,
+      aliasEntry: entry,
+      yearsRequired: null,
+      normalizedText: normalizeKey(source)
+    };
+  }
+
+  function createYearsRequirement(yearsMatch, source, strength, heading) {
+    return {
+      term: yearsMatch[1] + (yearsMatch[2] ? "+ years" : " years"),
+      original: String(source || "").replace(/\s+/g, " ").trim(),
+      strength: strength || "neutral",
+      heading: heading || null,
+      category: "professionalExperience",
+      aliasEntry: null,
+      yearsRequired: Number(yearsMatch[1]),
+      normalizedText: normalizeKey(source)
+    };
+  }
+
+  function createGenericRequirement(source, strength, heading, index) {
     var text = String(source || "").replace(/\s+/g, " ").trim();
     if (!text) return null;
     if (hasPrivacyTerm(text, index.privacyExclusions)) return { ignored: true };
-    var yearsMatch = text.match(/\b(\d+)\s*(\+|plus)?\s+years?\b/i);
-    var normalized = normalizeKey(text);
     var resolved = resolveAlias(text, index);
-    var category = resolved ? resolved.category : inferCategory(text);
-    if (yearsMatch) category = "professionalExperience";
+    if (resolved) return createAliasRequirement(resolved, text, strength, heading);
     return {
-      term: yearsMatch ? yearsMatch[1] + (yearsMatch[2] ? "+ years" : " years") : (resolved ? resolved.canonical : toTitleCase(text)),
+      term: toTitleCase(text),
       original: text,
       strength: strength || "neutral",
       heading: heading || null,
-      category: category,
-      aliasEntry: resolved,
-      yearsRequired: yearsMatch ? Number(yearsMatch[1]) : null,
-      normalizedText: normalized
+      category: inferCategory(text),
+      aliasEntry: null,
+      yearsRequired: null,
+      normalizedText: normalizeKey(text)
     };
   }
 
@@ -346,11 +466,8 @@
     var normalized = normalizeKey(text);
     if (!normalized) return null;
     if (index.aliasMap[normalized]) return index.aliasMap[normalized];
-    var keys = Object.keys(index.aliasMap).sort(function (left, right) { return right.length - left.length; });
-    for (var keyIndex = 0; keyIndex < keys.length; keyIndex += 1) {
-      var key = keys[keyIndex];
-      if (normalized === key || normalized.indexOf(key) !== -1) return index.aliasMap[key];
-    }
+    var matches = findAliasMatches(text, index);
+    if (matches.length) return matches[0];
     if (index.educationTerms[normalized]) {
       return {
         canonical: index.educationTerms[normalized],
@@ -368,6 +485,35 @@
   function extractRequirements(normalizedJd, index) {
     var requirements = [];
     var seen = Object.create(null);
+
+    function addRequirement(requirement) {
+      if (!requirement || requirement.ignored) return;
+      var dedupeKey = [requirement.category, normalizeKey(requirement.term)].join("|");
+      var existingIndex = seen[dedupeKey];
+      if (existingIndex !== undefined) {
+        var existing = requirements[existingIndex];
+        var existingStrength = STRENGTH_FACTOR[existing.strength] || STRENGTH_FACTOR.neutral;
+        var nextStrength = STRENGTH_FACTOR[requirement.strength] || STRENGTH_FACTOR.neutral;
+        if (nextStrength > existingStrength) requirements[existingIndex] = requirement;
+        return;
+      }
+      seen[dedupeKey] = requirements.length;
+      requirements.push(requirement);
+    }
+
+    var normalizedTerms = Array.isArray(normalizedJd && normalizedJd.terms) ? normalizedJd.terms : [];
+    for (var termIndex = 0; termIndex < normalizedTerms.length; termIndex += 1) {
+      var atomic = normalizedTerms[termIndex] || {};
+      var sourceText = atomic.sourceText || atomic.term || "";
+      var atomicYears = String(atomic.term || "").match(/^(\d+)\s*(\+)?\s+years?$/i);
+      if (atomicYears) {
+        addRequirement(createYearsRequirement(atomicYears, sourceText, atomic.strength, atomic.section));
+        continue;
+      }
+      var atomicEntry = index.aliasMap[normalizeKey(atomic.term)] || resolveAlias(atomic.term, index);
+      if (atomicEntry) addRequirement(createAliasRequirement(atomicEntry, sourceText, atomic.strength, atomic.section));
+    }
+
     var sections = Array.isArray(normalizedJd && normalizedJd.sections) ? normalizedJd.sections : [];
     var sourceSections = sections.length ? sections : [{ heading: null, strength: "neutral", lines: String(normalizedJd && normalizedJd.normalizedText || "").split("\n") }];
     for (var sectionIndex = 0; sectionIndex < sourceSections.length; sectionIndex += 1) {
@@ -377,12 +523,19 @@
         var parts = splitLine(lines[lineIndex]);
         if (!parts.length) parts = [String(lines[lineIndex] || "").trim()];
         for (var partIndex = 0; partIndex < parts.length; partIndex += 1) {
-          var requirement = createRequirement(parts[partIndex], section.strength || "neutral", section.heading, index);
-          if (!requirement || requirement.ignored) continue;
-          var dedupeKey = [requirement.category, normalizeKey(requirement.term)].join("|");
-          if (seen[dedupeKey]) continue;
-          seen[dedupeKey] = true;
-          requirements.push(requirement);
+          var source = parts[partIndex];
+          var foundSpecific = false;
+          var yearsMatch = String(source || "").match(/\b(\d+)\s*(\+|plus)?\s+years?\b/i);
+          if (yearsMatch) {
+            addRequirement(createYearsRequirement(yearsMatch, source, section.strength, section.heading));
+            foundSpecific = true;
+          }
+          var aliases = findAliasMatches(source, index);
+          for (var aliasIndex = 0; aliasIndex < aliases.length; aliasIndex += 1) {
+            addRequirement(createAliasRequirement(aliases[aliasIndex], source, section.strength, section.heading));
+            foundSpecific = true;
+          }
+          if (!foundSpecific) addRequirement(createGenericRequirement(source, section.strength, section.heading, index));
         }
       }
     }
@@ -399,7 +552,7 @@
           category: requirement.category,
           classification: "strong",
           evidenceType: "professional",
-          evidence: ["Documented roles establish approximately " + index.documentedYears + " years of professional tenure."],
+          evidence: index.tenureEvidence.slice(),
           strength: requirement.strength,
           strengthFactor: strengthFactor
         };
@@ -410,7 +563,7 @@
         category: requirement.category,
         classification: "gap",
         evidenceType: "professional",
-        evidence: ["Documented roles establish approximately " + index.documentedYears + " years of professional tenure."],
+        evidence: index.tenureEvidence.slice(),
         strength: requirement.strength,
         strengthFactor: strengthFactor
       };
@@ -548,34 +701,6 @@
     };
   }
 
-  function scoreSupportCategory(key, weight, technicalRequirements, classifications, index) {
-    var totalWeight = 0;
-    var matchedWeight = 0;
-    for (var reqIndex = 0; reqIndex < technicalRequirements.length; reqIndex += 1) {
-      totalWeight += STRENGTH_FACTOR[technicalRequirements[reqIndex].strength] || STRENGTH_FACTOR.neutral;
-    }
-    for (var classIndex = 0; classIndex < classifications.length; classIndex += 1) {
-      var classification = classifications[classIndex];
-      if (technicalRequirements.map(function (item) { return normalizeKey(item.term); }).indexOf(normalizeKey(classification.term)) === -1) continue;
-      if (key === "professionalExperience" && classification.evidenceType === "professional" && classification.classification === "strong") {
-        matchedWeight += classification.strengthFactor;
-      }
-      if (key === "educationCoursework" && index.hasRelevantDegree && (classification.classification === "strong" || classification.classification === "partial")) {
-        matchedWeight += classification.strengthFactor;
-      }
-    }
-    var score = totalWeight ? weight * (matchedWeight / totalWeight) : 0;
-    return {
-      key: key,
-      label: CATEGORY_META[key].label,
-      weight: weight,
-      score: roundScore(score),
-      matchedRequirements: totalWeight ? technicalRequirements.length : 0,
-      totalRequirements: technicalRequirements.length,
-      matchedTerms: technicalRequirements.map(function (item) { return item.term; })
-    };
-  }
-
   function buildConfidence(score, requirements, classifications) {
     var total = requirements.length;
     var strongCount = classifications.filter(function (item) { return item.classification === "strong"; }).length;
@@ -629,21 +754,9 @@
       classifications.push(classifyRequirement(requirements[reqIndex], index));
     }
 
-    var technicalRequirements = requirements.filter(function (item) {
-      return ["coreTechnologies", "architectureDeliveryCloud", "domainIntegrations", "mobile"].indexOf(item.category) !== -1;
-    });
-
     var categoryScores = {};
     for (var catIndex = 0; catIndex < CATEGORY_ORDER.length; catIndex += 1) {
       var key = CATEGORY_ORDER[catIndex];
-      if (key === "professionalExperience" && !requirements.some(function (item) { return item.category === key; })) {
-        categoryScores[key] = scoreSupportCategory(key, CATEGORY_META[key].weight, technicalRequirements, classifications, index);
-        continue;
-      }
-      if (key === "educationCoursework" && !requirements.some(function (item) { return item.category === key; })) {
-        categoryScores[key] = scoreSupportCategory(key, CATEGORY_META[key].weight, technicalRequirements, classifications, index);
-        continue;
-      }
       categoryScores[key] = scoreCategory(requirements, classifications, key);
     }
 

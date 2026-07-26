@@ -164,6 +164,13 @@ test("normalization extracts terms from inline heading remainders", async () => 
   assert.ok(normalized.terms.some((term) => term.term === "React" && term.strength === "preferred"));
 });
 
+test("normalization warns when generic pasted text has no recognized headings", async () => {
+  const { extractor } = await loadExtractor();
+  const normalized = extractor.normalize("Build production systems with React and SQL Server.");
+
+  assert.ok(normalized.warnings.some((warning) => /generic text only/i.test(warning)));
+});
+
 test("production self-hosted JSZip loader resolves the local vendor asset path", async () => {
   const { extractor, context } = await loadExtractor({ injectJSZip: false });
   const docxResult = await extractor.extract(await makeFile("jd-sample.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"));

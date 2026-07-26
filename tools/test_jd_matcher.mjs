@@ -63,11 +63,11 @@ test("scores required modern .NET stack deterministically with explicit category
     Azure
   `);
 
-  assert.equal(result.score, 80);
+  assert.equal(result.score, 50);
   assert.equal(categoryScore(result, "coreTechnologies"), 35);
-  assert.equal(categoryScore(result, "professionalExperience"), 20);
+  assert.equal(categoryScore(result, "professionalExperience"), 0);
   assert.equal(categoryScore(result, "architectureDeliveryCloud"), 15);
-  assert.equal(categoryScore(result, "educationCoursework"), 10);
+  assert.equal(categoryScore(result, "educationCoursework"), 0);
   assert.equal(categoryScore(result, "domainIntegrations"), 0);
   assert.ok(result.strongMatches.some((match) => match.term === "ASP.NET Core"));
   assert.ok(result.strongMatches.some((match) => match.term === "React"));
@@ -127,8 +127,8 @@ test("uses a real gaps bucket for explicitly unmet profile-addressable requireme
     COBOL
   `);
 
-  assert.ok(result.gaps.some((match) => match.term === "5+ years"));
-  assert.ok(result.gaps.some((match) => /documented professional tenure/i.test(match.label)));
+  assert.ok(result.strongMatches.some((match) => match.term === "5+ years"));
+  assert.equal(result.gaps.some((match) => match.term === "5+ years"), false);
   assert.ok(result.unverified.some((match) => /cobol/i.test(match.term)));
   assert.equal(result.gaps.some((match) => match.term === "Cobol"), false);
 });
@@ -192,4 +192,73 @@ test("does not surface salary details from recruiter prompts", () => {
   assert.equal(/salary/i.test(unverifiedTerms), false);
   assert.equal(/salary/i.test(JSON.stringify(result.evidence.professional || [])), false);
   assert.ok((result.evidence.privacyExclusions || []).includes("salary"));
+});
+
+test("does not treat prose suffixes as ambiguous short technology aliases", () => {
+  const result = scoreText(`
+    Required Skills
+    Requirements gathering and stakeholder workshops
+  `);
+
+  assert.equal(result.strongMatches.some((match) => match.term === "TypeScript"), false);
+  assert.equal(result.partialMatches.some((match) => match.term === "TypeScript"), false);
+});
+
+test("does not match Java inside JavaScript", () => {
+  const result = scoreText(`
+    Required Skills
+    JavaScript
+  `);
+
+  assert.equal(result.strongMatches.some((match) => match.term === "Java"), false);
+  assert.equal(result.partialMatches.some((match) => match.term === "Java"), false);
+});
+
+test("retains technology and tenure requirements from the same prose line", () => {
+  const result = scoreText(`
+    Required Skills
+    5+ years of React production experience
+  `);
+
+  assert.ok(result.strongMatches.some((match) => match.term === "React"));
+  assert.ok(result.strongMatches.some((match) => match.term === "5+ years"));
+});
+
+test("finds every technology in multi-technology prose", () => {
+  const result = scoreText(`
+    Required Skills
+    Production delivery using ASP.NET Core, React, TypeScript, SQL Server and Azure.
+  `);
+  const strongTerms = result.strongMatches.map((match) => match.term);
+
+  for (const term of ["ASP.NET Core", "React", "TypeScript", "SQL Server", "Azure"]) {
+    assert.ok(strongTerms.includes(term), `Expected a strong ${term} match`);
+  }
+});
+
+test("verified public career tenure satisfies 5-, 10-, and 12-year requirements", () => {
+  for (const years of [5, 10, 12]) {
+    const result = scoreText(`
+      Required Skills
+      ${years}+ years of professional software delivery experience
+    `);
+
+    assert.ok(
+      result.strongMatches.some((match) => match.term === `${years}+ years`),
+      `Expected ${years}+ years to be backed by verified tenure`
+    );
+    assert.equal(result.gaps.some((match) => match.term === `${years}+ years`), false);
+  }
+});
+
+test("does not award seniority or education points when the JD omits those categories", () => {
+  const result = scoreText(`
+    Required Skills
+    ASP.NET Core, React and SQL Server
+  `);
+
+  assert.equal(categoryScore(result, "professionalExperience"), 0);
+  assert.equal(categoryScore(result, "educationCoursework"), 0);
+  assert.equal(result.categories.professionalExperience.totalRequirements, 0);
+  assert.equal(result.categories.educationCoursework.totalRequirements, 0);
 });

@@ -356,6 +356,7 @@
     var current = null;
     var terms = [];
     var dedupe = Object.create(null);
+    var recognizedHeading = false;
 
     function pushCurrent() {
       if (!current) return;
@@ -369,6 +370,7 @@
       if (!line) continue;
       var heading = resolveHeading(line);
       if (heading) {
+        recognizedHeading = true;
         pushCurrent();
         current = {
           heading: heading.heading,
@@ -390,7 +392,7 @@
 
     pushCurrent();
 
-    if (!sections.length && normalizedText.trim()) {
+    if (!recognizedHeading && normalizedText.trim()) {
       warnings.push("No recognizable section headings were found; matching will use generic text only.");
     }
 

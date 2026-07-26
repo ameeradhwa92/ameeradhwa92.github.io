@@ -89,7 +89,7 @@ window.I18N_MS = {
 
   "era6.year": "Ogo 2023 — Kini · Kuala Lumpur",
   "era6.title": "Era SaaS — RetailAIM®",
-  "era6.role": "<b>RetailAIM Malaysia Sdn. Bhd.</b> (dahulunya Always Marketing) · Pembangun Aplikasi Web → <b>Pakar Web Tindanan Penuh</b> (Jan 2025)",
+  "era6.role": "<b>RetailAIM Malaysia Sdn. Bhd.</b> (dahulunya Always Marketing) · Pembangun Aplikasi Web → <b>Pakar Web Tindanan Penuh</b> (berkuat kuasa 1 Ogos 2025)",
   "era6.desc": "Pembangun tunggal <b>RetailAIM® Plus</b> — platform SaaS ASP.NET Core berbilang penyewa yang melayani lebih 20 jenama FMCG serta operasi lapangan DemoPower di empat buah negara. Kini membina semula pejabat belakang dalam <b>React + FastAPI</b>, memindahkan CRM Abbott kepada monorepo <b>seni bina bersih .NET 10</b>, dan mengendalikan setiap saluran paip Azure DevOps yang melancarkan kesemuanya.",
 
   "raplus.client": "20+ jenama FMCG · MY SG TH PH",

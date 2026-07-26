@@ -67,16 +67,21 @@
 
   var JD_EXPLANATION_JD_MAX = 12000;
   var JD_EXPLANATION_RESULT_MAX = 12000;
+  var JD_EXPLANATION_CATEGORY_KEYS = [
+    "coreTechnologies",
+    "professionalExperience",
+    "architectureDeliveryCloud",
+    "domainIntegrations",
+    "mobile",
+    "educationCoursework",
+    "languagesCommunication"
+  ];
   var JD_EXPLANATION_DISCLAIMERS = {
     en: "This is an estimated compatibility score based only on the job description and Ameer's published profile. It is not an objective hiring decision, technical assessment, or guarantee of suitability.",
     ms: "Ini ialah skor keserasian anggaran yang berasaskan hanya pada huraian jawatan dan profil terbitan Ameer. Ia bukan keputusan pengambilan pekerja yang objektif, penilaian teknikal, atau jaminan kesesuaian."
   };
 
   /* ---------------- recruiter explanation payload helpers ---------------- */
-  function cloneSimple(value) {
-    return JSON.parse(JSON.stringify(value));
-  }
-
   function clipText(value, maxChars) {
     return String(value || "").replace(/\s+/g, " ").trim().slice(0, maxChars);
   }
@@ -94,6 +99,33 @@
     });
   }
 
+  function compactExplanationCategories(categories) {
+    var source = categories && typeof categories === "object" ? categories : {};
+    var compact = {};
+    JD_EXPLANATION_CATEGORY_KEYS.forEach(function (key) {
+      var item = source[key];
+      if (!item || typeof item !== "object") return;
+      compact[key] = {
+        score: Math.max(0, Math.min(100, Number(item.score) || 0)),
+        weight: Math.max(0, Math.min(100, Number(item.weight) || 0))
+      };
+      if (typeof item.key === "string") compact[key].key = clipText(item.key, 64);
+      if (typeof item.label === "string") compact[key].label = clipText(item.label, 120);
+      if (Number.isInteger(item.matchedRequirements)) {
+        compact[key].matchedRequirements = Math.max(0, Math.min(100, item.matchedRequirements));
+      }
+      if (Number.isInteger(item.totalRequirements)) {
+        compact[key].totalRequirements = Math.max(0, Math.min(100, item.totalRequirements));
+      }
+      if (Array.isArray(item.matchedTerms)) {
+        compact[key].matchedTerms = item.matchedTerms.slice(0, 50).map(function (term) {
+          return clipText(term, 120);
+        });
+      }
+    });
+    return compact;
+  }
+
   function compactExplanationResult(result) {
     var compact = {
       score: Math.round((Number(result && result.score) || 0) * 10) / 10,
@@ -104,7 +136,7 @@
             return clipText(reason, 180);
           })
       },
-      categories: cloneSimple(result && result.categories ? result.categories : {}),
+      categories: compactExplanationCategories(result && result.categories),
       strongMatches: compactExplanationList(result && result.strongMatches, 6),
       partialMatches: compactExplanationList(result && result.partialMatches, 6),
       gaps: compactExplanationList(result && result.gaps, 6),
@@ -148,6 +180,14 @@
     return requestToken === currentToken;
   }
 
+  function nextAnalysisToken(current) {
+    return (Number(current) || 0) + 1;
+  }
+
+  function canApplyAnalysisToken(requestToken, currentToken) {
+    return requestToken === currentToken;
+  }
+
   function computeJdExplanationMode(state) {
     if (!state || !state.hasResult || !state.hasNormalizedText) return "unavailable";
     if (state.hasEngine && state.aiState === "ready") return "local";
@@ -167,6 +207,8 @@
   window.AIMeerRecruiter.getExplanationMode = computeJdExplanationMode;
   window.AIMeerRecruiter.nextExplanationToken = nextExplanationToken;
   window.AIMeerRecruiter.canApplyExplanationToken = canApplyExplanationToken;
+  window.AIMeerRecruiter.nextAnalysisToken = nextAnalysisToken;
+  window.AIMeerRecruiter.canApplyAnalysisToken = canApplyAnalysisToken;
   window.AIMeerRecruiter.jdExplanationLimits = {
     jdText: JD_EXPLANATION_JD_MAX,
     resultChars: JD_EXPLANATION_RESULT_MAX
@@ -381,8 +423,8 @@
   var TOPICS = [
     {
       keys: /\b(now|today|current|kini|sekarang|retailaim|saas|fmcg|nestle|unilever|farm fresh|role|job|kerja|jawatan)\b/,
-      en: "Ameer is a Full Stack Web Specialist at RetailAIM Malaysia (since Aug 2023, promoted Jan 2025). He's the sole developer of RetailAIM® Plus — a multi-tenant ASP.NET Core SaaS used by 20+ FMCG brands like Nestlé, Unilever, Abbott and Farm Fresh across Malaysia, Singapore, Thailand and the Philippines. He's also rebuilding the back office in React + FastAPI and migrating the Abbott CRM to .NET 10.",
-      ms: "Ameer ialah Pakar Web Tindanan Penuh di RetailAIM Malaysia (sejak Ogos 2023, dinaikkan pangkat Jan 2025). Beliau pembangun tunggal RetailAIM® Plus — SaaS ASP.NET Core berbilang penyewa yang digunakan oleh lebih 20 jenama FMCG seperti Nestlé, Unilever, Abbott dan Farm Fresh di Malaysia, Singapura, Thailand dan Filipina. Beliau juga sedang membina semula pejabat belakang dalam React + FastAPI dan memindahkan CRM Abbott ke .NET 10."
+      en: "Ameer is a Full Stack Web Specialist at RetailAIM Malaysia, where he has worked since Aug 2023 and was redesignated effective 1 Aug 2025. The redesignation letter confirms the designation and organizational-structure change; the outstanding-performance context is supplied by Ameer. He's the sole developer of RetailAIM® Plus — a multi-tenant ASP.NET Core SaaS used by 20+ FMCG brands across Malaysia, Singapore, Thailand and the Philippines.",
+      ms: "Ameer ialah Pakar Web Tindanan Penuh di RetailAIM Malaysia, tempat beliau bekerja sejak Ogos 2023 dan ditukar penetapan jawatan berkuat kuasa 1 Ogos 2025. Surat penetapan semula mengesahkan jawatan dan perubahan struktur organisasi; konteks prestasi cemerlang dibekalkan oleh Ameer. Beliau pembangun tunggal RetailAIM® Plus — SaaS ASP.NET Core berbilang penyewa yang digunakan oleh lebih 20 jenama FMCG di Malaysia, Singapura, Thailand dan Filipina."
     },
     {
       keys: /\b(abbott|salesforce|crm|whatsapp|otp|bird)\b/,
@@ -517,6 +559,7 @@
     explanationBusy: false,
     explanationError: "",
     explanationRequestToken: 0,
+    analysisRequestToken: 0,
     statusKind: "idle",
     statusLevel: "",
     statusSource: "",
@@ -589,7 +632,10 @@
     jdFileName.textContent = jdState.fileName || t("jdFileEmpty");
   }
 
-  function clearJdResult() {
+  function clearJdResult(invalidateAnalysis) {
+    if (invalidateAnalysis !== false) {
+      jdState.analysisRequestToken = nextAnalysisToken(jdState.analysisRequestToken);
+    }
     jdState.explanationRequestToken = nextExplanationToken(jdState.explanationRequestToken);
     jdState.result = null;
     jdState.normalizedText = "";
@@ -1563,13 +1609,17 @@
       return;
     }
 
-    clearJdResult();
+    var requestToken = nextAnalysisToken(jdState.analysisRequestToken);
+    jdState.analysisRequestToken = requestToken;
+    clearJdResult(false);
     setJdStatus("scoring", { source: source });
 
     ensureProfile().then(function (profile) {
+      if (!canApplyAnalysisToken(requestToken, jdState.analysisRequestToken)) return;
       var normalized = window.JDExtractor.normalize(text);
       var warnings = (normalized.warnings || []).map(localizeExtractorMessage);
       var result = window.JDMatcher.scoreJobDescription(normalized, profile);
+      if (!canApplyAnalysisToken(requestToken, jdState.analysisRequestToken)) return;
       jdState.result = result;
       jdState.normalizedText = normalized && normalized.normalizedText
         ? normalized.normalizedText
@@ -1586,6 +1636,7 @@
         warnings: warnings
       });
     }).catch(function (err) {
+      if (!canApplyAnalysisToken(requestToken, jdState.analysisRequestToken)) return;
       if (window.console && console.warn) console.warn("Recruiter scoring failed:", err);
       clearJdResult();
       setJdStatus("error", { level: "error", errorKey: "jdErrorProfile" });
@@ -1599,6 +1650,7 @@
     jdFile.addEventListener("change", function () {
       var file = jdFile.files && jdFile.files[0] ? jdFile.files[0] : null;
       var token = ++jdState.fileToken;
+      jdInput.value = "";
       jdState.fileName = file && file.name ? file.name : "";
       jdState.extractedText = "";
       jdState.extractedSource = "";
@@ -1643,6 +1695,28 @@
           errorKey: extractorErrorKey(err && err.message)
         });
       });
+    });
+
+    jdInput.addEventListener("input", function () {
+      if (jdInput.value.trim() && (jdState.fileName || jdState.extractedText)) {
+        jdState.fileToken += 1;
+        jdState.fileName = "";
+        jdState.extractedText = "";
+        jdState.extractedSource = "";
+        jdFile.value = "";
+        setJdFileName();
+      }
+      clearJdResult();
+      if (jdInput.value.trim()) {
+        setJdStatus("pasted");
+      } else if (jdState.extractedText) {
+        setJdStatus("loaded", {
+          level: "success",
+          source: jdState.extractedSource
+        });
+      } else {
+        setJdStatus("idle");
+      }
     });
 
     jdAnalyze.addEventListener("click", analyzeRecruiterMatch);

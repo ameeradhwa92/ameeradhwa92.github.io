@@ -18,6 +18,16 @@ const ALLOWED_ORIGINS = [SITE, "http://localhost:8080", "http://127.0.0.1:8080"]
 const MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
 const JD_EXPLANATION_JD_MAX = 12000;
 const JD_EXPLANATION_RESULT_MAX = 12000;
+const JD_CATEGORY_KEYS = [
+  "coreTechnologies",
+  "professionalExperience",
+  "architectureDeliveryCloud",
+  "domainIntegrations",
+  "mobile",
+  "educationCoursework",
+  "languagesCommunication",
+];
+const JD_RESULT_LIST_KEYS = ["strongMatches", "partialMatches", "gaps", "unverified", "interviewTopics"];
 const JD_EXPLANATION_DISCLAIMERS = {
   en: "This is an estimated compatibility score based only on the job description and Ameer's published profile. It is not an objective hiring decision, technical assessment, or guarantee of suitability.",
   ms: "Ini ialah skor keserasian anggaran yang berasaskan hanya pada huraian jawatan dan profil terbitan Ameer. Ia bukan keputusan pengambilan pekerja yang objektif, penilaian teknikal, atau jaminan kesesuaian."
@@ -66,6 +76,9 @@ export default {
     } catch {
       return json({ error: "bad-json" }, 400, cors);
     }
+    if (!isPlainObject(body)) {
+      return json({ error: "invalid-body" }, 400, cors);
+    }
 
     if (!env.AI) {
       /* the Workers AI binding is missing: Settings → Bindings → Add → Workers AI,
@@ -76,7 +89,12 @@ export default {
     const mode = body.mode === "summary" ? "summary"
       : body.mode === "jd-explanation" ? "jd-explanation"
         : "chat";
-    const messages = sanitizeMessages(body.messages, mode === "jd-explanation" ? 2 : 10, 600);
+    if (mode === "jd-explanation" &&
+      (!Array.isArray(body.messages) || body.messages.length !== 1 ||
+        !body.messages[0] || body.messages[0].role !== "user")) {
+      return json({ error: "invalid-messages" }, 400, cors);
+    }
+    const messages = sanitizeMessages(body.messages, mode === "jd-explanation" ? 1 : 10, 600);
     if (!messages) return json({ error: "invalid-messages" }, 400, cors);
     if (!messages.length || messages[messages.length - 1].role !== "user") {
       return json({ error: "empty" }, 400, cors);
@@ -159,19 +177,108 @@ function sanitizeMessages(rawMessages, limit, maxChars) {
   }));
 }
 
+function isPlainObject(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasOnlyKeys(value, allowedKeys) {
+  return Object.keys(value).every((key) => allowedKeys.includes(key));
+}
+
+function isBoundedString(value, maxChars, allowEmpty = true) {
+  return typeof value === "string" && value.length <= maxChars && (allowEmpty || value.trim().length > 0);
+}
+
+function isNumberInRange(value, min, max) {
+  return typeof value === "number" && Number.isFinite(value) && value >= min && value <= max;
+}
+
+function isIntegerInRange(value, min, max) {
+  return Number.isInteger(value) && value >= min && value <= max;
+}
+
+function validateStringArray(value, maxItems, maxChars) {
+  return Array.isArray(value) && value.length <= maxItems &&
+    value.every((item) => isBoundedString(item, maxChars));
+}
+
+function validateMatchItem(item) {
+  if (!isPlainObject(item) ||
+    !hasOnlyKeys(item, ["term", "label", "evidenceType", "evidence"])) {
+    return false;
+  }
+  return isBoundedString(item.term, 120, false) &&
+    isBoundedString(item.label, 220) &&
+    isBoundedString(item.evidenceType, 32) &&
+    validateStringArray(item.evidence, 3, 140);
+}
+
+function validateCategory(category, categoryKey) {
+  if (!isPlainObject(category) ||
+    !hasOnlyKeys(category, ["key", "label", "weight", "score", "matchedRequirements", "totalRequirements", "matchedTerms"])) {
+    return false;
+  }
+  if (!isNumberInRange(category.score, 0, 100) ||
+    !isNumberInRange(category.weight, 0, 100) ||
+    category.score > category.weight) {
+    return false;
+  }
+  if (category.key !== undefined && category.key !== categoryKey) return false;
+  if (category.label !== undefined && !isBoundedString(category.label, 120)) return false;
+  if (category.matchedRequirements !== undefined &&
+    !isIntegerInRange(category.matchedRequirements, 0, 100)) return false;
+  if (category.totalRequirements !== undefined &&
+    !isIntegerInRange(category.totalRequirements, 0, 100)) return false;
+  if (category.matchedTerms !== undefined &&
+    !validateStringArray(category.matchedTerms, 50, 120)) return false;
+  return true;
+}
+
+function validateMatchResult(result) {
+  const allowedTopLevel = ["score", "confidence", "categories", ...JD_RESULT_LIST_KEYS];
+  if (!isPlainObject(result) || !hasOnlyKeys(result, allowedTopLevel) ||
+    !isNumberInRange(result.score, 0, 100)) {
+    return false;
+  }
+  if (!isPlainObject(result.confidence) ||
+    !hasOnlyKeys(result.confidence, ["label", "reasons"]) ||
+    !["low", "medium", "high"].includes(result.confidence.label) ||
+    !validateStringArray(result.confidence.reasons, 3, 180)) {
+    return false;
+  }
+  if (!isPlainObject(result.categories)) return false;
+  const categoryKeys = Object.keys(result.categories);
+  if (categoryKeys.length > JD_CATEGORY_KEYS.length ||
+    !categoryKeys.every((key) => JD_CATEGORY_KEYS.includes(key) && validateCategory(result.categories[key], key))) {
+    return false;
+  }
+  return JD_RESULT_LIST_KEYS.every((key) =>
+    Array.isArray(result[key]) &&
+    result[key].length <= 6 &&
+    result[key].every(validateMatchItem)
+  );
+}
+
 function validateJdExplanationBody(body) {
   const jdText = typeof body.jdText === "string" ? body.jdText.trim() : "";
   if (!jdText || jdText.length > JD_EXPLANATION_JD_MAX) {
     return { ok: false, error: "jd-text-invalid" };
   }
-  if (!body.matchResult || typeof body.matchResult !== "object" || Array.isArray(body.matchResult)) {
+  if (!validateMatchResult(body.matchResult)) {
     return { ok: false, error: "jd-result-invalid" };
   }
   const resultJson = JSON.stringify(body.matchResult);
   if (!resultJson || resultJson.length > JD_EXPLANATION_RESULT_MAX) {
     return { ok: false, error: "jd-result-invalid" };
   }
-  const language = body.language === "ms" ? "ms" : "en";
+  if (body.language !== "en" && body.language !== "ms") {
+    return { ok: false, error: "jd-language-invalid" };
+  }
+  const language = body.language;
+  if (body.disclaimer !== undefined &&
+    (typeof body.disclaimer !== "string" || body.disclaimer !== JD_EXPLANATION_DISCLAIMERS[language])) {
+    return { ok: false, error: "jd-disclaimer-invalid" };
+  }
   return {
     ok: true,
     jdText,

@@ -5,6 +5,36 @@
     "text": "Stated contractual notice period: three months after confirmation.",
     "evidenceType": "employment-document"
   },
+  "verifiedTenure": {
+    "minimumYears": 12,
+    "asOf": "2026-07-26",
+    "evidenceType": "public-career-history",
+    "evidence": [
+      "Published career history verifies 12+ years of professional software delivery across MyEMRO, TRM Nett Systems, NCS Global Technology, and RetailAIM Malaysia.",
+      "Overlapping August 2023 intervals are merged and counted once."
+    ],
+    "intervals": [
+      {
+        "employer": "MyEMRO Sdn. Bhd.",
+        "from": "2013-09-01",
+        "to": "2014-08-31"
+      },
+      {
+        "employer": "TRM Nett Systems (M) Sdn. Bhd.",
+        "from": "2015-03-01",
+        "to": "2023-01-31"
+      },
+      {
+        "employer": "NCS Global Technology Sdn. Bhd.",
+        "from": "2023-02-01",
+        "to": "2023-08-31"
+      },
+      {
+        "employer": "RetailAIM Malaysia Sdn. Bhd.",
+        "from": "2023-08-14"
+      }
+    ]
+  },
   "roles": [
     {
       "title": "Web Application Developer",

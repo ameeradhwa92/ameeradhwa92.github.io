@@ -901,10 +901,10 @@ body.modal-open { overflow: hidden; }
   word-break: break-word;
 }
 .chat-jd-disclaimer {
-  padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(217, 164, 65, 0.32);
-  background: rgba(217, 164, 65, 0.08); color: var(--paper); font-size: 0.75rem; line-height: 1.55;
+  padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(var(--teal-rgb), 0.3);
+  background: rgba(var(--teal-rgb), 0.07); color: var(--paper); font-size: 0.75rem; line-height: 1.55;
 }
-.chat-jd-status.is-error { color: var(--amber); }
+.chat-jd-status.is-error { color: var(--paper); }
 .chat-jd-status.is-success { color: var(--teal); }
 .chat-jd-result-wrap {
   display: grid; gap: 8px;
@@ -917,7 +917,7 @@ body.modal-open { overflow: hidden; }
 }
 .chat-jd-result-disclaimer {
   margin: 0; padding: 10px 12px; border-radius: 12px;
-  border: 1px solid rgba(217, 164, 65, 0.32); background: rgba(217, 164, 65, 0.08);
+  border: 1px solid rgba(var(--teal-rgb), 0.3); background: rgba(var(--teal-rgb), 0.07);
   color: var(--paper); font-size: 0.75rem; line-height: 1.55;
 }
 .chat-jd-score-row {
@@ -972,7 +972,7 @@ body.modal-open { overflow: hidden; }
   color: var(--paper); background: rgba(62, 207, 187, 0.09); border: 1px solid rgba(62, 207, 187, 0.24);
 }
 .chat-jd-badge.is-unverified, .chat-jd-badge.is-gap {
-  color: var(--amber); background: rgba(217, 164, 65, 0.08); border: 1px solid rgba(217, 164, 65, 0.24);
+  color: var(--muted); background: rgba(139, 149, 154, 0.1); border: 1px solid var(--line);
 }
 .chat-jd-term {
   color: var(--paper); font-weight: 600; word-break: break-word;

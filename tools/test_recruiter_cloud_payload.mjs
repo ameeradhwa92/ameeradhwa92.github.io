@@ -82,7 +82,9 @@ async function callWorker(worker, body, origin = "http://localhost:8080", envOve
 
 test("client helper builds a bounded jd-explanation payload without client system prompts", () => {
   const helper = loadExplanationHelper();
-  const payload = helper.buildExplanationPayload("ASP.NET Core ".repeat(2000), sampleResult(), "en");
+  const result = sampleResult();
+  result.categories.coreTechnologies.matchedTerms = Array.from({ length: 80 }, (_, index) => `Skill ${index}`);
+  const payload = helper.buildExplanationPayload("ASP.NET Core ".repeat(2000), result, "en");
 
   assert.equal(payload.mode, "jd-explanation");
   assert.equal(payload.language, "en");
@@ -91,6 +93,7 @@ test("client helper builds a bounded jd-explanation payload without client syste
   assert.equal(payload.messages.some((message) => message.role === "system"), false);
   assert.ok(payload.jdText.length <= helper.jdExplanationLimits.jdText);
   assert.ok(JSON.stringify(payload.matchResult).length <= helper.jdExplanationLimits.resultChars);
+  assert.ok(payload.matchResult.categories.coreTechnologies.matchedTerms.length <= 50);
   assert.match(payload.disclaimer, /estimated compatibility score/i);
 });
 
@@ -156,6 +159,19 @@ test("client helper token guards reject stale explanation responses after invali
   assert.equal(helper.canApplyExplanationToken(invalidated, invalidated), true);
 });
 
+test("client helper token guards reject stale recruiter analyses after invalidation", () => {
+  const helper = loadExplanationHelper();
+
+  assert.equal(typeof helper.nextAnalysisToken, "function");
+  assert.equal(typeof helper.canApplyAnalysisToken, "function");
+
+  const started = helper.nextAnalysisToken(0);
+  const invalidated = helper.nextAnalysisToken(started);
+
+  assert.equal(helper.canApplyAnalysisToken(started, started), true);
+  assert.equal(helper.canApplyAnalysisToken(started, invalidated), false);
+});
+
 test("worker keeps existing CORS rules for preflight and rejects disallowed origins", async () => {
   const { worker } = loadWorkerHarness();
 
@@ -205,6 +221,89 @@ test("worker rejects client system prompts and oversized jd-explanation payloads
   });
   assert.equal(oversizeResult.status, 400);
   assert.equal((await oversizeResult.json()).error, "jd-result-invalid");
+});
+
+test("worker requires exactly one user message for jd-explanation", async () => {
+  const { worker } = loadWorkerHarness();
+  const invalidMessageShapes = [
+    [{ role: "assistant", content: "Assistant first." }, { role: "user", content: "Explain it." }],
+    [{ role: "user", content: "First." }, { role: "user", content: "Second." }],
+    [{ role: "assistant", content: "Only assistant." }]
+  ];
+
+  for (const messages of invalidMessageShapes) {
+    const response = await callWorker(worker, {
+      mode: "jd-explanation",
+      messages,
+      jdText: "ASP.NET Core",
+      matchResult: sampleResult(),
+      language: "en"
+    });
+
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).error, "invalid-messages");
+  }
+});
+
+test("worker rejects malformed jd-explanation result schemas", async () => {
+  const { worker } = loadWorkerHarness();
+  const invalidResults = [
+    { ...sampleResult(), score: -1 },
+    { ...sampleResult(), score: 101 },
+    { ...sampleResult(), score: "82" },
+    { ...sampleResult(), categories: { unknownCategory: { score: 1, weight: 1 } } },
+    { ...sampleResult(), strongMatches: Array.from({ length: 7 }, () => sampleResult().strongMatches[0]) },
+    { ...sampleResult(), partialMatches: [{ ...sampleResult().partialMatches[0], evidence: "not-an-array" }] },
+    { ...sampleResult(), confidence: { label: "high", reasons: "not-an-array" } }
+  ];
+
+  for (const matchResult of invalidResults) {
+    const response = await callWorker(worker, {
+      mode: "jd-explanation",
+      messages: [{ role: "user", content: "Explain it." }],
+      jdText: "ASP.NET Core",
+      matchResult,
+      language: "en"
+    });
+
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).error, "jd-result-invalid");
+  }
+});
+
+test("worker rejects invalid jd-explanation body field types", async () => {
+  const { worker } = loadWorkerHarness();
+  const invalidBodies = [
+    null,
+    [],
+    {
+      mode: "jd-explanation",
+      messages: [{ role: "user", content: "Explain it." }],
+      jdText: 42,
+      matchResult: sampleResult(),
+      language: "en"
+    },
+    {
+      mode: "jd-explanation",
+      messages: [{ role: "user", content: "Explain it." }],
+      jdText: "ASP.NET Core",
+      matchResult: sampleResult(),
+      language: "fr"
+    },
+    {
+      mode: "jd-explanation",
+      messages: [{ role: "user", content: "Explain it." }],
+      jdText: "ASP.NET Core",
+      matchResult: sampleResult(),
+      language: "en",
+      disclaimer: 42
+    }
+  ];
+
+  for (const body of invalidBodies) {
+    const response = await callWorker(worker, body);
+    assert.equal(response.status, 400);
+  }
 });
 
 test("worker assembles the jd-explanation prompt server-side with KB and disclaimer", async () => {

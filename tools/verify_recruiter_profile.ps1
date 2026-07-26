@@ -5,6 +5,10 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $profilePath = Join-Path $repoRoot 'assets/data/aimeer-profile.json'
 $kbPath = Join-Path $repoRoot 'assets/data/aimeer-kb.txt'
 $specPath = Join-Path $repoRoot 'docs/superpowers/specs/2026-07-24-portfolio-site-design.md'
+$indexPath = Join-Path $repoRoot 'index.html'
+$i18nPath = Join-Path $repoRoot 'assets/js/i18n.js'
+$chatbotPath = Join-Path $repoRoot 'assets/js/chatbot.js'
+$resumeSourcePath = Join-Path $repoRoot 'docs/resume-source/resume.html'
 
 function Assert-True {
   param(
@@ -57,6 +61,10 @@ $profileRaw = Get-Content -Raw $profilePath
 $profile = $profileRaw | ConvertFrom-Json
 $kb = Get-Content -Raw $kbPath
 $spec = Get-Content -Raw $specPath
+$index = Get-Content -Raw $indexPath
+$i18n = Get-Content -Raw $i18nPath
+$chatbot = Get-Content -Raw $chatbotPath
+$resumeSource = Get-Content -Raw $resumeSourcePath
 
 Assert-True ($profile.profileVersion -eq '2026-07-26') 'Unexpected profileVersion.'
 Assert-True ($profile.noticePeriod.valueMonths -eq 3) 'Expected a three-month notice period.'
@@ -73,6 +81,10 @@ Assert-True ($previousRole.to -eq '2025-07-31') 'Previous-role end date must be 
 Assert-True ($currentRole.PSObject.Properties.Name -contains 'sourceDistinction') 'Current role must preserve source distinction.'
 Assert-True ($currentRole.sourceDistinction.PSObject.Properties.Name -contains 'letterConfirmedFacts') 'Missing letter-confirmed fact list.'
 Assert-True ($currentRole.sourceDistinction.PSObject.Properties.Name -contains 'userProvidedContext') 'Missing user-provided context list.'
+Assert-True ($profile.PSObject.Properties.Name -contains 'verifiedTenure') 'Missing source-backed verifiedTenure field.'
+Assert-True ([double]$profile.verifiedTenure.minimumYears -eq 12) 'Verified tenure must establish at least 12 years.'
+Assert-True (@($profile.verifiedTenure.intervals).Count -ge 4) 'Verified tenure must include the public career intervals.'
+Assert-True ($profile.verifiedTenure.evidenceType -eq 'public-career-history') 'Verified tenure must identify public career history as its source.'
 
 $requiredLetterFacts = @(
   'Full Stack Web Specialist effective 2025-08-01.',
@@ -84,6 +96,22 @@ $requiredUserContext = @(
 
 Assert-SetEqual $currentRole.sourceDistinction.letterConfirmedFacts $requiredLetterFacts 'Current-role letter-confirmed facts'
 Assert-SetEqual $currentRole.sourceDistinction.userProvidedContext $requiredUserContext 'Current-role user-provided context facts'
+
+$roleDateParity = @(
+  @{ Content = $index; Needle = 'Full Stack Web Specialist</b> (effective 1 Aug 2025)'; Label = 'English timeline' },
+  @{ Content = $i18n; Needle = '<b>Pakar Web Tindanan Penuh</b> (berkuat kuasa 1 Ogos 2025)'; Label = 'Bahasa Malaysia timeline' },
+  @{ Content = $chatbot; Needle = 'redesignated effective 1 Aug 2025'; Label = 'English instant chatbot answer' },
+  @{ Content = $chatbot; Needle = 'ditukar penetapan jawatan berkuat kuasa 1 Ogos 2025'; Label = 'Bahasa Malaysia instant chatbot answer' },
+  @{ Content = $resumeSource; Needle = 'Full Stack Web Specialist <small>— Aug 2025 – Present</small>'; Label = 'Resume current role' },
+  @{ Content = $resumeSource; Needle = 'Web Application Developer <small>— Aug 2023 – Jul 2025'; Label = 'Resume previous role' }
+)
+foreach ($surface in $roleDateParity) {
+  Assert-Contains $surface.Content $surface.Needle $surface.Label
+}
+
+foreach ($surface in @($index, $i18n, $chatbot, $resumeSource)) {
+  Assert-True (-not [regex]::IsMatch($surface, '(?i)(promoted|specialist|pakar)[^\r\n<]{0,60}Jan(?:uary)? 2025')) 'A public role surface still associates the redesignation with Jan 2025.'
+}
 
 $diploma = @($profile.education | Where-Object qualification -eq 'Diploma in Computer Science' | Select-Object -First 1)[0]
 $degree = @($profile.education | Where-Object qualification -eq 'Bachelor of Information Technology (Hons.) Intelligent Systems Engineering' | Select-Object -First 1)[0]
@@ -109,6 +137,7 @@ $profilePrivacy = @($profile.privacyExclusions)
 Assert-SetEqual $profilePrivacy $requiredPrivacyExclusions 'Profile privacy exclusions'
 
 $requiredFactSnippets = @(
+  'Verified tenure: 12+ years of professional software delivery',
   'Full Stack Web Specialist effective 2025-08-01',
   'Web Application Developer from 2023-08-14 to 2025-07-31',
   'Stated contractual notice period: three months after confirmation.',
@@ -126,7 +155,7 @@ foreach ($snippet in $requiredFactSnippets) {
   Assert-Contains $kb $snippet 'KB'
 }
 
-foreach ($snippet in $requiredFactSnippets[0..6]) {
+foreach ($snippet in $requiredFactSnippets[1..7]) {
   Assert-Contains $spec $snippet 'Design registry'
 }
 
