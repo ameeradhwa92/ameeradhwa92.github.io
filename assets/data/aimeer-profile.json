@@ -1,0 +1,603 @@
+{
+  "profileVersion": "2026-07-26",
+  "noticePeriod": {
+    "valueMonths": 3,
+    "text": "Stated contractual notice period: three months after confirmation.",
+    "evidenceType": "employment-document"
+  },
+  "roles": [
+    {
+      "title": "Web Application Developer",
+      "employer": "RetailAIM Malaysia Sdn. Bhd.",
+      "from": "2023-08-14",
+      "to": "2025-07-31",
+      "evidenceType": "employment-document",
+      "context": "Continuous tenure covering the pre-redesignation role before the 2025-08-01 redesignation."
+    },
+    {
+      "title": "Full Stack Web Specialist",
+      "employer": "RetailAIM Malaysia Sdn. Bhd.",
+      "from": "2025-08-01",
+      "evidenceType": "employment-document",
+      "context": "Redesignation followed outstanding performance in the previous role and organizational restructuring."
+    }
+  ],
+  "education": [
+    {
+      "qualification": "Diploma in Computer Science",
+      "institution": "UiTM Dungun",
+      "completed": "2013-05",
+      "cgpa": 3.03,
+      "evidenceType": "academic-document",
+      "subjects": [
+        "Structured Programming",
+        "Object-Oriented Programming",
+        "Web Application Development",
+        "Database Management Systems",
+        "Data Structures",
+        "Operating Systems",
+        "Information Systems Development",
+        "Networking",
+        "Visual Programming",
+        "Programming Paradigms"
+      ],
+      "projects": [
+        {
+          "name": "Bus Ticketing System",
+          "stack": [
+            "PHP"
+          ],
+          "evidenceType": "academic"
+        }
+      ]
+    },
+    {
+      "qualification": "Bachelor of Information Technology (Hons.) Intelligent Systems Engineering",
+      "institution": "UiTM Shah Alam",
+      "completed": "2016-04",
+      "cgpa": 2.79,
+      "evidenceType": "academic-document",
+      "subjects": [
+        "Algorithms",
+        "Algorithm Analysis",
+        "Artificial Intelligence Programming Paradigms",
+        "Artificial Neural Networks",
+        "Knowledge-Based Systems",
+        "Fuzzy Logic",
+        "Data Mining",
+        "Evolutionary Algorithms",
+        "Intelligent Decision Support Systems",
+        "Intelligent Agents",
+        "IT Project Management",
+        "Ethical, Social and Professional Issues",
+        "Industrial Attachment"
+      ],
+      "projects": [
+        {
+          "name": "Mobile Road Tax Sticker Recognizer",
+          "stack": [
+            "Android",
+            "Tesseract OCR"
+          ],
+          "evidenceType": "academic"
+        }
+      ]
+    }
+  ],
+  "skills": [
+    {
+      "name": "ASP.NET Core",
+      "aliases": [
+        ".net",
+        "asp.net",
+        "asp.net core",
+        "dotnet",
+        "dot net"
+      ],
+      "evidence": [
+        "RetailAIM Plus",
+        "RetailAIM Plus BackOffice",
+        "Abbott CRM Platform"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "C#",
+      "aliases": [
+        "c#",
+        "c sharp"
+      ],
+      "evidence": [
+        "RetailAIM Plus",
+        "Abbott CRM Platform",
+        "RetailAIM BackOffice & QuickView"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "Entity Framework",
+      "aliases": [
+        "entity framework",
+        "ef",
+        "ef core"
+      ],
+      "evidence": [
+        "RetailAIM Plus",
+        "RetailAIM BackOffice & QuickView"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "Python FastAPI",
+      "aliases": [
+        "python",
+        "fastapi",
+        "python fastapi"
+      ],
+      "evidence": [
+        "RetailAIM Plus BackOffice"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "Laravel",
+      "aliases": [
+        "laravel",
+        "php laravel"
+      ],
+      "evidence": [
+        "SPAN eCLAPS"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "PHP",
+      "aliases": [
+        "php"
+      ],
+      "evidence": [
+        "Bus Ticketing System",
+        "ClinicPlus",
+        "Contractor4U"
+      ],
+      "evidenceType": "mixed"
+    },
+    {
+      "name": "React",
+      "aliases": [
+        "react",
+        "react.js",
+        "reactjs"
+      ],
+      "evidence": [
+        "RetailAIM Plus BackOffice",
+        "Abbott CRM Platform"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "TypeScript",
+      "aliases": [
+        "typescript",
+        "ts"
+      ],
+      "evidence": [
+        "RetailAIM Plus BackOffice",
+        "Abbott CRM Platform"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "Vite",
+      "aliases": [
+        "vite"
+      ],
+      "evidence": [
+        "RetailAIM Plus BackOffice"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "Tailwind CSS",
+      "aliases": [
+        "tailwind",
+        "tailwindcss",
+        "tailwind css"
+      ],
+      "evidence": [
+        "RetailAIM Plus BackOffice"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "ShadCN",
+      "aliases": [
+        "shadcn",
+        "shadcn/ui"
+      ],
+      "evidence": [
+        "RetailAIM Plus BackOffice"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "Radix UI",
+      "aliases": [
+        "radix",
+        "radix ui"
+      ],
+      "evidence": [
+        "RetailAIM Plus BackOffice"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "React Query",
+      "aliases": [
+        "react query",
+        "tanstack query",
+        "tanstack react query"
+      ],
+      "evidence": [
+        "RetailAIM Plus BackOffice"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "DevExpress",
+      "aliases": [
+        "devexpress"
+      ],
+      "evidence": [
+        "RetailAIM BackOffice & QuickView",
+        "RetailAIM Plus"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "SQL Server",
+      "aliases": [
+        "sql server",
+        "mssql",
+        "ms sql",
+        "ms sql server"
+      ],
+      "evidence": [
+        "RetailAIM Plus",
+        "RetailAIM BackOffice & QuickView",
+        "Promoter Payment System"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "Azure SQL",
+      "aliases": [
+        "azure sql",
+        "azure sql database"
+      ],
+      "evidence": [
+        "RetailAIM Plus BackOffice"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "MySQL",
+      "aliases": [
+        "mysql",
+        "my sql"
+      ],
+      "evidence": [
+        "TRM delivery systems"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "SQLite",
+      "aliases": [
+        "sqlite"
+      ],
+      "evidence": [
+        "Mobile application projects"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "Azure DevOps",
+      "aliases": [
+        "azure devops",
+        "azure pipelines",
+        "azure repos",
+        "ci/cd",
+        "cicd"
+      ],
+      "evidence": [
+        "RetailAIM Plus",
+        "RetailAIM Plus BackOffice",
+        "Abbott CRM Platform"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "Azure App Service",
+      "aliases": [
+        "azure app service",
+        "app service"
+      ],
+      "evidence": [
+        "RetailAIM production deployments",
+        "Abbott CRM Platform"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "Bicep",
+      "aliases": [
+        "bicep",
+        "arm",
+        "arm template",
+        "infrastructure as code",
+        "iac"
+      ],
+      "evidence": [
+        "Abbott CRM Platform"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "Git",
+      "aliases": [
+        "git",
+        "github",
+        "bitbucket"
+      ],
+      "evidence": [
+        "TRM Nett Systems process improvement",
+        "RetailAIM Azure DevOps workflow"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "Flutter",
+      "aliases": [
+        "flutter",
+        "dart",
+        "flutter/dart"
+      ],
+      "evidence": [
+        "Senai Airport City FZ",
+        "SIRIM Check Your Label"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "Android",
+      "aliases": [
+        "android",
+        "android sdk"
+      ],
+      "evidence": [
+        "Motorola Public Safety Platform",
+        "SIRIM Check Your Label",
+        "Mobile Road Tax Sticker Recognizer"
+      ],
+      "evidenceType": "mixed"
+    },
+    {
+      "name": "Kotlin",
+      "aliases": [
+        "kotlin"
+      ],
+      "evidence": [
+        "Motorola Public Safety Platform"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "Java",
+      "aliases": [
+        "java"
+      ],
+      "evidence": [
+        "Motorola Public Safety Platform",
+        "SIRIM Check Your Label"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "iOS",
+      "aliases": [
+        "ios",
+        "iphone",
+        "ipad"
+      ],
+      "evidence": [
+        "Motorola Public Safety Platform",
+        "LPPEH BIS mobile app",
+        "Service 73"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "Swift",
+      "aliases": [
+        "swift"
+      ],
+      "evidence": [
+        "TRM mobile delivery work"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "Ionic",
+      "aliases": [
+        "ionic",
+        "ionic framework"
+      ],
+      "evidence": [
+        "TRM mobile delivery work"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "Ruby on Rails",
+      "aliases": [
+        "ruby on rails",
+        "rails"
+      ],
+      "evidence": [
+        "Aircraft MRO scheduling system"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "REST APIs",
+      "aliases": [
+        "rest",
+        "rest api",
+        "restful api"
+      ],
+      "evidence": [
+        "RetailAIM integrations",
+        "Abbott CRM Platform",
+        "TRM delivery systems"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "SOAP APIs",
+      "aliases": [
+        "soap",
+        "soap api"
+      ],
+      "evidence": [
+        "RetailAIM mobile integration",
+        "TRM delivery systems"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "Salesforce API",
+      "aliases": [
+        "salesforce",
+        "salesforce api",
+        "salesforce crm"
+      ],
+      "evidence": [
+        "Abbott CRM Platform"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "SAP",
+      "aliases": [
+        "sap"
+      ],
+      "evidence": [
+        "RetailAIM integration work"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "AutoCount ERP",
+      "aliases": [
+        "autocount",
+        "autocount erp"
+      ],
+      "evidence": [
+        "RetailAIM integration work"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "Payment Gateway Integration",
+      "aliases": [
+        "ipay88",
+        "senangpay",
+        "eghl",
+        "paypal"
+      ],
+      "evidence": [
+        "SPAN eCLAPS",
+        "MARii EEV Label",
+        "TRM delivery systems"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "WhatsApp Business API",
+      "aliases": [
+        "whatsapp api",
+        "whatsapp business api",
+        "bird api"
+      ],
+      "evidence": [
+        "Abbott CRM Platform"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "Push Notifications",
+      "aliases": [
+        "fcm",
+        "firebase cloud messaging",
+        "pushwoosh",
+        "push notifications"
+      ],
+      "evidence": [
+        "Service 73",
+        "PKA eDCFZ"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "Tesseract OCR",
+      "aliases": [
+        "tesseract",
+        "ocr",
+        "tesseract ocr"
+      ],
+      "evidence": [
+        "Mobile Road Tax Sticker Recognizer"
+      ],
+      "evidenceType": "academic"
+    }
+  ],
+  "evidence": [
+    {
+      "label": "professional",
+      "type": "employment-document",
+      "items": [
+        "Appointment letter establishes the stated contractual three-month notice period after confirmation.",
+        "Redesignation letter confirms Full Stack Web Specialist effective 2025-08-01.",
+        "Redesignation letter confirms the organizational-structure change."
+      ]
+    },
+    {
+      "label": "academic",
+      "type": "academic-document",
+      "items": [
+        "Diploma transcript confirms CGPA 3.03 and the listed diploma subject cluster.",
+        "Degree transcript confirms CGPA 2.79 and the listed intelligent-systems subject cluster.",
+        "Academic final-year projects are the PHP Bus Ticketing System and the Android road-tax sticker recognizer using Tesseract OCR."
+      ]
+    },
+    {
+      "label": "user-provided context",
+      "type": "user-provided context",
+      "items": [
+        "Outstanding-performance context for the redesignation was supplied by Ameer.",
+        "Language ability is represented as Bahasa Malaysia native and English professional."
+      ]
+    }
+  ],
+  "privacyExclusions": [
+    "salary",
+    "nric",
+    "home address",
+    "date of birth",
+    "benefits",
+    "leave",
+    "medical",
+    "confidential contract terms"
+  ]
+}
