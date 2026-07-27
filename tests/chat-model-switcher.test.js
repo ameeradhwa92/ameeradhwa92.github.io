@@ -17,6 +17,8 @@ function createElement() {
     hidden: false,
     textContent: '',
     className: '',
+    children: [],
+    focused: false,
     style: { setProperty() {}, removeProperty() {} },
     attributes: new Map(),
     classList: {
@@ -30,8 +32,8 @@ function createElement() {
     addEventListener(type, listener) { listeners.set(type, listener); },
     dispatch(type) { const listener = listeners.get(type); if (listener) listener({ key: type, target: this }); },
     querySelector() { return null; },
-    appendChild() {},
-    focus() {}
+    appendChild(child) { this.children.push(child); return child; },
+    focus() { this.focused = true; }
   };
 }
 
@@ -40,7 +42,10 @@ function createChatContext(options = {}) {
   [
     'chat-launcher', 'chat-panel', 'chat-log', 'chat-form', 'chat-input', 'chat-chips',
     'chat-status', 'chat-ai', 'chat-ai-enable', 'chat-ai-cancel', 'chat-model-cloud',
-    'chat-model-local', 'chat-model-tooltip'
+    'chat-model-local', 'chat-model-tooltip', 'chat-callout', 'chat-jd-toggle',
+    'chat-jd-panel', 'chat-jd-input', 'chat-jd-file', 'chat-jd-file-trigger',
+    'chat-jd-file-name', 'chat-jd-analyze', 'chat-jd-clear', 'chat-jd-disclaimer',
+    'chat-jd-status', 'chat-jd-result'
   ].forEach((id) => { elements[id] = createElement(); });
   const statusText = createElement();
   const aiPitch = createElement();
@@ -64,6 +69,7 @@ function createChatContext(options = {}) {
 
   const root = createElement();
   root.dataset = {};
+  const observers = [];
   const document = {
     documentElement: root,
     readyState: 'complete',
@@ -104,7 +110,10 @@ function createChatContext(options = {}) {
       setItem(key, value) { stored.set(key, String(value)); },
       removeItem(key) { stored.delete(key); }
     },
-    MutationObserver: class { constructor() {} observe() {} },
+    MutationObserver: class {
+      constructor(callback) { observers.push(callback); }
+      observe() {}
+    },
     setTimeout(fn, delay) {
       const id = timers.length + 1;
       timers.push({ id, fn, delay });
@@ -129,6 +138,10 @@ function createChatContext(options = {}) {
     clearedTimers,
     progress,
     statusText,
+    setLanguage(language) {
+      root.dataset.lang = language;
+      observers.forEach((observer) => observer());
+    },
     get adapterRequests() { return adapterRequests; }
   };
 }
@@ -190,6 +203,81 @@ test('Bahasa Melayu provides distinct labels and compatibility help for the mode
   assert.match(context.window.I18N_MS['chat.model.local.hint'], /tidak serasi/i);
 });
 
+test('JD matcher promotion provides English localization hooks and formal Bahasa Melayu strings', async () => {
+  const { context, elements } = createChatContext({ saveData: false });
+  await loadChat(context);
+
+  elements['chat-launcher'].dispatch('click');
+
+  const promo = elements['chat-log'].children.find((child) => child.id === 'chat-jd-promo');
+  assert.ok(promo, 'opening chat should add the recruiter promotion to the chat log');
+  assert.equal(promo.className, 'chat-msg chat-msg-bot chat-jd-promo');
+  assert.equal(promo.children[0].getAttribute('data-i18n'), 'chat.jd.promo');
+  assert.equal(
+    promo.children[0].textContent,
+    'Paste a job description or load a local PDF/DOCX for a deterministic compatibility estimate.'
+  );
+  assert.equal(promo.children[1].id, 'chat-jd-promo-action');
+  assert.equal(promo.children[1].getAttribute('data-i18n'), 'chat.jd.promoAction');
+
+  const i18nContext = { window: {} };
+  vm.runInNewContext(i18n, i18nContext);
+  assert.equal(
+    i18nContext.window.I18N_MS['chat.jd.promo'],
+    'Tampal huraian jawatan atau muatkan PDF/DOCX setempat untuk anggaran keserasian yang deterministik.'
+  );
+  assert.equal(i18nContext.window.I18N_MS['chat.jd.promoAction'], 'Buka mod padanan huraian jawatan');
+});
+
+test('JD matcher promotion is inserted once per chat session', async () => {
+  const { context, elements } = createChatContext({ saveData: false });
+  await loadChat(context);
+
+  elements['chat-launcher'].dispatch('click');
+  elements['chat-panel'].querySelector('.chat-close').dispatch('click');
+  elements['chat-launcher'].dispatch('click');
+
+  assert.equal(
+    elements['chat-log'].children.filter((child) => child.id === 'chat-jd-promo').length,
+    1,
+    'reopening chat must not duplicate the recruiter promotion'
+  );
+});
+
+test('JD matcher promotion action opens the matcher panel and its expanded toggle', async () => {
+  const { context, elements } = createChatContext({ saveData: false });
+  await loadChat(context);
+  elements['chat-launcher'].dispatch('click');
+
+  const promo = elements['chat-log'].children.find((child) => child.id === 'chat-jd-promo');
+  promo.children[1].dispatch('click');
+
+  assert.equal(elements['chat-jd-panel'].hidden, false);
+  assert.equal(elements['chat-jd-toggle'].getAttribute('aria-expanded'), 'true');
+  assert.equal(elements['chat-jd-input'].focused, true);
+});
+
+test('JD matcher promotion refreshes when the visitor changes the chat language', async () => {
+  const { context, elements, setLanguage } = createChatContext({ saveData: false });
+  await loadChat(context);
+  elements['chat-launcher'].dispatch('click');
+  const promo = elements['chat-log'].children.find((child) => child.id === 'chat-jd-promo');
+
+  setLanguage('ms');
+  assert.equal(
+    promo.children[0].textContent,
+    'Tampal huraian jawatan atau muatkan PDF/DOCX setempat untuk anggaran keserasian yang deterministik.'
+  );
+  assert.equal(promo.children[1].textContent, 'Buka mod padanan huraian jawatan');
+
+  setLanguage('en');
+  assert.equal(
+    promo.children[0].textContent,
+    'Paste a job description or load a local PDF/DOCX for a deterministic compatibility estimate.'
+  );
+  assert.equal(promo.children[1].textContent, 'Open JD matcher');
+});
+
 test('selecting eligible local AI presents Local while the active route is cloud', async () => {
   const { context, elements, stored } = createChatContext();
   await loadChat(context);
@@ -199,37 +287,67 @@ test('selecting eligible local AI presents Local while the active route is cloud
 
   assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'true');
   assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'false');
-  assert.equal(stored.get('aimeer-route'), 'local');
+  assert.equal(stored.has('aimeer-route'), false);
 });
 
-test('explicit cloud preference keeps eligible desktop on cloud without starting local', async () => {
-  const { context, elements, progress } = createChatContext({
+test('legacy persisted cloud is cleared and eligible desktop defaults to local', async () => {
+  const { context, elements, stored, progress } = createChatContext({
     storage: { 'aimeer-route': 'cloud' },
     saveData: false
   });
 
   await loadChat(context);
+  assert.equal(stored.has('aimeer-route'), false);
   elements['chat-launcher'].dispatch('click');
 
-  assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'true');
-  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'false');
-  assert.equal(elements['chat-status'].className, 'chat-status chat-status-cloud');
-  assert.equal(progress.hidden, true);
+  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'true');
+  assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'false');
+  assert.equal(elements['chat-status'].className, 'chat-status chat-status-loading');
+  assert.equal(progress.hidden, false);
 });
 
-test('explicit local preference overrides Save-Data on eligible desktop and starts local when opened', async () => {
+test('welcome callout still schedules its delayed reveal after prior dismissal', async () => {
+  const { context, elements, timers } = createChatContext({
+    storage: { 'aimeer-callout': '1' }
+  });
+
+  await loadChat(context);
+
+  const reveal = timers.find((timer) => timer.delay === 1800);
+  assert.ok(reveal, 'the welcome callout should schedule its delayed reveal on every load');
+  reveal.fn();
+  assert.equal(elements['chat-callout'].hidden, false);
+  assert.equal(elements['chat-callout'].classList.contains('show'), true);
+});
+
+test('welcome callout markup and click handler remain present', () => {
+  assert.match(
+    html,
+    /<div class="chat-callout" id="chat-callout" hidden>[\s\S]*?<button class="chat-callout-close"[^>]*>[\s\S]*?<\/button>[\s\S]*?<\/div>/,
+    'the page should retain the dismissible welcome callout markup'
+  );
+  assert.match(
+    chatbot,
+    /callout\.addEventListener\("click", function \(e\) \{[\s\S]*?hideCallout\(true\);[\s\S]*?openPanel\(\);[\s\S]*?\}\);/,
+    'the welcome callout should retain its dismiss/open click handler'
+  );
+});
+
+test('legacy persisted local is cleared and Save-Data still prefers cloud', async () => {
   const { context, elements, stored, progress } = createChatContext({
     storage: { 'aimeer-route': 'local' },
     saveData: true
   });
 
   await loadChat(context);
+  assert.equal(stored.has('aimeer-route'), false);
   elements['chat-launcher'].dispatch('click');
 
-  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'true');
-  assert.equal(stored.get('aimeer-route'), 'local');
-  assert.equal(progress.hidden, false);
-  assert.equal(elements['chat-status'].className, 'chat-status chat-status-loading');
+  assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'true');
+  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'false');
+  assert.equal(stored.has('aimeer-route'), false);
+  assert.equal(progress.hidden, true);
+  assert.equal(elements['chat-status'].className, 'chat-status chat-status-cloud');
 });
 
 test('stale local preference on ineligible Android is invalidated and routed to cloud', async () => {
@@ -250,7 +368,7 @@ test('stale local preference on ineligible Android is invalidated and routed to 
   assert.equal(elements['chat-status'].className, 'chat-status chat-status-cloud');
 });
 
-test('switching to cloud while local download is active cancels the download state', async () => {
+test('switching to cloud while local download is active cancels the download state without persistence', async () => {
   const { context, elements, stored, progress, timers, clearedTimers } = createChatContext({
     saveData: false
   });
@@ -261,12 +379,30 @@ test('switching to cloud while local download is active cancels the download sta
 
   elements['chat-model-cloud'].dispatch('click');
 
-  assert.equal(stored.get('aimeer-route'), 'cloud');
+  assert.equal(stored.has('aimeer-route'), false);
   assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'true');
   assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'false');
   assert.equal(progress.hidden, true);
   assert.equal(elements['chat-status'].className, 'chat-status chat-status-cloud');
   assert.ok(clearedTimers.includes(timers.find((timer) => timer.delay === 20000).id));
+});
+
+test('canceling local download keeps the cloud route session-only without persistence', async () => {
+  const { context, elements, stored, progress } = createChatContext({
+    saveData: false
+  });
+
+  await loadChat(context);
+  elements['chat-launcher'].dispatch('click');
+  assert.equal(progress.hidden, false);
+
+  elements['chat-ai-cancel'].dispatch('click');
+
+  assert.equal(stored.has('aimeer-route'), false);
+  assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'true');
+  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'false');
+  assert.equal(progress.hidden, true);
+  assert.equal(elements['chat-status'].className, 'chat-status chat-status-cloud');
 });
 
 test('a stale canceled local download cannot mark a later local start ready', async () => {

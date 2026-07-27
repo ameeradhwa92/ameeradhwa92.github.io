@@ -155,6 +155,8 @@ window.I18N_MS = {
   "chat.jd.toggle": "Padankan huraian jawatan",
   "chat.jd.title": "Mod padanan perekrut",
   "chat.jd.body": "Tampal huraian jawatan atau baca PDF/DOCX setempat untuk anggaran keserasian yang deterministik.",
+  "chat.jd.promo": "Tampal huraian jawatan atau muatkan PDF/DOCX setempat untuk anggaran keserasian yang deterministik.",
+  "chat.jd.promoAction": "Buka mod padanan huraian jawatan",
   "chat.jd.pasteLabel": "Tampal huraian jawatan",
   "chat.jd.pasteHint": "Teks yang ditampal kekal dalam tab pelayar ini sahaja.",
   "chat.jd.fileLabel": "Muatkan PDF atau DOCX setempat",

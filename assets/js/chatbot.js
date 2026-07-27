@@ -253,6 +253,8 @@
       sumAsked: "What I asked:",
       sumOpen: "AIMeer couldn't answer this one:",
       sumVia: "sent via AIMeer · ameeradhwa92.github.io",
+      jdPromo: "Paste a job description or load a local PDF/DOCX for a deterministic compatibility estimate.",
+      jdPromoAction: "Open JD matcher",
       jdInputPlaceholder: "Paste the job description here…",
       jdDisclaimer: "This is an estimated compatibility score based only on the job description and Ameer's published profile. It is not an objective hiring decision, technical assessment, or guarantee of suitability.",
       jdFileEmpty: "No file selected",
@@ -347,6 +349,8 @@
       sumAsked: "Soalan saya:",
       sumOpen: "AIMeer tidak dapat menjawab soalan ini:",
       sumVia: "dihantar melalui AIMeer · ameeradhwa92.github.io",
+      jdPromo: "Tampal huraian jawatan atau muatkan PDF/DOCX setempat untuk anggaran keserasian yang deterministik.",
+      jdPromoAction: "Buka mod padanan huraian jawatan",
       jdInputPlaceholder: "Tampal huraian jawatan di sini…",
       jdDisclaimer: "Ini ialah skor keserasian anggaran yang berasaskan hanya pada huraian jawatan dan profil terbitan Ameer. Ia bukan keputusan pengambilan pekerja yang objektif, penilaian teknikal, atau jaminan kesesuaian.",
       jdFileEmpty: "Belum ada fail dipilih",
@@ -534,13 +538,15 @@
   var recruiterUI = !!(jdToggle && jdPanel && jdInput && jdFile && jdFileTrigger && jdFileName &&
     jdAnalyze && jdClear && jdDisclaimer && jdStatus && jdResult);
 
-  var open = false, greeted = false, busy = false;
+  var open = false, greeted = false, jdPromoAdded = false, busy = false;
+  var jdPromoCopy = null, jdPromoAction = null;
   var engine = null, canceled = false, downloadGeneration = 0;
   var dlActive = false;      /* the on-device download is running */
   var fallbackTimer = null;  /* switches answers to cloud if the download is slow */
   var LOCAL_TIMEOUT = window.AIMEER_LOCAL_TIMEOUT || 20000; /* ms of downloading before cloud takes over answering */
   var route = "pending"; /* pending | local | cloud | none */
   var localOK = false;   /* device could run the on-device model (for manual retry) */
+  try { localStorage.removeItem("aimeer-route"); } catch (e) { }
   var preferredMode = null; /* explicit cloud/local choice, independent of the live route */
   var announcedCloud = false;
   var aiState = "off"; /* off | loading | ready (local) | cloud | failed */
@@ -576,6 +582,34 @@
     log.appendChild(el);
     log.scrollTop = log.scrollHeight;
     return el;
+  }
+
+  function addJdPromo() {
+    if (!recruiterUI || jdPromoAdded) return;
+    jdPromoAdded = true;
+    var promo = document.createElement("div");
+    promo.id = "chat-jd-promo";
+    promo.className = "chat-msg chat-msg-bot chat-jd-promo";
+
+    var copy = document.createElement("p");
+    copy.className = "chat-jd-promo-copy";
+    copy.setAttribute("data-i18n", "chat.jd.promo");
+    copy.textContent = t("jdPromo");
+    jdPromoCopy = copy;
+    promo.appendChild(copy);
+
+    var action = document.createElement("button");
+    action.id = "chat-jd-promo-action";
+    action.type = "button";
+    action.className = "chat-jd-action chat-jd-promo-action";
+    action.setAttribute("data-i18n", "chat.jd.promoAction");
+    action.textContent = t("jdPromoAction");
+    jdPromoAction = action;
+    action.addEventListener("click", function () { setRecruiterOpen(true); });
+    promo.appendChild(action);
+
+    log.appendChild(promo);
+    log.scrollTop = log.scrollHeight;
   }
 
   function formatScore(value) {
@@ -903,7 +937,6 @@
 
   function persistPreferredRoute(mode) {
     preferredMode = mode;
-    try { localStorage.setItem("aimeer-route", mode); } catch (e) { }
   }
 
   function clearPreferredRoute() {
@@ -1034,6 +1067,8 @@
     input.placeholder = t("placeholder");
     refreshStatus();
     applyAiBox();
+    if (jdPromoCopy) jdPromoCopy.textContent = t("jdPromo");
+    if (jdPromoAction) jdPromoAction.textContent = t("jdPromoAction");
     if (recruiterUI) {
       jdInput.placeholder = t("jdInputPlaceholder");
       jdDisclaimer.textContent = t("jdDisclaimer");
@@ -1052,7 +1087,7 @@
     refreshLangBits();
   }
 
-  /* ---------------- attention callout (marketing nudge, shows once) ---------------- */
+  /* ---------------- attention callout (marketing nudge, shows on each load) ---------------- */
   var callout = document.getElementById("chat-callout");
 
   function hideCallout(persist) {
@@ -1063,16 +1098,12 @@
   }
 
   if (callout) {
-    var calloutSeen = null;
-    try { calloutSeen = localStorage.getItem("aimeer-callout"); } catch (e) { }
-    if (!calloutSeen) {
-      setTimeout(function () {
-        if (open) return;
-        callout.hidden = false;
-        void callout.offsetWidth;
-        callout.classList.add("show");
-      }, 1800);
-    }
+    setTimeout(function () {
+      if (open) return;
+      callout.hidden = false;
+      void callout.offsetWidth;
+      callout.classList.add("show");
+    }, 1800);
     callout.addEventListener("click", function (e) {
       hideCallout(true);
       if (!e.target.closest(".chat-callout-close")) openPanel();
@@ -1096,6 +1127,7 @@
         addMsg("bot", t("aiReadyCloud"));
       }
     }
+    addJdPromo();
     /* opening the chat is intent — start the local download right away */
     if (route === "local" && aiState === "off") {
       if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
@@ -1122,9 +1154,7 @@
 
   /* ---------------- route decision: local model, cloud relay, or neither ---------------- */
   function decideRoute() {
-    var pref = null;
-    try { pref = localStorage.getItem("aimeer-route"); } catch (e) { }
-    if (pref === "cloud" || pref === "local") preferredMode = pref;
+    var pref = preferredMode;
     var requestAdapter = navigator.gpu && navigator.gpu.requestAdapter
       ? navigator.gpu.requestAdapter()
       : Promise.resolve(null);
@@ -1266,7 +1296,6 @@
   cancelBtn.addEventListener("click", function () {
     if (!dlActive) return;
     cancelLocalDownload();
-    try { localStorage.setItem("aimeer-route", cloudOk ? "cloud" : "off"); } catch (e) { }
     preferredMode = cloudOk ? "cloud" : null;
     if (cloudOk) {
       switchToCloud("canceledCloud");
