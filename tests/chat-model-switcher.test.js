@@ -17,6 +17,8 @@ function createElement() {
     hidden: false,
     textContent: '',
     className: '',
+    children: [],
+    focused: false,
     style: { setProperty() {}, removeProperty() {} },
     attributes: new Map(),
     classList: {
@@ -30,8 +32,8 @@ function createElement() {
     addEventListener(type, listener) { listeners.set(type, listener); },
     dispatch(type) { const listener = listeners.get(type); if (listener) listener({ key: type, target: this }); },
     querySelector() { return null; },
-    appendChild() {},
-    focus() {}
+    appendChild(child) { this.children.push(child); return child; },
+    focus() { this.focused = true; }
   };
 }
 
@@ -40,7 +42,10 @@ function createChatContext(options = {}) {
   [
     'chat-launcher', 'chat-panel', 'chat-log', 'chat-form', 'chat-input', 'chat-chips',
     'chat-status', 'chat-ai', 'chat-ai-enable', 'chat-ai-cancel', 'chat-model-cloud',
-    'chat-model-local', 'chat-model-tooltip', 'chat-callout'
+    'chat-model-local', 'chat-model-tooltip', 'chat-callout', 'chat-jd-toggle',
+    'chat-jd-panel', 'chat-jd-input', 'chat-jd-file', 'chat-jd-file-trigger',
+    'chat-jd-file-name', 'chat-jd-analyze', 'chat-jd-clear', 'chat-jd-disclaimer',
+    'chat-jd-status', 'chat-jd-result'
   ].forEach((id) => { elements[id] = createElement(); });
   const statusText = createElement();
   const aiPitch = createElement();
@@ -64,6 +69,7 @@ function createChatContext(options = {}) {
 
   const root = createElement();
   root.dataset = {};
+  const observers = [];
   const document = {
     documentElement: root,
     readyState: 'complete',
@@ -104,7 +110,10 @@ function createChatContext(options = {}) {
       setItem(key, value) { stored.set(key, String(value)); },
       removeItem(key) { stored.delete(key); }
     },
-    MutationObserver: class { constructor() {} observe() {} },
+    MutationObserver: class {
+      constructor(callback) { observers.push(callback); }
+      observe() {}
+    },
     setTimeout(fn, delay) {
       const id = timers.length + 1;
       timers.push({ id, fn, delay });
@@ -129,6 +138,10 @@ function createChatContext(options = {}) {
     clearedTimers,
     progress,
     statusText,
+    setLanguage(language) {
+      root.dataset.lang = language;
+      observers.forEach((observer) => observer());
+    },
     get adapterRequests() { return adapterRequests; }
   };
 }
@@ -188,6 +201,81 @@ test('Bahasa Melayu provides distinct labels and compatibility help for the mode
   assert.equal(context.window.I18N_MS['chat.model.cloud.label'], 'Guna AI awan selamat');
   assert.equal(context.window.I18N_MS['chat.model.local.label'], 'Guna AI pada peranti');
   assert.match(context.window.I18N_MS['chat.model.local.hint'], /tidak serasi/i);
+});
+
+test('JD matcher promotion provides English localization hooks and formal Bahasa Melayu strings', async () => {
+  const { context, elements } = createChatContext({ saveData: false });
+  await loadChat(context);
+
+  elements['chat-launcher'].dispatch('click');
+
+  const promo = elements['chat-log'].children.find((child) => child.id === 'chat-jd-promo');
+  assert.ok(promo, 'opening chat should add the recruiter promotion to the chat log');
+  assert.equal(promo.className, 'chat-msg chat-msg-bot chat-jd-promo');
+  assert.equal(promo.children[0].getAttribute('data-i18n'), 'chat.jd.promo');
+  assert.equal(
+    promo.children[0].textContent,
+    'Paste a job description or load a local PDF/DOCX for a deterministic compatibility estimate.'
+  );
+  assert.equal(promo.children[1].id, 'chat-jd-promo-action');
+  assert.equal(promo.children[1].getAttribute('data-i18n'), 'chat.jd.promoAction');
+
+  const i18nContext = { window: {} };
+  vm.runInNewContext(i18n, i18nContext);
+  assert.equal(
+    i18nContext.window.I18N_MS['chat.jd.promo'],
+    'Tampal huraian jawatan atau muatkan PDF/DOCX setempat untuk anggaran keserasian yang deterministik.'
+  );
+  assert.equal(i18nContext.window.I18N_MS['chat.jd.promoAction'], 'Buka mod padanan huraian jawatan');
+});
+
+test('JD matcher promotion is inserted once per chat session', async () => {
+  const { context, elements } = createChatContext({ saveData: false });
+  await loadChat(context);
+
+  elements['chat-launcher'].dispatch('click');
+  elements['chat-panel'].querySelector('.chat-close').dispatch('click');
+  elements['chat-launcher'].dispatch('click');
+
+  assert.equal(
+    elements['chat-log'].children.filter((child) => child.id === 'chat-jd-promo').length,
+    1,
+    'reopening chat must not duplicate the recruiter promotion'
+  );
+});
+
+test('JD matcher promotion action opens the matcher panel and its expanded toggle', async () => {
+  const { context, elements } = createChatContext({ saveData: false });
+  await loadChat(context);
+  elements['chat-launcher'].dispatch('click');
+
+  const promo = elements['chat-log'].children.find((child) => child.id === 'chat-jd-promo');
+  promo.children[1].dispatch('click');
+
+  assert.equal(elements['chat-jd-panel'].hidden, false);
+  assert.equal(elements['chat-jd-toggle'].getAttribute('aria-expanded'), 'true');
+  assert.equal(elements['chat-jd-input'].focused, true);
+});
+
+test('JD matcher promotion refreshes when the visitor changes the chat language', async () => {
+  const { context, elements, setLanguage } = createChatContext({ saveData: false });
+  await loadChat(context);
+  elements['chat-launcher'].dispatch('click');
+  const promo = elements['chat-log'].children.find((child) => child.id === 'chat-jd-promo');
+
+  setLanguage('ms');
+  assert.equal(
+    promo.children[0].textContent,
+    'Tampal huraian jawatan atau muatkan PDF/DOCX setempat untuk anggaran keserasian yang deterministik.'
+  );
+  assert.equal(promo.children[1].textContent, 'Buka mod padanan huraian jawatan');
+
+  setLanguage('en');
+  assert.equal(
+    promo.children[0].textContent,
+    'Paste a job description or load a local PDF/DOCX for a deterministic compatibility estimate.'
+  );
+  assert.equal(promo.children[1].textContent, 'Open JD matcher');
 });
 
 test('selecting eligible local AI presents Local while the active route is cloud', async () => {
