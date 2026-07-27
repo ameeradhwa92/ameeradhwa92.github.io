@@ -30,7 +30,8 @@ function createElement() {
     setAttribute(name, value) { this.attributes.set(name, String(value)); },
     getAttribute(name) { return this.attributes.get(name) || null; },
     addEventListener(type, listener) { listeners.set(type, listener); },
-    dispatch(type) { const listener = listeners.get(type); if (listener) listener({ key: type, target: this }); },
+    dispatch(type, target = this) { const listener = listeners.get(type); if (listener) listener({ key: type, target }); },
+    closest(selector) { return selector === 'button' ? this : null; },
     querySelector() { return null; },
     appendChild(child) { this.children.push(child); return child; },
     focus() { this.focused = true; }
@@ -46,7 +47,7 @@ function createChatContext(options = {}) {
     'chat-jd-panel', 'chat-jd-input', 'chat-jd-file', 'chat-jd-file-trigger',
     'chat-jd-file-name', 'chat-jd-analyze', 'chat-jd-clear', 'chat-jd-disclaimer',
     'chat-jd-status', 'chat-jd-result'
-  ].forEach((id) => { elements[id] = createElement(); });
+  ].forEach((id) => { elements[id] = createElement(); elements[id].id = id; });
   const statusText = createElement();
   const aiPitch = createElement();
   const progress = createElement();
@@ -276,6 +277,19 @@ test('JD matcher promotion refreshes when the visitor changes the chat language'
     'Paste a job description or load a local PDF/DOCX for a deterministic compatibility estimate.'
   );
   assert.equal(promo.children[1].textContent, 'Open JD matcher');
+});
+
+test('JD matcher uses focused mode while retaining the AI progress card', async () => {
+  const { context, elements } = createChatContext({ saveData: false });
+  await loadChat(context);
+  elements['chat-launcher'].dispatch('click');
+
+  elements['chat-chips'].dispatch('click', elements['chat-jd-toggle']);
+  assert.equal(elements['chat-panel'].classList.contains('chat-panel--jd-open'), true);
+  assert.equal(elements['chat-jd-panel'].hidden, false);
+
+  elements['chat-chips'].dispatch('click', elements['chat-jd-toggle']);
+  assert.equal(elements['chat-panel'].classList.contains('chat-panel--jd-open'), false);
 });
 
 test('selecting eligible local AI presents Local while the active route is cloud', async () => {

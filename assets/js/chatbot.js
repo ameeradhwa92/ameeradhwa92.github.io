@@ -904,6 +904,7 @@
   function setRecruiterOpen(nextOpen) {
     if (!recruiterUI) return;
     jdState.open = !!nextOpen;
+    panel.classList.toggle("chat-panel--jd-open", jdState.open);
     jdPanel.hidden = !jdState.open;
     jdToggle.setAttribute("aria-expanded", jdState.open ? "true" : "false");
     jdToggle.classList.toggle("is-active", jdState.open);
