@@ -1052,7 +1052,7 @@
     refreshLangBits();
   }
 
-  /* ---------------- attention callout (marketing nudge, shows once) ---------------- */
+  /* ---------------- attention callout (marketing nudge, shows on each load) ---------------- */
   var callout = document.getElementById("chat-callout");
 
   function hideCallout(persist) {
@@ -1063,16 +1063,12 @@
   }
 
   if (callout) {
-    var calloutSeen = null;
-    try { calloutSeen = localStorage.getItem("aimeer-callout"); } catch (e) { }
-    if (!calloutSeen) {
-      setTimeout(function () {
-        if (open) return;
-        callout.hidden = false;
-        void callout.offsetWidth;
-        callout.classList.add("show");
-      }, 1800);
-    }
+    setTimeout(function () {
+      if (open) return;
+      callout.hidden = false;
+      void callout.offsetWidth;
+      callout.classList.add("show");
+    }, 1800);
     callout.addEventListener("click", function (e) {
       hideCallout(true);
       if (!e.target.closest(".chat-callout-close")) openPanel();

@@ -40,7 +40,7 @@ function createChatContext(options = {}) {
   [
     'chat-launcher', 'chat-panel', 'chat-log', 'chat-form', 'chat-input', 'chat-chips',
     'chat-status', 'chat-ai', 'chat-ai-enable', 'chat-ai-cancel', 'chat-model-cloud',
-    'chat-model-local', 'chat-model-tooltip'
+    'chat-model-local', 'chat-model-tooltip', 'chat-callout'
   ].forEach((id) => { elements[id] = createElement(); });
   const statusText = createElement();
   const aiPitch = createElement();
@@ -216,6 +216,33 @@ test('legacy persisted cloud is cleared and eligible desktop defaults to local',
   assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'false');
   assert.equal(elements['chat-status'].className, 'chat-status chat-status-loading');
   assert.equal(progress.hidden, false);
+});
+
+test('welcome callout still schedules its delayed reveal after prior dismissal', async () => {
+  const { context, elements, timers } = createChatContext({
+    storage: { 'aimeer-callout': '1' }
+  });
+
+  await loadChat(context);
+
+  const reveal = timers.find((timer) => timer.delay === 1800);
+  assert.ok(reveal, 'the welcome callout should schedule its delayed reveal on every load');
+  reveal.fn();
+  assert.equal(elements['chat-callout'].hidden, false);
+  assert.equal(elements['chat-callout'].classList.contains('show'), true);
+});
+
+test('welcome callout markup and click handler remain present', () => {
+  assert.match(
+    html,
+    /<div class="chat-callout" id="chat-callout" hidden>[\s\S]*?<button class="chat-callout-close"[^>]*>[\s\S]*?<\/button>[\s\S]*?<\/div>/,
+    'the page should retain the dismissible welcome callout markup'
+  );
+  assert.match(
+    chatbot,
+    /callout\.addEventListener\("click", function \(e\) \{[\s\S]*?hideCallout\(true\);[\s\S]*?openPanel\(\);[\s\S]*?\}\);/,
+    'the welcome callout should retain its dismiss/open click handler'
+  );
 });
 
 test('legacy persisted local is cleared and Save-Data still prefers cloud', async () => {
