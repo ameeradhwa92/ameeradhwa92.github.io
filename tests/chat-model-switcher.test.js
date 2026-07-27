@@ -199,37 +199,40 @@ test('selecting eligible local AI presents Local while the active route is cloud
 
   assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'true');
   assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'false');
-  assert.equal(stored.get('aimeer-route'), 'local');
+  assert.equal(stored.has('aimeer-route'), false);
 });
 
-test('explicit cloud preference keeps eligible desktop on cloud without starting local', async () => {
-  const { context, elements, progress } = createChatContext({
+test('legacy persisted cloud is cleared and eligible desktop defaults to local', async () => {
+  const { context, elements, stored, progress } = createChatContext({
     storage: { 'aimeer-route': 'cloud' },
     saveData: false
   });
 
   await loadChat(context);
+  assert.equal(stored.has('aimeer-route'), false);
   elements['chat-launcher'].dispatch('click');
 
-  assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'true');
-  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'false');
-  assert.equal(elements['chat-status'].className, 'chat-status chat-status-cloud');
-  assert.equal(progress.hidden, true);
+  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'true');
+  assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'false');
+  assert.equal(elements['chat-status'].className, 'chat-status chat-status-loading');
+  assert.equal(progress.hidden, false);
 });
 
-test('explicit local preference overrides Save-Data on eligible desktop and starts local when opened', async () => {
+test('legacy persisted local is cleared and Save-Data still prefers cloud', async () => {
   const { context, elements, stored, progress } = createChatContext({
     storage: { 'aimeer-route': 'local' },
     saveData: true
   });
 
   await loadChat(context);
+  assert.equal(stored.has('aimeer-route'), false);
   elements['chat-launcher'].dispatch('click');
 
-  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'true');
-  assert.equal(stored.get('aimeer-route'), 'local');
-  assert.equal(progress.hidden, false);
-  assert.equal(elements['chat-status'].className, 'chat-status chat-status-loading');
+  assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'true');
+  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'false');
+  assert.equal(stored.has('aimeer-route'), false);
+  assert.equal(progress.hidden, true);
+  assert.equal(elements['chat-status'].className, 'chat-status chat-status-cloud');
 });
 
 test('stale local preference on ineligible Android is invalidated and routed to cloud', async () => {
@@ -250,7 +253,7 @@ test('stale local preference on ineligible Android is invalidated and routed to 
   assert.equal(elements['chat-status'].className, 'chat-status chat-status-cloud');
 });
 
-test('switching to cloud while local download is active cancels the download state', async () => {
+test('switching to cloud while local download is active cancels the download state without persistence', async () => {
   const { context, elements, stored, progress, timers, clearedTimers } = createChatContext({
     saveData: false
   });
@@ -261,7 +264,7 @@ test('switching to cloud while local download is active cancels the download sta
 
   elements['chat-model-cloud'].dispatch('click');
 
-  assert.equal(stored.get('aimeer-route'), 'cloud');
+  assert.equal(stored.has('aimeer-route'), false);
   assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'true');
   assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'false');
   assert.equal(progress.hidden, true);

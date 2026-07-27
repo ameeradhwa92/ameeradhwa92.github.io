@@ -541,6 +541,7 @@
   var LOCAL_TIMEOUT = window.AIMEER_LOCAL_TIMEOUT || 20000; /* ms of downloading before cloud takes over answering */
   var route = "pending"; /* pending | local | cloud | none */
   var localOK = false;   /* device could run the on-device model (for manual retry) */
+  try { localStorage.removeItem("aimeer-route"); } catch (e) { }
   var preferredMode = null; /* explicit cloud/local choice, independent of the live route */
   var announcedCloud = false;
   var aiState = "off"; /* off | loading | ready (local) | cloud | failed */
@@ -903,7 +904,6 @@
 
   function persistPreferredRoute(mode) {
     preferredMode = mode;
-    try { localStorage.setItem("aimeer-route", mode); } catch (e) { }
   }
 
   function clearPreferredRoute() {
@@ -1122,9 +1122,7 @@
 
   /* ---------------- route decision: local model, cloud relay, or neither ---------------- */
   function decideRoute() {
-    var pref = null;
-    try { pref = localStorage.getItem("aimeer-route"); } catch (e) { }
-    if (pref === "cloud" || pref === "local") preferredMode = pref;
+    var pref = preferredMode;
     var requestAdapter = navigator.gpu && navigator.gpu.requestAdapter
       ? navigator.gpu.requestAdapter()
       : Promise.resolve(null);
