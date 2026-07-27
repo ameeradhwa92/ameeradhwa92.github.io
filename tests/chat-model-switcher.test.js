@@ -387,6 +387,24 @@ test('switching to cloud while local download is active cancels the download sta
   assert.ok(clearedTimers.includes(timers.find((timer) => timer.delay === 20000).id));
 });
 
+test('canceling local download keeps the cloud route session-only without persistence', async () => {
+  const { context, elements, stored, progress } = createChatContext({
+    saveData: false
+  });
+
+  await loadChat(context);
+  elements['chat-launcher'].dispatch('click');
+  assert.equal(progress.hidden, false);
+
+  elements['chat-ai-cancel'].dispatch('click');
+
+  assert.equal(stored.has('aimeer-route'), false);
+  assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'true');
+  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'false');
+  assert.equal(progress.hidden, true);
+  assert.equal(elements['chat-status'].className, 'chat-status chat-status-cloud');
+});
+
 test('a stale canceled local download cannot mark a later local start ready', async () => {
   const firstEngine = deferred();
   const secondEngine = deferred();

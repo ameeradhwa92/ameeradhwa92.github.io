@@ -1296,7 +1296,6 @@
   cancelBtn.addEventListener("click", function () {
     if (!dlActive) return;
     cancelLocalDownload();
-    try { localStorage.setItem("aimeer-route", cloudOk ? "cloud" : "off"); } catch (e) { }
     preferredMode = cloudOk ? "cloud" : null;
     if (cloudOk) {
       switchToCloud("canceledCloud");
