@@ -403,16 +403,31 @@
     for (var index = 0; index < values.length; index += 1) addUniqueValue(target, values[index]);
   }
 
+  function recruiterEvidenceSupportsTerm(record, term, includeScope) {
+    if (!record || !term) return false;
+    var fields = []
+      .concat(record.technologies || [])
+      .concat(record.capabilities || []);
+    if (includeScope) fields = fields.concat(record.scope || []);
+    var normalizedTerm = normalizeKey(term);
+    return fields.some(function (value) { return normalizeKey(value) === normalizedTerm; });
+  }
+
   function resolveRecruiterEvidenceRefsForValues(values, recruiterEvidenceById) {
     var refs = [];
     var normalized = values
       .map(function (value) { return normalizeKey(value); })
       .filter(Boolean);
+    var canonical = normalized[0];
     for (var hintIndex = 0; hintIndex < RECRUITER_EVIDENCE_HINTS.length; hintIndex += 1) {
       var hint = RECRUITER_EVIDENCE_HINTS[hintIndex];
-      if (!recruiterEvidenceById[hint.id]) continue;
+      var record = recruiterEvidenceById[hint.id];
+      if (!record) continue;
+      var canonicalSupported = recruiterEvidenceSupportsTerm(record, canonical, true);
       for (var termIndex = 0; termIndex < hint.terms.length; termIndex += 1) {
-        if (normalized.indexOf(normalizeKey(hint.terms[termIndex])) !== -1) {
+        var hintTerm = hint.terms[termIndex];
+        if (normalized.indexOf(normalizeKey(hintTerm)) !== -1 &&
+            (canonicalSupported || recruiterEvidenceSupportsTerm(record, hintTerm, false))) {
           addUniqueValue(refs, hint.id);
           break;
         }

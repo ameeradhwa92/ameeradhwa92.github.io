@@ -177,7 +177,7 @@ Preferred Skills:
         specificHandsOn: false,
         classification: 'strong',
         evidenceType: 'professional',
-        evidenceRefs: ['professional.azure-delivery']
+        evidenceRefs: []
       },
       {
         term: 'Azure DevOps',
@@ -201,7 +201,7 @@ Preferred Skills:
         specificHandsOn: false,
         classification: 'strong',
         evidenceType: 'professional',
-        evidenceRefs: ['professional.azure-delivery', 'professional.production-delivery']
+        evidenceRefs: ['professional.production-delivery']
       }
     ]
   },
@@ -282,7 +282,7 @@ Preferred Skills:
         specificHandsOn: false,
         classification: 'partial',
         evidenceType: 'academic',
-        evidenceRefs: ['academic.intelligent-systems']
+        evidenceRefs: []
       }
     ]
   },
@@ -367,7 +367,7 @@ Preferred Skills:
         specificHandsOn: false,
         classification: 'strong',
         evidenceType: 'professional',
-        evidenceRefs: ['professional.database-design']
+        evidenceRefs: []
       }
     ],
     checkMobileInactive: true
@@ -432,10 +432,14 @@ test('matcher rejects recruiter evidence refs that are not actually published in
 - Laravel
 - 2 years of hands-on experience with Laravel
 `).result;
+  const enterprise = analyze(`Required Skills:
+- Enterprise web application development
+`).result;
 
   const csharpRequirement = requirementByTerm(csharp, 'C#');
   const laravelRequirement = requirementByTerm(laravel, 'Laravel');
   const laravelDurationRequirement = requirementByTerm(laravel, '2 years');
+  const enterpriseRequirement = requirementByTerm(enterprise, 'Enterprise web application development');
 
   assert.deepEqual(
     Array.from(csharpRequirement.evidenceRefs),
@@ -452,11 +456,17 @@ test('matcher rejects recruiter evidence refs that are not actually published in
     [],
     'Laravel duration partials should not cite unsupported recruiter evidence refs'
   );
+  assert.deepEqual(
+    Array.from(enterpriseRequirement.evidenceRefs),
+    [],
+    'Enterprise web application development should not cite a registry record that only publishes enterprise web applications as scope'
+  );
 
   for (const [term, refs] of [
     ['C#', Array.from(csharpRequirement.evidenceRefs)],
     ['Laravel', Array.from(laravelRequirement.evidenceRefs)],
-    ['Laravel', Array.from(laravelDurationRequirement.evidenceRefs)]
+    ['Laravel', Array.from(laravelDurationRequirement.evidenceRefs)],
+    ['Enterprise web application development', Array.from(enterpriseRequirement.evidenceRefs)]
   ]) {
     for (const ref of refs) {
       const record = recruiterEvidenceById.get(ref);
