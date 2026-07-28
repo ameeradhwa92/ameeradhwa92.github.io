@@ -1399,6 +1399,7 @@
     ringReady();
     refreshStatus();
     applyAiBox();
+    if (recruiterUI && jdState.result) renderJdResult();
     syncModelSwitch();
     if (greeted && msgKey) {
       announcedCloud = true;

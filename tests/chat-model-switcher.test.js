@@ -571,6 +571,60 @@ test('JD reasoning keeps local waiting state ahead of interim cloud fallback', a
   }), 'waiting');
 });
 
+test('switching to secure cloud rerenders an existing JD result from waiting to cloud reasoning', async () => {
+  const pendingDownload = deferred();
+  const deterministicResult = buildDeterministicResult();
+  const chatbotWithControlledWebLLM = chatbot.replace(
+    'return import(WEBLLM_CDN).then(function (webllm) {',
+    'return window.__importWebLLM(WEBLLM_CDN).then(function (webllm) {'
+  );
+  const { context, elements } = createChatContext({
+    saveData: false,
+    fetchImpl(url) {
+      const target = String(url);
+      if (target.endsWith('aimeer-kb.txt')) return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
+      if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
+      throw new Error(`Unexpected fetch: ${target}`);
+    }
+  });
+
+  context.window.__importWebLLM = () => pendingDownload.promise;
+  context.window.JDExtractor = {
+    extract() {
+      return Promise.resolve({ text: '', source: 'pdf', warnings: [] });
+    },
+    normalize(text) {
+      return { normalizedText: text, warnings: [] };
+    }
+  };
+  context.window.JDMatcher = {
+    scoreJobDescription() {
+      return clone(deterministicResult);
+    }
+  };
+
+  await loadChat(context, { source: chatbotWithControlledWebLLM });
+  elements['chat-launcher'].dispatch('click');
+  await flushAsync();
+
+  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC and cloud delivery ownership.';
+  elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+
+  const beforeSwitch = collectText(elements['chat-jd-result']);
+  const waitingButton = getFirstButton(elements['chat-jd-result']);
+  assert.match(beforeSwitch, /still getting ready/i, 'the initial recruiter reasoning state should stay in local waiting while the download is pending');
+  assert.equal(waitingButton.disabled, true, 'the waiting recruiter reasoning action should start disabled');
+
+  elements['chat-model-cloud'].dispatch('click');
+  await flushAsync();
+
+  const afterSwitch = collectText(elements['chat-jd-result']);
+  const cloudButton = getFirstButton(elements['chat-jd-result']);
+  assert.match(afterSwitch, /secure cloud AI/i, 'switching to secure cloud should rerender the existing recruiter result with cloud status');
+  assert.equal(cloudButton.disabled, false, 'switching to secure cloud should enable the recruiter reasoning action for the existing result');
+});
+
 test('JD matcher keeps the deterministic score visible until recruiter reasoning is requested, then renders localized local reasoning sections', async () => {
   const deterministicResult = buildDeterministicResult();
   const buildCalls = [];
