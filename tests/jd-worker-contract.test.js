@@ -115,6 +115,28 @@ function buildValidReasoningResponse(request, profile) {
   });
 }
 
+const DETERMINISTIC_MATCH_LISTS = ['strongMatches', 'partialMatches', 'gaps', 'unverified'];
+
+function buildRequestWithNestedMatchMutation(baseRequest, listKey, mutation) {
+  const request = JSON.parse(JSON.stringify(baseRequest));
+  const deterministicResult = request.deterministicInput.deterministicResult;
+  const validMatch = {
+    term: 'Kubernetes',
+    label: 'Published evidence boundary for the test match.',
+    evidenceType: 'professional',
+    evidenceRefs: [request.evidenceIds[0]]
+  };
+
+  for (const key of DETERMINISTIC_MATCH_LISTS) {
+    deterministicResult[key] = [{ ...validMatch }];
+  }
+  deterministicResult[listKey][0] = {
+    ...deterministicResult[listKey][0],
+    ...mutation
+  };
+  return request;
+}
+
 async function callWorker(body, options = {}) {
   const worker = await loadWorker();
   const fetchCalls = [];
@@ -308,6 +330,36 @@ test('jd-reasoning rejects invalid request shapes before calling Workers AI', as
     assert.equal(response.status, 400, `${invalidCase.label} should reject at the HTTP contract boundary`);
     assert.equal(response.json.error, invalidCase.error, `${invalidCase.label} should expose the expected safe error code`);
     assert.equal(response.aiCalls.length, 0, `${invalidCase.label} should fail before Workers AI is invoked`);
+  }
+});
+
+test('jd-reasoning rejects unknown nested evidence refs in every deterministic match list', async () => {
+  const validRequest = buildValidRequest('en');
+
+  for (const listKey of DETERMINISTIC_MATCH_LISTS) {
+    const request = buildRequestWithNestedMatchMutation(validRequest, listKey, {
+      evidenceRefs: ['professional.unknown']
+    });
+    const response = await callWorker(request);
+
+    assert.equal(response.status, 400, `${listKey} should reject unknown nested evidence refs`);
+    assert.equal(response.json.error, 'jd-deterministic-invalid');
+    assert.equal(response.aiCalls.length, 0, `${listKey} should fail before Workers AI is invoked`);
+  }
+});
+
+test('jd-reasoning rejects invalid nested evidence types in every deterministic match list', async () => {
+  const validRequest = buildValidRequest('en');
+
+  for (const listKey of DETERMINISTIC_MATCH_LISTS) {
+    const request = buildRequestWithNestedMatchMutation(validRequest, listKey, {
+      evidenceType: 'totally-invalid'
+    });
+    const response = await callWorker(request);
+
+    assert.equal(response.status, 400, `${listKey} should reject invalid nested evidence types`);
+    assert.equal(response.json.error, 'jd-deterministic-invalid');
+    assert.equal(response.aiCalls.length, 0, `${listKey} should fail before Workers AI is invoked`);
   }
 });
 

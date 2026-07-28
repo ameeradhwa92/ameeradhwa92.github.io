@@ -425,6 +425,15 @@ function validateStringArray(value, maxItems, maxChars) {
     value.every((item) => isBoundedString(item, maxChars));
 }
 
+function validateEvidenceRefArray(value, allowedEvidenceIds) {
+  if (!Array.isArray(value) || value.length > 4 || !Array.isArray(allowedEvidenceIds)) {
+    return false;
+  }
+  const evidenceRefs = uniqueStrings(value, 4, 96);
+  return evidenceRefs.length === value.length &&
+    evidenceRefs.every((ref) => allowedEvidenceIds.includes(ref));
+}
+
 function sanitizeRecruiterEvidenceRecord(record) {
   if (!isPlainObject(record) || !isBoundedString(record.id, 96, false)) return null;
   const evidenceType = clipText(record.evidenceType, 24);
@@ -570,7 +579,7 @@ function validateJdReasoningBody(body, profile) {
     !Array.isArray(body.deterministicInput.requirements) ||
     body.deterministicInput.requirements.length === 0 ||
     body.deterministicInput.requirements.length > JD_REASONING_REQUIREMENT_MAX ||
-    !validateCompactDeterministicResult(body.deterministicInput.deterministicResult)) {
+    !validateCompactDeterministicResult(body.deterministicInput.deterministicResult, evidenceIds)) {
     return { ok: false, error: "jd-deterministic-invalid" };
   }
 
@@ -637,12 +646,8 @@ function sanitizeCompactRequirement(requirement, allowedEvidenceIds) {
   const yearsRequired = requirement.yearsRequired === null ? null : requirement.yearsRequired;
   if (!(yearsRequired === null || isNumberInRange(yearsRequired, 0, 60))) return null;
   if (typeof requirement.specificHandsOn !== "boolean") return null;
-  if (!Array.isArray(requirement.evidenceRefs) || requirement.evidenceRefs.length > 4) return null;
+  if (!validateEvidenceRefArray(requirement.evidenceRefs, allowedEvidenceIds)) return null;
   const evidenceRefs = uniqueStrings(requirement.evidenceRefs, 4, 96);
-  if (evidenceRefs.length !== requirement.evidenceRefs.length) return null;
-  for (const ref of evidenceRefs) {
-    if (!allowedEvidenceIds.includes(ref)) return null;
-  }
   return {
     id,
     term,
@@ -657,7 +662,7 @@ function sanitizeCompactRequirement(requirement, allowedEvidenceIds) {
   };
 }
 
-function validateCompactDeterministicResult(result) {
+function validateCompactDeterministicResult(result, allowedEvidenceIds) {
   if (!isPlainObject(result) || !hasOnlyKeys(result, JD_REASONING_ALLOWED_RESULT_KEYS)) {
     return false;
   }
@@ -679,7 +684,7 @@ function validateCompactDeterministicResult(result) {
   return ["strongMatches", "partialMatches", "gaps", "unverified"].every((key) =>
     Array.isArray(result[key]) &&
     result[key].length <= 8 &&
-    result[key].every(validateCompactDeterministicMatchItem)
+    result[key].every((item) => validateCompactDeterministicMatchItem(item, allowedEvidenceIds))
   );
 }
 
@@ -700,14 +705,15 @@ function validateCompactDeterministicCategory(category, categoryKey) {
   return true;
 }
 
-function validateCompactDeterministicMatchItem(item) {
+function validateCompactDeterministicMatchItem(item, allowedEvidenceIds) {
   if (!isPlainObject(item) || !hasOnlyKeys(item, JD_REASONING_ALLOWED_MATCH_ITEM_KEYS)) {
     return false;
   }
   return isBoundedString(item.term, 120, false) &&
     isBoundedString(item.label, 220) &&
     isBoundedString(item.evidenceType, 24) &&
-    validateStringArray(item.evidenceRefs, 4, 96);
+    JD_REASONING_EVIDENCE_TYPES[item.evidenceType] === true &&
+    validateEvidenceRefArray(item.evidenceRefs, allowedEvidenceIds);
 }
 
 function sanitizeCompactDeterministicResult(result) {
