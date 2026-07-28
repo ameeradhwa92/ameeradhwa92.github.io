@@ -307,9 +307,10 @@ test('jd-reasoning keeps noisy salary and benefits sections out of the bounded b
   const request = buildValidRequest({
     language: 'en',
 text: `Required Skills:
-- Azure DevOps leave management system
+- Bicep leave management system
 - CI/CD
 - ASP.NET Core medical device integration
+- Azure compensation analytics platform
 Preferred Skills:
 - Kubernetes
 Employer Questions:
@@ -330,6 +331,7 @@ Application Questions:
   assert.equal(request.jdText.toLowerCase().includes('annual leave'), false, 'projected jdText should exclude annual leave questions');
   assert.match(request.jdText.toLowerCase(), /medical device integration/, 'valid medical device requirements should remain in the projection');
   assert.match(request.jdText.toLowerCase(), /leave management system/, 'valid leave management requirements should remain in the projection');
+  assert.match(request.jdText.toLowerCase(), /compensation analytics platform/, 'valid compensation analytics requirements should remain in the projection');
   assert.equal(request.jdText.toLowerCase().includes('employer questions'), false, 'projected jdText should exclude employer question headings');
   assert.equal(request.jdText.toLowerCase().includes('application questions'), false, 'projected jdText should exclude application question headings');
   assert.equal(response.status, 200, 'the recruiter-safe projection should remain valid at the worker contract boundary');
@@ -345,6 +347,16 @@ test('jd-reasoning Worker rejects clear contractual and employee-admin privacy c
   });
   const rejectedContexts = [
     'Expected monthly basic salary',
+    'Expected compensation',
+    'Total compensation',
+    'Compensation package',
+    'Compensation history',
+    'Compensation range',
+    'Remuneration package',
+    'Remuneration expectation',
+    'Remuneration range',
+    'Employee compensation',
+    'Pay remuneration',
     'Medical coverage',
     'Annual leave',
     'Employee benefits',

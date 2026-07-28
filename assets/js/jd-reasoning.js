@@ -23,7 +23,11 @@
   var CONTEXTUAL_PRIVACY_PATTERNS = [
     /\b(?:expected|expecting|monthly|basic)\s+(?:[a-z]+\s+){0,2}salary\b/i,
     /\bsalary\s+(?:expectation|expectations|range|package|history)\b/i,
-    /\b(?:compensation|remuneration)\b/i,
+    /\b(?:expected|total)\s+compensation\b/i,
+    /\bcompensation\s+(?:package|history|range)\b/i,
+    /\bremuneration\s+(?:package|expectation|range)\b/i,
+    /\b(?:salary|employee|pay)\s+(?:[a-z]+\s+){0,2}(?:compensation|remuneration)\b/i,
+    /\b(?:compensation|remuneration)\s+(?:[a-z]+\s+){0,2}(?:salary|employee|pay)\b/i,
     /\bmedical\s+(?:coverage|insurance|benefits|plan|history)\b/i,
     /\b(?:health|employee)\s+(?:benefits|coverage|insurance|plan)\b/i,
     /\b(?:annual|sick|paid|unpaid|parental|maternity|paternity|casual)\s+leave\b/i,

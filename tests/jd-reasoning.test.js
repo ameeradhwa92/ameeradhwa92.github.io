@@ -346,7 +346,8 @@ Preferred Skills:
 test('JDReasoning.buildInput keeps valid medical and leave domain requirements while filtering admin privacy terms', () => {
   const allowedCases = [
     'Azure medical device integration',
-    'Azure leave management system'
+    'Azure leave management system',
+    'Azure compensation analytics platform'
   ];
   for (const requirement of allowedCases) {
     const { harness, profile, normalized, result } = analyze(`Required Skills:\n- ${requirement}\n`);
@@ -357,6 +358,16 @@ test('JDReasoning.buildInput keeps valid medical and leave domain requirements w
 
   const rejectedCases = [
     'Expected monthly basic salary',
+    'Expected compensation',
+    'Total compensation',
+    'Compensation package',
+    'Compensation history',
+    'Compensation range',
+    'Remuneration package',
+    'Remuneration expectation',
+    'Remuneration range',
+    'Employee compensation',
+    'Pay remuneration',
     'Medical coverage',
     'Annual leave',
     'Employee benefits',
