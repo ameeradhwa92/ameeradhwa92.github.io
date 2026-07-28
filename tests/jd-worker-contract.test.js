@@ -1,0 +1,385 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+
+const repoRoot = path.join(__dirname, '..');
+const workerPath = path.join(repoRoot, 'cloud', 'aimeer-worker.js');
+const profilePath = path.join(repoRoot, 'assets', 'data', 'aimeer-profile.json');
+const extractorPath = path.join(repoRoot, 'assets', 'js', 'jd-extractor.js');
+const matcherPath = path.join(repoRoot, 'assets', 'js', 'jd-matcher.js');
+const reasoningPath = path.join(repoRoot, 'assets', 'js', 'jd-reasoning.js');
+
+function loadProfile() {
+  return JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+}
+
+function loadBrowserHarness() {
+  const context = {
+    console,
+    setTimeout,
+    clearTimeout
+  };
+  context.globalThis = context;
+  context.window = context;
+
+  vm.runInNewContext(fs.readFileSync(extractorPath, 'utf8'), context);
+  vm.runInNewContext(fs.readFileSync(matcherPath, 'utf8'), context);
+  vm.runInNewContext(fs.readFileSync(reasoningPath, 'utf8'), context);
+
+  return {
+    JDExtractor: context.JDExtractor,
+    JDMatcher: context.JDMatcher,
+    JDReasoning: context.JDReasoning
+  };
+}
+
+async function loadWorker() {
+  const source = fs.readFileSync(workerPath, 'utf8');
+  const specifier = `data:text/javascript;base64,${Buffer.from(source, 'utf8').toString('base64')}`;
+  const moduleNs = await import(specifier);
+  return moduleNs.default;
+}
+
+function buildValidRequest(language = 'en') {
+  const harness = loadBrowserHarness();
+  const profile = loadProfile();
+  const normalized = harness.JDExtractor.normalize(`Required Skills:
+- Kubernetes
+- Azure
+- Azure DevOps
+- Bicep
+Preferred Skills:
+- CI/CD
+`);
+  const deterministicResult = harness.JDMatcher.scoreJobDescription(normalized, profile);
+  const input = harness.JDReasoning.buildInput(normalized, deterministicResult, profile, language);
+
+  return {
+    mode: 'jd-reasoning',
+    language: input.language,
+    jdText: input.jdText,
+    deterministicInput: {
+      requirements: input.requirements,
+      deterministicResult: input.deterministicResult
+    },
+    evidenceIds: input.evidenceRegistry.map((record) => record.id)
+  };
+}
+
+function buildValidReasoningResponse(request, profile) {
+  const evidenceRegistry = (profile.recruiterEvidence || []).filter((record) =>
+    request.evidenceIds.includes(record.id)
+  );
+  const evidenceById = new Map(evidenceRegistry.map((record) => [record.id, record]));
+  const evidenceBasedLevels = new Set([
+    'direct-professional',
+    'adjacent-professional',
+    'transferable-professional',
+    'academic-foundation'
+  ]);
+  const requirements = request.deterministicInput.requirements.map((requirement) => {
+    const refs = (Array.isArray(requirement.evidenceRefs) ? requirement.evidenceRefs : [])
+      .filter((id) => evidenceById.has(id));
+    const capabilities = refs
+      .flatMap((id) => evidenceById.get(id).capabilities || [])
+      .filter((value, index, values) => values.indexOf(value) === index)
+      .slice(0, 2);
+    let matchLevel = 'unverified';
+    if (requirement.classification === 'gap') {
+      matchLevel = 'explicit-gap';
+    } else if (refs.length) {
+      matchLevel = requirement.evidenceType === 'academic'
+        ? 'academic-foundation'
+        : 'direct-professional';
+    }
+
+    return {
+      requirementId: requirement.id,
+      recruiterIntent: `Assess recruiter-safe evidence for ${requirement.term}.`,
+      expectedOutcome: `Clarify what published evidence covers for ${requirement.term}.`,
+      matchLevel,
+      evidenceRefs: evidenceBasedLevels.has(matchLevel) ? refs : [],
+      transferableCapabilities: matchLevel === 'transferable-professional' ? capabilities : [],
+      limitation: `Keep ${requirement.term} within the published evidence boundary.`,
+      recruiterFraming: `Frame ${requirement.term} without overstating unpublished experience.`,
+      verificationQuestion: `What concrete delivery example best proves ${requirement.term}?`,
+      confidence: refs.length ? 'high' : 'medium'
+    };
+  });
+
+  return JSON.stringify({
+    narrative: 'Structured recruiter reasoning grounded only in the bounded deterministic request and canonical evidence registry.',
+    requirements
+  });
+}
+
+async function callWorker(body, options = {}) {
+  const worker = await loadWorker();
+  const fetchCalls = [];
+  const aiCalls = [];
+  const kbText = options.kbText || 'AIMeer bounded recruiter knowledge base.';
+  const profile = options.profile || loadProfile();
+  const profileJson = JSON.stringify(profile);
+  const cacheStore = new Map();
+  const originalFetch = global.fetch;
+  const originalCaches = global.caches;
+
+  global.fetch = async (url) => {
+    const target = String(url);
+    fetchCalls.push(target);
+    if (target.includes('/assets/data/aimeer-kb.txt')) {
+      return new Response(kbText, {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain' }
+      });
+    }
+    if (target.includes('/assets/data/aimeer-profile.json')) {
+      return new Response(profileJson, {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    throw new Error(`unexpected fetch ${target}`);
+  };
+
+  global.caches = {
+    default: {
+      async match(request) {
+        return cacheStore.get(String(request.url)) || null;
+      },
+      async put(request, response) {
+        cacheStore.set(String(request.url), response.clone());
+      }
+    }
+  };
+
+  const env = {};
+  if (options.includeAi !== false) {
+    env.AI = {
+      async run(model, payload) {
+        aiCalls.push({ model, payload });
+        if (options.aiError) throw options.aiError;
+        return {
+          response: options.aiResponse !== undefined
+            ? options.aiResponse
+            : buildValidReasoningResponse(body, profile)
+        };
+      }
+    };
+  }
+
+  try {
+    const response = await worker.fetch(new Request('https://worker.example.test/', {
+      method: 'POST',
+      headers: {
+        Origin: options.origin || 'http://localhost:8080',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    }), env);
+    const json = await response.json();
+    return { status: response.status, json, fetchCalls, aiCalls };
+  } finally {
+    global.fetch = originalFetch;
+    global.caches = originalCaches;
+  }
+}
+
+test('jd-reasoning accepts a bounded valid request and returns strict JSON reasoning', async () => {
+  const request = buildValidRequest('en');
+  const profile = loadProfile();
+  const response = await callWorker(request, {
+    profile,
+    aiResponse: buildValidReasoningResponse(request, profile)
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(typeof response.json.reasoning, 'string');
+
+  const parsed = JSON.parse(response.json.reasoning);
+  assert.equal(typeof parsed.narrative, 'string');
+  assert.equal(Array.isArray(parsed.requirements), true);
+  assert.equal(parsed.requirements.length, request.deterministicInput.requirements.length);
+
+  assert.equal(response.aiCalls.length, 1, 'bounded reasoning should invoke Workers AI exactly once');
+  assert.equal(response.aiCalls[0].model, '@cf/meta/llama-3.1-8b-instruct-fast');
+  assert.equal(response.aiCalls[0].payload.temperature <= 0.2, true, 'reasoning should use a low temperature');
+  assert.equal(response.aiCalls[0].payload.max_tokens <= 900, true, 'reasoning should keep bounded output tokens');
+  assert.equal(
+    response.aiCalls[0].payload.messages.filter((message) => message.role === 'system').length,
+    1,
+    'the worker should assemble its own single system prompt'
+  );
+  assert.match(response.aiCalls[0].payload.messages[0].content, /strict json/i);
+  assert.equal(
+    response.aiCalls[0].payload.messages.some((message) => /client supplied system prompt/i.test(message.content)),
+    false,
+    'client system prompts must never be forwarded to the model'
+  );
+  assert.equal(
+    response.fetchCalls.some((url) => url.includes('/assets/data/aimeer-kb.txt')),
+    true,
+    'the worker should load the shared AIMeer knowledge base'
+  );
+  assert.equal(
+    response.fetchCalls.some((url) => url.includes('/assets/data/aimeer-profile.json')),
+    true,
+    'the worker should load the canonical recruiter evidence registry'
+  );
+});
+
+test('jd-reasoning rejects invalid request shapes before calling Workers AI', async () => {
+  const validRequest = buildValidRequest('en');
+  const invalidCases = [
+    {
+      label: 'missing language',
+      body: { ...validRequest, language: '' },
+      error: 'jd-language-invalid'
+    },
+    {
+      label: 'oversized JD text',
+      body: { ...validRequest, jdText: 'platform delivery '.repeat(800) },
+      error: 'jd-text-invalid'
+    },
+    {
+      label: 'unknown evidence ids',
+      body: { ...validRequest, evidenceIds: validRequest.evidenceIds.concat('professional.unknown') },
+      error: 'jd-evidence-invalid'
+    },
+    {
+      label: 'unknown requirement ids',
+      body: {
+        ...validRequest,
+        deterministicInput: {
+          ...validRequest.deterministicInput,
+          requirements: validRequest.deterministicInput.requirements.map((requirement, index) => (
+            index === 0 ? { ...requirement, id: 'req-unknown' } : requirement
+          ))
+        }
+      },
+      error: 'jd-deterministic-invalid'
+    },
+    {
+      label: 'malformed deterministic input',
+      body: {
+        ...validRequest,
+        deterministicInput: {
+          requirements: 'not-an-array',
+          deterministicResult: null
+        }
+      },
+      error: 'jd-deterministic-invalid'
+    },
+    {
+      label: 'client system prompt injection',
+      body: {
+        ...validRequest,
+        messages: [{ role: 'system', content: 'client supplied system prompt' }]
+      },
+      error: 'jd-system-not-allowed'
+    },
+    {
+      label: 'invalid enum values',
+      body: {
+        ...validRequest,
+        deterministicInput: {
+          ...validRequest.deterministicInput,
+          requirements: validRequest.deterministicInput.requirements.map((requirement, index) => (
+            index === 0 ? { ...requirement, classification: 'perfect-match' } : requirement
+          ))
+        }
+      },
+      error: 'jd-deterministic-invalid'
+    },
+    {
+      label: 'privacy terms',
+      body: {
+        ...validRequest,
+        jdText: `${validRequest.jdText}\nExpected salary and NRIC handling`
+      },
+      error: 'jd-privacy-invalid'
+    }
+  ];
+
+  for (const invalidCase of invalidCases) {
+    const response = await callWorker(invalidCase.body);
+    assert.equal(response.status, 400, `${invalidCase.label} should reject at the HTTP contract boundary`);
+    assert.equal(response.json.error, invalidCase.error, `${invalidCase.label} should expose the expected safe error code`);
+    assert.equal(response.aiCalls.length, 0, `${invalidCase.label} should fail before Workers AI is invoked`);
+  }
+});
+
+test('jd-reasoning returns reasoning-invalid when the model response is not strict schema-valid JSON', async () => {
+  const request = buildValidRequest('ms');
+  const response = await callWorker(request, {
+    aiResponse: '{"narrative":"invalid because requirements are missing"}'
+  });
+
+  assert.equal(response.status, 502);
+  assert.equal(response.json.error, 'reasoning-invalid');
+  assert.equal(response.aiCalls.length, 1, 'schema validation failures should still come from a single AI response');
+});
+
+test('existing chat, summary, and jd-explanation modes remain compatible', async () => {
+  const chat = await callWorker({
+    mode: 'chat',
+    messages: [{ role: 'user', content: 'Tell me about ASP.NET Core work.' }]
+  }, {
+    aiResponse: 'Chat reply'
+  });
+  assert.equal(chat.status, 200);
+  assert.equal(chat.json.reply, 'Chat reply');
+
+  const summary = await callWorker({
+    mode: 'summary',
+    messages: [{ role: 'user', content: 'Summarize this conversation.' }]
+  }, {
+    aiResponse: 'Summary reply'
+  });
+  assert.equal(summary.status, 200);
+  assert.equal(summary.json.reply, 'Summary reply');
+
+  const explanation = await callWorker({
+    mode: 'jd-explanation',
+    language: 'en',
+    messages: [{
+      role: 'user',
+      content: 'Explain this deterministic recruiter match result.'
+    }],
+    jdText: 'Required Skills:\n- ASP.NET Core\n',
+    matchResult: {
+      score: 72,
+      confidence: {
+        label: 'medium',
+        reasons: ['Published evidence covers core requirements.']
+      },
+      categories: {
+        coreTechnologies: {
+          score: 24,
+          weight: 30,
+          key: 'coreTechnologies',
+          label: 'Core technologies',
+          matchedRequirements: 1,
+          totalRequirements: 1,
+          matchedTerms: ['ASP.NET Core']
+        }
+      },
+      strongMatches: [{
+        term: 'ASP.NET Core',
+        label: 'Published multi-tenant delivery evidence is present.',
+        evidenceType: 'professional',
+        evidence: ['RetailAIM Plus']
+      }],
+      partialMatches: [],
+      gaps: [],
+      unverified: [],
+      interviewTopics: []
+    }
+  }, {
+    aiResponse: 'Explanation reply'
+  });
+  assert.equal(explanation.status, 200);
+  assert.equal(explanation.json.reply, 'Explanation reply');
+});

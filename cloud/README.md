@@ -20,6 +20,28 @@ Worker only answers requests coming from the portfolio site.
    `https://aimeer-ai.<your-subdomain>.workers.dev`.
 6. Paste that URL into `CLOUD_ENDPOINT` in `assets/js/chatbot.js`, commit, push.
 
+## Manual redeploy reminder for Worker source changes
+
+`cloud/aimeer-worker.js` is a source-of-truth copy for the repository, but the
+live Worker is still updated manually in the Cloudflare dashboard editor. This
+means any change to the Worker file here — including the bounded `jd-reasoning`
+mode for recruiter reasoning — is **not live** until you:
+
+1. Open the Worker in the Cloudflare dashboard.
+2. Replace the dashboard editor contents with the latest `cloud/aimeer-worker.js`.
+3. Confirm the **Workers AI** binding named exactly `AI` is still present.
+4. Click **Deploy**.
+5. Smoke-test the live endpoint from an allowed origin after deployment.
+
+Suggested smoke tests after a manual redeploy:
+
+- `chat` mode still returns a normal AIMeer reply.
+- `summary` mode still returns a short summary.
+- `jd-explanation` mode still explains a deterministic result without changing
+  the score.
+- `jd-reasoning` accepts a bounded valid payload and returns structured JSON
+  reasoning, while invalid payloads return safe error codes.
+
 ## Free-tier limits
 
 - Workers: 100,000 requests/day.
