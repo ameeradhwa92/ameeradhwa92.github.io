@@ -136,6 +136,153 @@
     }
   ];
 
+  var RECRUITER_EVIDENCE_HINTS = [
+    {
+      id: "professional.production-delivery",
+      terms: [
+        "azure devops",
+        "ci/cd",
+        "cicd",
+        "production delivery",
+        "application deployments",
+        "deployments",
+        "production support",
+        "system enhancements",
+        "technical documentation",
+        "user guides",
+        "system specifications",
+        "delivery documentation"
+      ]
+    },
+    {
+      id: "professional.azure-delivery",
+      terms: [
+        "azure",
+        "azure devops",
+        "azure app service",
+        "bicep",
+        "arm",
+        "arm/bicep iac",
+        "git",
+        "cloud delivery",
+        "infrastructure as code",
+        "production delivery"
+      ]
+    },
+    {
+      id: "professional.web-api-architecture",
+      terms: [
+        "asp.net core",
+        "asp.net",
+        ".net",
+        "dotnet",
+        "c#",
+        "c sharp",
+        "react",
+        "typescript",
+        "fastapi",
+        "rest/soap apis",
+        "api integration",
+        "web application architecture",
+        "clean architecture",
+        "enterprise web application development",
+        "enterprise web applications",
+        "web application development",
+        "laravel"
+      ]
+    },
+    {
+      id: "professional.mobile-delivery",
+      terms: [
+        "android",
+        "android sdk",
+        "ios",
+        "flutter",
+        "dart",
+        "kotlin",
+        "java",
+        "mobile delivery",
+        "cross-platform development"
+      ]
+    },
+    {
+      id: "professional.application-quality",
+      terms: [
+        "application quality",
+        "testing",
+        "code review",
+        "code reviews",
+        "incident response",
+        "secure delivery",
+        "continuous improvement",
+        "troubleshooting",
+        "performance optimisation",
+        "performance optimization",
+        "secure coding"
+      ]
+    },
+    {
+      id: "professional.database-design",
+      terms: [
+        "sql databases",
+        "sql database",
+        "sql queries",
+        "relational databases",
+        "database design",
+        "ms sql server",
+        "azure sql",
+        "mysql",
+        "sqlite"
+      ]
+    },
+    {
+      id: "professional.stakeholder-collaboration",
+      terms: [
+        "stakeholder collaboration",
+        "stakeholder communication",
+        "business requirements",
+        "requirements analysis",
+        "analyse business requirements",
+        "analyze business requirements",
+        "business users",
+        "vendors",
+        "product owners",
+        "cross-functional teams"
+      ]
+    },
+    {
+      id: "academic.intelligent-systems",
+      terms: [
+        "artificial intelligence",
+        "knowledge-based systems",
+        "intelligent systems",
+        "tesseract ocr",
+        "tesseract",
+        "ocr"
+      ]
+    },
+    {
+      id: "user.agile-context",
+      terms: [
+        "agile",
+        "agile methodologies",
+        "agile environment",
+        "scrum",
+        "iterative delivery",
+        "ai-assisted development",
+        "ai-assisted coding",
+        "genai-assisted coding",
+        "genai-assisted development",
+        "ai tools",
+        "claude code",
+        "codex",
+        "github copilot",
+        "cursor",
+        "gemini cli"
+      ]
+    }
+  ];
+
   function roundScore(value) {
     return Math.round((Number(value) || 0) * 100) / 100;
   }
@@ -160,6 +307,19 @@
       .filter(Boolean)
       .map(function (part) { return part.charAt(0).toUpperCase() + part.slice(1); })
       .join(" ");
+  }
+
+  function toKebabCase(value) {
+    return String(value || "")
+      .replace(/#/g, " sharp ")
+      .replace(/\+/g, " plus ")
+      .replace(/DevOps/g, "Devops")
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .replace(/&/g, " and ")
+      .replace(/[^A-Za-z0-9]+/g, " ")
+      .trim()
+      .replace(/\s+/g, "-")
+      .toLowerCase();
   }
 
   function monthsBetween(from, to) {
@@ -229,10 +389,75 @@
       category: category || inferCategory(name),
       aliases: [],
       evidence: [],
+      evidenceRefs: [],
       evidenceType: null,
       hasProfessional: false,
       hasAcademic: false,
       hasUserProvided: false
+    };
+  }
+
+  function addUniqueValue(list, value) {
+    if (!value || list.indexOf(value) !== -1) return;
+    list.push(value);
+  }
+
+  function mergeUniqueValues(target, values) {
+    for (var index = 0; index < values.length; index += 1) addUniqueValue(target, values[index]);
+  }
+
+  function resolveRecruiterEvidenceRefsForValues(values, recruiterEvidenceById) {
+    var refs = [];
+    var normalized = values
+      .map(function (value) { return normalizeKey(value); })
+      .filter(Boolean);
+    for (var hintIndex = 0; hintIndex < RECRUITER_EVIDENCE_HINTS.length; hintIndex += 1) {
+      var hint = RECRUITER_EVIDENCE_HINTS[hintIndex];
+      if (!recruiterEvidenceById[hint.id]) continue;
+      for (var termIndex = 0; termIndex < hint.terms.length; termIndex += 1) {
+        if (normalized.indexOf(normalizeKey(hint.terms[termIndex])) !== -1) {
+          addUniqueValue(refs, hint.id);
+          break;
+        }
+      }
+    }
+    return refs;
+  }
+
+  function assignRequirementIds(requirements) {
+    var seen = Object.create(null);
+    for (var index = 0; index < requirements.length; index += 1) {
+      var requirement = requirements[index];
+      var baseId = [
+        "req",
+        toKebabCase(requirement.category),
+        toKebabCase(requirement.term)
+      ].join("-");
+      var nextId = baseId;
+      var suffix = 2;
+      while (seen[nextId]) {
+        nextId = baseId + "-" + suffix;
+        suffix += 1;
+      }
+      seen[nextId] = true;
+      requirement.id = nextId;
+    }
+    return requirements;
+  }
+
+  function buildRequirementResult(requirement, classification) {
+    return {
+      id: requirement.id,
+      term: classification.term,
+      original: requirement.original,
+      strength: requirement.strength,
+      heading: requirement.heading,
+      category: classification.category || requirement.category,
+      yearsRequired: requirement.yearsRequired,
+      specificHandsOn: !!requirement.specificHandsOn,
+      classification: classification.classification,
+      evidenceType: classification.evidenceType,
+      evidenceRefs: Array.isArray(classification.evidenceRefs) ? classification.evidenceRefs.slice() : []
     };
   }
 
@@ -270,6 +495,8 @@
   function buildProfileIndex(profile) {
     var aliasMap = Object.create(null);
     var skillMap = Object.create(null);
+    var recruiterEvidence = Array.isArray(profile && profile.recruiterEvidence) ? profile.recruiterEvidence : [];
+    var recruiterEvidenceById = Object.create(null);
     var professionalEvidence = [];
     var academicEvidence = [];
     var userProvidedEvidence = [];
@@ -290,6 +517,17 @@
       registerAlias(entry.canonical, entry);
       for (var aliasIndex = 0; aliasIndex < aliases.length; aliasIndex += 1) {
         registerAlias(aliases[aliasIndex], entry);
+      }
+      mergeUniqueValues(entry.evidenceRefs, resolveRecruiterEvidenceRefsForValues(
+        [entry.canonical].concat(aliases || []),
+        recruiterEvidenceById
+      ));
+    }
+
+    for (var recruiterEvidenceIndex = 0; recruiterEvidenceIndex < recruiterEvidence.length; recruiterEvidenceIndex += 1) {
+      var recruiterEvidenceRecord = recruiterEvidence[recruiterEvidenceIndex];
+      if (recruiterEvidenceRecord && recruiterEvidenceRecord.id) {
+        recruiterEvidenceById[recruiterEvidenceRecord.id] = recruiterEvidenceRecord;
       }
     }
 
@@ -605,6 +843,7 @@
       aliasEntry: entry,
       aliasMatch: aliasMatch || findBestAliasOccurrence(source, entry, entry.canonical),
       yearsRequired: null,
+      specificHandsOn: false,
       normalizedText: normalizeKey(source)
     };
   }
@@ -649,6 +888,7 @@
       category: inferCategory(text),
       aliasEntry: null,
       yearsRequired: null,
+      specificHandsOn: false,
       normalizedText: normalizeKey(text)
     };
   }
@@ -743,7 +983,7 @@
         }
       }
     }
-    return dedupeNestedAliasRequirements(requirements);
+    return assignRequirementIds(dedupeNestedAliasRequirements(requirements));
   }
 
   function dedupeNestedAliasRequirements(requirements) {
@@ -814,12 +1054,15 @@
         });
         if (professionalHandsOn) {
           return {
+            id: requirement.id,
             term: requirement.term,
+            original: requirement.original,
             label: "Partial match (professional evidence; specific duration is not published)",
             category: requirement.category,
             classification: "partial",
             evidenceType: "professional",
             evidence: professionalHandsOn.entry.evidence.slice(),
+            evidenceRefs: Array.isArray(professionalHandsOn.entry.evidenceRefs) ? professionalHandsOn.entry.evidenceRefs.slice() : [],
             strength: requirement.strength,
             strengthFactor: strengthFactor
           };
@@ -827,23 +1070,29 @@
       }
       if (index.documentedYears >= requirement.yearsRequired) {
         return {
+          id: requirement.id,
           term: requirement.term,
+          original: requirement.original,
           label: "Strong match (documented professional tenure)",
           category: requirement.category,
           classification: "strong",
           evidenceType: "professional",
           evidence: index.tenureEvidence.slice(),
+          evidenceRefs: [],
           strength: requirement.strength,
           strengthFactor: strengthFactor
         };
       }
       return {
+        id: requirement.id,
         term: requirement.term,
+        original: requirement.original,
         label: "Gap (documented professional tenure is below this stated threshold)",
         category: requirement.category,
         classification: "gap",
         evidenceType: "professional",
         evidence: index.tenureEvidence.slice(),
+        evidenceRefs: [],
         strength: requirement.strength,
         strengthFactor: strengthFactor
       };
@@ -853,36 +1102,45 @@
     if (aliasEntry) {
       if (aliasEntry.hasProfessional) {
         return {
+          id: requirement.id,
           term: aliasEntry.canonical,
+          original: requirement.original,
           label: "Strong match (professional evidence)",
           category: aliasEntry.category || requirement.category,
           classification: "strong",
           evidenceType: "professional",
           evidence: aliasEntry.evidence.slice(),
+          evidenceRefs: Array.isArray(aliasEntry.evidenceRefs) ? aliasEntry.evidenceRefs.slice() : [],
           strength: requirement.strength,
           strengthFactor: strengthFactor
         };
       }
       if (aliasEntry.hasAcademic) {
         return {
+          id: requirement.id,
           term: aliasEntry.canonical,
+          original: requirement.original,
           label: "Partial match (academic exposure)",
           category: aliasEntry.category || requirement.category,
           classification: "partial",
           evidenceType: "academic",
           evidence: aliasEntry.evidence.slice(),
+          evidenceRefs: Array.isArray(aliasEntry.evidenceRefs) ? aliasEntry.evidenceRefs.slice() : [],
           strength: requirement.strength,
           strengthFactor: strengthFactor
         };
       }
       if (aliasEntry.hasUserProvided || aliasEntry.evidenceType === "user-provided") {
         return {
+          id: requirement.id,
           term: aliasEntry.canonical,
+          original: requirement.original,
           label: "Partial match (user-provided context)",
           category: aliasEntry.category || requirement.category,
           classification: "partial",
           evidenceType: "user-provided",
           evidence: aliasEntry.evidence.slice(),
+          evidenceRefs: Array.isArray(aliasEntry.evidenceRefs) ? aliasEntry.evidenceRefs.slice() : [],
           strength: requirement.strength,
           strengthFactor: strengthFactor
         };
@@ -893,24 +1151,30 @@
     if (requiredQualificationLevel > 0 && requirement.category === "educationCoursework") {
       if (index.highestQualificationLevel >= requiredQualificationLevel) {
         return {
+          id: requirement.id,
           term: requirement.term,
+          original: requirement.original,
           label: "Strong match (academic exposure: published qualification evidence)",
           category: requirement.category,
           classification: "strong",
           evidenceType: "academic",
           evidence: [index.highestQualificationLabel],
+          evidenceRefs: [],
           strength: requirement.strength,
           strengthFactor: strengthFactor
         };
       }
       if (index.highestQualificationLevel > 0) {
         return {
+          id: requirement.id,
           term: requirement.term,
+          original: requirement.original,
           label: "Gap (published qualification evidence does not reach this stated level)",
           category: requirement.category,
           classification: "gap",
           evidenceType: "academic",
           evidence: [index.highestQualificationLabel],
+          evidenceRefs: [],
           strength: requirement.strength,
           strengthFactor: strengthFactor
         };
@@ -919,24 +1183,30 @@
 
     if (requirement.category === "educationCoursework" && index.hasRelevantDegree) {
       return {
+        id: requirement.id,
         term: requirement.term,
+        original: requirement.original,
         label: "Partial match (academic exposure: relevant computing degree)",
         category: requirement.category,
         classification: "partial",
         evidenceType: "academic",
         evidence: index.academicEvidence.slice(0, 2),
+        evidenceRefs: [],
         strength: requirement.strength,
         strengthFactor: strengthFactor
       };
     }
 
     return {
+      id: requirement.id,
       term: requirement.term,
+      original: requirement.original,
       label: "Unverified (no direct evidence in the recruiter profile)",
       category: requirement.category,
       classification: "unverified",
       evidenceType: "unverified",
       evidence: [],
+      evidenceRefs: [],
       strength: requirement.strength,
       strengthFactor: strengthFactor
     };
@@ -1031,8 +1301,11 @@
     var index = buildProfileIndex(profile || {});
     var requirements = extractRequirements(normalizedJd || {}, index);
     var classifications = [];
+    var detailedRequirements = [];
     for (var reqIndex = 0; reqIndex < requirements.length; reqIndex += 1) {
-      classifications.push(classifyRequirement(requirements[reqIndex], index));
+      var classification = classifyRequirement(requirements[reqIndex], index);
+      classifications.push(classification);
+      detailedRequirements.push(buildRequirementResult(requirements[reqIndex], classification));
     }
 
     var categoryScores = {};
@@ -1078,6 +1351,8 @@
 
     return {
       score: totalScore,
+      deterministicScore: totalScore,
+      requirements: detailedRequirements,
       categories: categoryScores,
       strongMatches: strongMatches,
       partialMatches: partialMatches,
