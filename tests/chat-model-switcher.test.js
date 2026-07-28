@@ -7,6 +7,7 @@ const vm = require('node:vm');
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const i18n = fs.readFileSync(path.join(__dirname, '..', 'assets', 'js', 'i18n.js'), 'utf8');
 const chatbot = fs.readFileSync(path.join(__dirname, '..', 'assets', 'js', 'chatbot.js'), 'utf8');
+const jdReasoning = fs.readFileSync(path.join(__dirname, '..', 'assets', 'js', 'jd-reasoning.js'), 'utf8');
 const css = fs.readFileSync(path.join(__dirname, '..', 'assets', 'css', 'style.css'), 'utf8');
 const { evaluate } = require('../assets/js/aimeer-device.js');
 
@@ -235,16 +236,20 @@ const PROFILE_FIXTURE = {
   recruiterEvidence: [
     {
       id: 'ev-retailaim-plus',
-      title: 'RetailAIM Plus multi-tenant delivery',
       evidenceType: 'professional',
-      summary: 'Production ASP.NET Core MVC delivery across Southeast Asia tenants.',
-      capabilities: ['ASP.NET Core MVC', 'Azure DevOps', 'CI/CD']
+      claim: 'Production ASP.NET Core MVC delivery across Southeast Asia tenants.',
+      technologies: ['ASP.NET Core MVC'],
+      capabilities: ['ASP.NET Core MVC', 'Azure DevOps', 'CI/CD'],
+      scope: ['multi-tenant web delivery'],
+      sourceLabel: 'RetailAIM Plus project history'
     },
     {
       id: 'ev-azure-devops',
-      title: 'Azure DevOps release ownership',
       evidenceType: 'professional',
-      summary: 'Owns release pipelines and cloud delivery workflows.',
+      claim: 'Owns release pipelines and cloud delivery workflows.',
+      technologies: ['Azure DevOps'],
+      scope: ['cloud delivery'],
+      sourceLabel: 'Azure DevOps release ownership',
       capabilities: ['Azure DevOps', 'Cloud delivery', 'Release automation']
     }
   ]
@@ -308,6 +313,7 @@ function buildDeterministicResult(overrides = {}) {
         category: 'coreTechnologies',
         strength: 'required',
         classification: 'strong',
+        evidenceType: 'professional',
         evidenceRefs: ['ev-retailaim-plus']
       },
       {
@@ -362,40 +368,40 @@ function buildMergedResult(baseResult, overrides = {}) {
     }
   ];
   result.sections = {
-    strengths: [
+    verifiedStrengths: [
       {
         term: 'ASP.NET Core MVC',
-        note: 'Verified production delivery is already published.'
+        recruiterFraming: 'Verified production delivery is already published.'
       }
     ],
-    transferable: [
+    transferableAdvantages: [
       {
         term: 'Cloud delivery bridge',
-        note: 'Azure DevOps release ownership can shorten the move into Kubernetes-based operations.'
-      }
-    ],
-    partialMatches: [
-      {
-        term: 'Kubernetes',
-        note: 'Adjacent cloud delivery exists, but named Kubernetes depth is still a screening topic.'
-      }
-    ],
-    gaps: [
-      {
-        term: 'Salesforce Marketing Cloud',
-        note: 'No published implementation evidence is currently available.'
-      }
-    ],
-    unverified: [
-      {
-        term: 'Public speaking at conferences',
-        note: 'Published profile does not verify this requirement yet.'
+        recruiterFraming: 'Azure DevOps release ownership can shorten the move into Kubernetes-based operations.'
       }
     ],
     learningBridges: [
       {
         term: 'Kubernetes',
-        note: 'Bridge from Azure DevOps and cloud-release ownership into container operations.'
+        limitation: 'Adjacent cloud delivery exists, but named Kubernetes depth is still a screening topic.'
+      }
+    ],
+    explicitGaps: [
+      {
+        term: 'Salesforce Marketing Cloud',
+        limitation: 'No published implementation evidence is currently available.'
+      }
+    ],
+    unverifiedRequirements: [
+      {
+        term: 'Public speaking at conferences',
+        limitation: 'Published profile does not verify this requirement yet.'
+      }
+    ],
+    limitations: [
+      {
+        term: 'Kubernetes',
+        limitation: 'Bridge from Azure DevOps and cloud-release ownership into container operations.'
       }
     ],
     interviewQuestions: [
@@ -567,10 +573,10 @@ test('JD reasoning keeps local waiting state ahead of interim cloud fallback', a
 
 test('JD matcher keeps the deterministic score visible until recruiter reasoning is requested, then renders localized local reasoning sections', async () => {
   const deterministicResult = buildDeterministicResult();
-  const mergedResult = buildMergedResult(deterministicResult);
   const buildCalls = [];
   const validateCalls = [];
   const mergeCalls = [];
+  let realMergedResult = null;
   const chatbotWithControlledWebLLM = chatbot.replace(
     'return import(WEBLLM_CDN).then(function (webllm) {',
     'return window.__importWebLLM(WEBLLM_CDN).then(function (webllm) {'
@@ -583,7 +589,35 @@ test('JD matcher keeps the deterministic score visible until recruiter reasoning
             return Promise.resolve({
               choices: [{
                 message: {
-                  content: JSON.stringify({ narrative: 'Local recruiter reasoning', requirements: [] })
+                  content: JSON.stringify({
+                    narrative: 'Calibrated fit improves when adjacent cloud delivery is counted, but Kubernetes remains a verification topic.',
+                    requirements: [
+                      {
+                        requirementId: 'req-aspnet-core',
+                        recruiterIntent: 'Own production-grade web delivery on the current stack.',
+                        expectedOutcome: 'Sustain and extend the current ASP.NET Core platform.',
+                        matchLevel: 'direct-professional',
+                        evidenceRefs: ['ev-retailaim-plus'],
+                        transferableCapabilities: [],
+                        limitation: 'Published evidence confirms the current stack but not every future module.',
+                        recruiterFraming: 'Direct published production evidence is already available.',
+                        verificationQuestion: 'Which high-scale production modules did he own directly?',
+                        confidence: 'high'
+                      },
+                      {
+                        requirementId: 'req-kubernetes',
+                        recruiterIntent: 'Support containerized deployment and operations.',
+                        expectedOutcome: 'Ramp into Kubernetes-backed delivery with adjacent cloud ownership.',
+                        matchLevel: 'adjacent-professional',
+                        evidenceRefs: ['ev-azure-devops'],
+                        transferableCapabilities: ['Azure DevOps', 'Release automation'],
+                        limitation: 'Published work does not yet confirm a production Kubernetes rollout.',
+                        recruiterFraming: 'Adjacent cloud delivery shortens the ramp, but screening should confirm direct cluster experience.',
+                        verificationQuestion: 'What hands-on Kubernetes rollout, if any, has he completed directly?',
+                        confidence: 'medium'
+                      }
+                    ]
+                  })
                 }
               }]
             });
@@ -627,24 +661,21 @@ test('JD matcher keeps the deterministic score visible until recruiter reasoning
       return clone(deterministicResult);
     }
   };
+  vm.runInNewContext(jdReasoning, context);
+  const realJDReasoning = context.window.JDReasoning;
   context.window.JDReasoning = {
     buildInput(normalized, result, profile, language) {
       buildCalls.push({ normalized, result, profile, language });
-      return { language, requirements: result.requirements || [], evidenceRegistry: profile.recruiterEvidence || [] };
+      return realJDReasoning.buildInput(normalized, result, profile, language);
     },
     validateModelOutput(raw, input) {
       validateCalls.push({ raw, input });
-      return {
-        ok: true,
-        reasoning: {
-          narrative: 'Validated recruiter reasoning',
-          requirements: []
-        }
-      };
+      return realJDReasoning.validateModelOutput(raw, input);
     },
     mergeResult(result, reasoning, input) {
       mergeCalls.push({ result, reasoning, input });
-      return clone(mergedResult);
+      realMergedResult = realJDReasoning.mergeResult(result, reasoning, input);
+      return realMergedResult;
     },
     fallback() {
       throw new Error('fallback should not run on the happy local path');
@@ -673,11 +704,16 @@ test('JD matcher keeps the deterministic score visible until recruiter reasoning
   assert.equal(buildCalls.length, 1, 'the reasoning payload should be built exactly once');
   assert.equal(validateCalls.length, 1, 'local reasoning output should be validated');
   assert.equal(mergeCalls.length, 1, 'validated reasoning should merge back into the deterministic result');
+  assert.equal(realMergedResult.deterministicScore, deterministicResult.score, 'the real merge path should preserve the deterministic baseline');
+  assert.equal(realMergedResult.requirementReasoning[1].evidenceRecords[0].claim, 'Owns release pipelines and cloud delivery workflows.');
+  assert.equal(realMergedResult.requirementReasoning[1].evidenceRecords[0].sourceLabel, 'Azure DevOps release ownership');
+  assert.ok(realMergedResult.sections.verifiedStrengths.length, 'the real merge path should emit verifiedStrengths');
+  assert.ok(realMergedResult.sections.transferableAdvantages.length, 'the real merge path should emit transferableAdvantages');
   assert.match(afterReasoning, /Deterministic compatibility/i, 'the merged recruiter view should keep the deterministic baseline audit card');
   assert.match(afterReasoning, /Verified match/i);
   assert.match(afterReasoning, /Transferable opportunity/i);
   assert.match(afterReasoning, /Calibrated fit/i);
-  assert.match(afterReasoning, /Azure DevOps release ownership/i, 'the merged recruiter view should surface evidence provenance');
+  assert.match(afterReasoning, /Owns release pipelines and cloud delivery workflows./i, 'the merged recruiter view should surface the real evidence claim');
   assert.match(afterReasoning, /Boundary/i, 'the merged recruiter view should surface recruiter-safe limitations');
   assert.match(afterReasoning, /production Kubernetes rollout/i, 'the merged recruiter view should keep the limitation text');
   assert.match(afterReasoning, /Verification question/i, 'the merged recruiter view should surface verification prompts');

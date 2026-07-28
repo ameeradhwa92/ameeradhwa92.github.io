@@ -941,7 +941,8 @@
       }
       if (Array.isArray(item.evidenceRecords) && item.evidenceRecords.length) {
         renderReasoningTextRow(body, "jdReasonEvidenceLabel", item.evidenceRecords.map(function (entry) {
-          return entry && entry.title ? entry.title : "";
+          if (!entry) return "";
+          return [entry.claim, entry.sourceLabel].filter(Boolean).join(" — ");
         }).filter(Boolean).join("; "));
       }
       card.appendChild(body);
@@ -960,7 +961,8 @@
     }
     var list = createJdNode("ul", "chat-jd-topic-list");
     items.forEach(function (item) {
-      var text = item && item.term ? item.term + ": " + String(item[valueKey] || "").trim() : String(item[valueKey] || "").trim();
+      var value = item && (item[valueKey] || item.note || item.limitation || item.question) || "";
+      var text = item && item.term ? item.term + ": " + String(value).trim() : String(value).trim();
       list.appendChild(createJdNode("li", "", text));
     });
     section.appendChild(list);
@@ -1061,12 +1063,19 @@
       jdResult.appendChild(renderRequirementReasoning(result));
     }
     if (result.sections && typeof result.sections === "object") {
-      jdResult.appendChild(renderReasoningSection("jdReasonVerifiedStrengths", result.sections.strengths || [], "note"));
-      jdResult.appendChild(renderReasoningSection("jdReasonTransferableAdvantages", result.sections.transferable || [], "note"));
+      var verifiedStrengths = result.sections.verifiedStrengths || result.sections.strengths || [];
+      var transferableAdvantages = result.sections.transferableAdvantages || result.sections.transferable || [];
+      var learningBridges = result.sections.learningBridges && result.sections.learningBridges.length
+        ? result.sections.learningBridges
+        : (result.sections.limitations || []);
+      var explicitGaps = result.sections.explicitGaps || result.sections.gaps || [];
+      var unverifiedRequirements = result.sections.unverifiedRequirements || result.sections.unverified || [];
+      jdResult.appendChild(renderReasoningSection("jdReasonVerifiedStrengths", verifiedStrengths, "recruiterFraming"));
+      jdResult.appendChild(renderReasoningSection("jdReasonTransferableAdvantages", transferableAdvantages, "recruiterFraming"));
       jdResult.appendChild(renderReasoningSection("jdResultPartial", result.sections.partialMatches || [], "note"));
-      jdResult.appendChild(renderReasoningSection("jdReasonPriorityGaps", result.sections.gaps || [], "note"));
-      jdResult.appendChild(renderReasoningSection("jdResultUnverified", result.sections.unverified || [], "note"));
-      jdResult.appendChild(renderReasoningSection("jdReasonLearningBridges", result.sections.learningBridges || result.sections.limitations || [], "note"));
+      jdResult.appendChild(renderReasoningSection("jdReasonPriorityGaps", explicitGaps, "limitation"));
+      jdResult.appendChild(renderReasoningSection("jdResultUnverified", unverifiedRequirements, "limitation"));
+      jdResult.appendChild(renderReasoningSection("jdReasonLearningBridges", learningBridges, "limitation"));
       jdResult.appendChild(renderReasoningSection("jdReasonInterviewQuestions", result.sections.interviewQuestions || [], "question"));
     }
   }
