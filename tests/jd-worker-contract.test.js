@@ -216,8 +216,10 @@ async function callWorker(body, options = {}) {
 test('jd-reasoning accepts a bounded valid request and returns strict JSON reasoning', async () => {
   const request = buildValidRequest({ language: 'en' });
   const profile = loadProfile();
+  const kbSentinel = 'KB-CONTACT-FACT client account details and employer history';
   const response = await callWorker(request, {
     profile,
+    kbText: kbSentinel,
     aiResponse: buildValidReasoningResponse(request, profile)
   });
 
@@ -244,11 +246,8 @@ test('jd-reasoning accepts a bounded valid request and returns strict JSON reaso
     false,
     'client system prompts must never be forwarded to the model'
   );
-  assert.equal(
-    response.fetchCalls.some((url) => url.includes('/assets/data/aimeer-kb.txt')),
-    true,
-    'the worker should load the shared AIMeer knowledge base'
-  );
+  assert.equal(response.fetchCalls.some((url) => url.includes('/assets/data/aimeer-kb.txt')), false, 'jd-reasoning should not load the general AIMeer knowledge base');
+  assert.doesNotMatch(response.aiCalls[0].payload.messages[0].content, /KB-CONTACT-FACT|client account details|employer history/i);
   assert.equal(
     response.fetchCalls.some((url) => url.includes('/assets/data/aimeer-profile.json')),
     true,
@@ -575,10 +574,13 @@ test('existing chat, summary, and jd-explanation modes remain compatible', async
     mode: 'chat',
     messages: [{ role: 'user', content: 'Tell me about ASP.NET Core work.' }]
   }, {
+    kbText: 'LEGACY-KB-FACT general chat project details',
     aiResponse: 'Chat reply'
   });
   assert.equal(chat.status, 200);
   assert.equal(chat.json.reply, 'Chat reply');
+  assert.equal(chat.fetchCalls.some((url) => url.includes('/assets/data/aimeer-kb.txt')), true);
+  assert.match(chat.aiCalls[0].payload.messages[0].content, /LEGACY-KB-FACT/);
 
   const summary = await callWorker({
     mode: 'summary',
@@ -626,8 +628,11 @@ test('existing chat, summary, and jd-explanation modes remain compatible', async
       interviewTopics: []
     }
   }, {
+    kbText: 'LEGACY-KB-FACT explanation project details',
     aiResponse: 'Explanation reply'
   });
   assert.equal(explanation.status, 200);
   assert.equal(explanation.json.reply, 'Explanation reply');
+  assert.equal(explanation.fetchCalls.some((url) => url.includes('/assets/data/aimeer-kb.txt')), true);
+  assert.match(explanation.aiCalls[0].payload.messages[0].content, /LEGACY-KB-FACT/);
 });

@@ -65,6 +65,13 @@
     "information and suggest asking Ameer directly — the chat will show WhatsApp and email buttons for that. " +
     "Never invent projects, employers, dates or links.\n\n";
 
+  var JD_REASONING_PROMPT =
+    "You are producing bounded recruiter reasoning for a deterministic recruiter JD match that was already scored locally on Ameer's portfolio site. " +
+    "Use only the supplied recruiter-safe JSON input. Do not invent evidence, do not change the deterministic score, do not add any score fields, " +
+    "and never present academic evidence as professional delivery. Return strict JSON only with the root keys narrative and requirements. " +
+    "The requirements array must include every supplied requirement exactly once. Every requirement object must include requirementId, recruiterIntent, expectedOutcome, matchLevel, evidenceRefs, transferableCapabilities, limitation, recruiterFraming, verificationQuestion, and confidence. " +
+    "Use only the provided evidence IDs and transferable capability vocabulary. If direct published evidence is unavailable, keep the reasoning conservative and explicit about the limitation.";
+
   /* ---------------- bounded recruiter helper compatibility ----------------
      Older local tools consume this public helper block directly.  The live
      reasoning request below uses JDReasoning and the jd-reasoning contract;
@@ -1588,17 +1595,13 @@
     });
   }
 
-  function buildLocalReasoningMessages(input, kb) {
+  function buildLocalReasoningMessages(input) {
     var language = input && input.language === "ms" ? "ms" : "en";
     return [
       {
         role: "system",
         content:
-          PROMPT_HEAD + kb +
-          "\n\nYou are producing bounded recruiter reasoning for a deterministic job-description match. " +
-          "Use only the supplied JSON input. Do not invent evidence, do not recalculate any score, do not add score fields, " +
-          "and never claim academic evidence as professional delivery. Return strict JSON only with the keys narrative and requirements. " +
-          "Each requirement entry must include requirementId, recruiterIntent, expectedOutcome, matchLevel, evidenceRefs, transferableCapabilities, limitation, recruiterFraming, verificationQuestion, and confidence."
+          PROMPT_HEAD + JD_REASONING_PROMPT
       },
       {
         role: "user",
@@ -1610,14 +1613,12 @@
   }
 
   function requestJdReasoningLocally(input) {
-    return ensureKB().then(function (kb) {
-      if (!engine) throw new Error("local-unavailable");
-      return engine.chat.completions.create({
-        messages: buildLocalReasoningMessages(input, kb),
-        stream: false,
-        temperature: 0.1,
-        max_tokens: 900
-      });
+    if (!engine) return Promise.reject(new Error("local-unavailable"));
+    return engine.chat.completions.create({
+      messages: buildLocalReasoningMessages(input),
+      stream: false,
+      temperature: 0.1,
+      max_tokens: 900
     }).then(function (res) {
       var reply = res && res.choices && res.choices[0] && res.choices[0].message
         ? String(res.choices[0].message.content || "").trim()

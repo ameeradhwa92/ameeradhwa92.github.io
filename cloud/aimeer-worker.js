@@ -248,12 +248,10 @@ export default {
     const mode = detectMode(body.mode);
 
     if (mode === "jd-reasoning") {
-      let kb = "";
       let profile = null;
       try {
-        [kb, profile] = await Promise.all([loadKB(), loadReasoningProfile()]);
+        profile = await loadReasoningProfile();
       } catch {}
-      if (!kb) return json({ error: "kb-unavailable" }, 502, cors);
       if (!profile) return json({ error: "profile-unavailable" }, 502, cors);
 
       const reasoningPayload = validateJdReasoningBody(body, profile);
@@ -264,7 +262,7 @@ export default {
       try {
         const out = await env.AI.run(MODEL, {
           messages: [
-            { role: "system", content: PERSONA_HEAD + kb + "\n\n" + JD_REASONING_PROMPT },
+            { role: "system", content: PERSONA_HEAD + "\n\n" + JD_REASONING_PROMPT },
             buildJdReasoningMessage(reasoningPayload.reasoningInput)
           ],
           max_tokens: JD_REASONING_MAX_TOKENS,

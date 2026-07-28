@@ -639,8 +639,13 @@ test('JD matcher keeps the deterministic score visible until recruiter reasoning
   const buildCalls = [];
   const validateCalls = [];
   const mergeCalls = [];
+  const localReasoningCalls = [];
+  let kbFetches = 0;
   let realMergedResult = null;
   const chatbotWithControlledWebLLM = chatbot.replace(
+    'Promise.all([ensureKB(), navigator.gpu.requestAdapter()])',
+    'Promise.all([Promise.resolve(""), navigator.gpu.requestAdapter()])'
+  ).replace(
     'return import(WEBLLM_CDN).then(function (webllm) {',
     'return window.__importWebLLM(WEBLLM_CDN).then(function (webllm) {'
   );
@@ -649,6 +654,7 @@ test('JD matcher keeps the deterministic score visible until recruiter reasoning
       completions: {
         create(payload) {
           if (Array.isArray(payload.messages) && payload.messages.some((message) => /strict json/i.test(String(message.content)))) {
+            localReasoningCalls.push(payload);
             return Promise.resolve({
               choices: [{
                 message: {
@@ -700,7 +706,10 @@ test('JD matcher keeps the deterministic score visible until recruiter reasoning
     saveData: false,
     fetchImpl(url) {
       const target = String(url);
-      if (target.endsWith('aimeer-kb.txt')) return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
+      if (target.endsWith('aimeer-kb.txt')) {
+        kbFetches += 1;
+        return Promise.resolve(makeTextResponse('KB-CONTACT-FACT client account details and employer history'));
+      }
       if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
       throw new Error(`Unexpected fetch: ${target}`);
     }
@@ -767,6 +776,9 @@ test('JD matcher keeps the deterministic score visible until recruiter reasoning
   assert.equal(buildCalls.length, 1, 'the reasoning payload should be built exactly once');
   assert.equal(validateCalls.length, 1, 'local reasoning output should be validated');
   assert.equal(mergeCalls.length, 1, 'validated reasoning should merge back into the deterministic result');
+  assert.equal(kbFetches, 0, 'local recruiter reasoning should not fetch the general knowledge base');
+  assert.equal(localReasoningCalls.length, 1, 'local recruiter reasoning should invoke the model once');
+  assert.doesNotMatch(localReasoningCalls[0].messages[0].content, /KB-CONTACT-FACT|client account details|employer history/i);
   assert.equal(realMergedResult.deterministicScore, deterministicResult.score, 'the real merge path should preserve the deterministic baseline');
   assert.equal(realMergedResult.requirementReasoning[1].evidenceRecords[0].claim, 'Owns release pipelines and cloud delivery workflows.');
   assert.equal(realMergedResult.requirementReasoning[1].evidenceRecords[0].sourceLabel, 'Azure DevOps release ownership');
