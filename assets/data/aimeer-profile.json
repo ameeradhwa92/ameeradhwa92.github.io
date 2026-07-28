@@ -682,6 +682,181 @@
       "category": "languagesCommunication"
     }
   ],
+  "recruiterEvidence": [
+    {
+      "id": "professional.production-delivery",
+      "evidenceType": "professional",
+      "claim": "Published project history documents Azure DevOps pipelines, production deployments, system enhancements, and delivery documentation.",
+      "technologies": [
+        "Azure DevOps"
+      ],
+      "capabilities": [
+        "production deployments",
+        "system enhancements",
+        "delivery documentation"
+      ],
+      "scope": [
+        "enterprise web delivery",
+        "production support"
+      ],
+      "sourceLabel": "Published project history"
+    },
+    {
+      "id": "professional.azure-delivery",
+      "evidenceType": "professional",
+      "claim": "Published skills and projects document Azure DevOps CI/CD, Azure App Service, ARM/Bicep IaC, and Git delivery.",
+      "technologies": [
+        "Azure DevOps",
+        "Azure App Service",
+        "ARM/Bicep IaC",
+        "Git"
+      ],
+      "capabilities": [
+        "CI/CD",
+        "cloud delivery",
+        "infrastructure as code"
+      ],
+      "scope": [
+        "cloud delivery"
+      ],
+      "sourceLabel": "Published skills and projects"
+    },
+    {
+      "id": "professional.web-api-architecture",
+      "evidenceType": "professional",
+      "claim": "Published project history documents ASP.NET Core, React, TypeScript, FastAPI, and API integration work across the portfolio.",
+      "technologies": [
+        "ASP.NET Core",
+        "React",
+        "TypeScript",
+        "FastAPI",
+        "REST/SOAP APIs"
+      ],
+      "capabilities": [
+        "web application architecture",
+        "API integration",
+        "clean architecture"
+      ],
+      "scope": [
+        "enterprise web applications",
+        "admin portals"
+      ],
+      "sourceLabel": "Published project history"
+    },
+    {
+      "id": "professional.mobile-delivery",
+      "evidenceType": "professional",
+      "claim": "Published career history documents Flutter, Android, iOS, Kotlin, and Java mobile delivery.",
+      "technologies": [
+        "Flutter/Dart",
+        "Android",
+        "iOS",
+        "Kotlin",
+        "Java"
+      ],
+      "capabilities": [
+        "mobile delivery",
+        "cross-platform development"
+      ],
+      "scope": [
+        "mobile applications"
+      ],
+      "sourceLabel": "Published career history"
+    },
+    {
+      "id": "professional.application-quality",
+      "evidenceType": "professional",
+      "claim": "Published resume documents testing, code review, incident response, secure delivery, and continuous improvement work.",
+      "technologies": [
+        "testing",
+        "code review",
+        "incident response",
+        "secure delivery"
+      ],
+      "capabilities": [
+        "quality practices",
+        "secure coding",
+        "troubleshooting"
+      ],
+      "scope": [
+        "application quality"
+      ],
+      "sourceLabel": "Published resume"
+    },
+    {
+      "id": "professional.database-design",
+      "evidenceType": "professional",
+      "claim": "Published skills and projects document MS SQL Server, Azure SQL, MySQL, and SQLite delivery.",
+      "technologies": [
+        "MS SQL Server",
+        "Azure SQL",
+        "MySQL",
+        "SQLite"
+      ],
+      "capabilities": [
+        "database design",
+        "relational data delivery"
+      ],
+      "scope": [
+        "database systems"
+      ],
+      "sourceLabel": "Published skills and projects"
+    },
+    {
+      "id": "professional.stakeholder-collaboration",
+      "evidenceType": "professional",
+      "claim": "Published career history documents delivery with government agencies, FMCG brands, and cross-functional project stakeholders.",
+      "technologies": [
+        "cross-functional delivery"
+      ],
+      "capabilities": [
+        "stakeholder collaboration",
+        "business requirement analysis"
+      ],
+      "scope": [
+        "multi-stakeholder projects"
+      ],
+      "sourceLabel": "Published career history"
+    },
+    {
+      "id": "academic.intelligent-systems",
+      "evidenceType": "academic",
+      "claim": "Degree subject clusters cover algorithms, artificial intelligence programming paradigms, artificial neural networks, knowledge-based systems, fuzzy logic, data mining, evolutionary algorithms, intelligent decision support systems, and intelligent agents.",
+      "technologies": [
+        "Artificial Intelligence",
+        "Knowledge-Based Systems"
+      ],
+      "capabilities": [
+        "intelligent systems foundation",
+        "academic problem solving"
+      ],
+      "scope": [
+        "UiTM Shah Alam degree"
+      ],
+      "sourceLabel": "Academic transcripts"
+    },
+    {
+      "id": "user.agile-context",
+      "evidenceType": "user-provided",
+      "claim": "Ameer reports that the current company practices Agile methodology and that he uses Claude Code and Codex extensively for portfolio, Abbott CRM, and React BackOffice work.",
+      "technologies": [
+        "Agile",
+        "Claude Code",
+        "Codex"
+      ],
+      "capabilities": [
+        "Agile delivery context",
+        "AI-assisted development",
+        "workflow automation"
+      ],
+      "scope": [
+        "portfolio work",
+        "Abbott CRM",
+        "React BackOffice"
+      ],
+      "sourceLabel": "User-supplied context"
+    }
+  ],
   "evidence": [
     {
       "label": "professional",
