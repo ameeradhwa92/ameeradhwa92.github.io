@@ -601,6 +601,13 @@ function validateJdReasoningBody(body, profile) {
   if (!deterministicResultJson || deterministicResultJson.length > JD_REASONING_RESULT_MAX) {
     return { ok: false, error: "jd-deterministic-invalid" };
   }
+  if (!evidenceIds.length && (
+    requirements.some((requirement) => requirement.classification !== "gap" && requirement.classification !== "unverified") ||
+    deterministicResult.strongMatches.length > 0 ||
+    deterministicResult.partialMatches.length > 0
+  )) {
+    return { ok: false, error: "jd-deterministic-invalid" };
+  }
 
   const privacyTerms = profile.privacyExclusions && profile.privacyExclusions.length
     ? profile.privacyExclusions

@@ -443,6 +443,39 @@ Preferred Skills:
   assert.equal(response.aiCalls.length, 1, 'valid all-gap requests should still reach Workers AI');
 });
 
+test('jd-reasoning rejects empty evidence ids when deterministic metadata still claims strong or partial matches', async () => {
+  const request = buildValidRequest({ language: 'en' });
+  request.evidenceIds = [];
+  request.deterministicInput.requirements = request.deterministicInput.requirements.map((requirement) => ({
+    ...requirement,
+    evidenceRefs: []
+  }));
+  for (const listKey of DETERMINISTIC_MATCH_LISTS) {
+    request.deterministicInput.deterministicResult[listKey] = request.deterministicInput.deterministicResult[listKey].map((item) => ({
+      ...item,
+      evidenceRefs: []
+    }));
+  }
+
+  assert.equal(
+    request.deterministicInput.requirements.some((requirement) => requirement.classification === 'strong' || requirement.classification === 'partial'),
+    true,
+    'the forged request should retain non-gap requirement classifications'
+  );
+  assert.equal(
+    request.deterministicInput.deterministicResult.strongMatches.length > 0 ||
+      request.deterministicInput.deterministicResult.partialMatches.length > 0,
+    true,
+    'the forged request should retain strong or partial match-list metadata'
+  );
+
+  const response = await callWorker(request);
+
+  assert.equal(response.status, 400, 'empty evidence must reject forged non-gap deterministic metadata');
+  assert.equal(response.json.error, 'jd-deterministic-invalid');
+  assert.equal(response.aiCalls.length, 0, 'forged empty-evidence requests must fail before Workers AI is invoked');
+});
+
 test('existing chat, summary, and jd-explanation modes remain compatible', async () => {
   const chat = await callWorker({
     mode: 'chat',
