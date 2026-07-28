@@ -1,0 +1,25 @@
+Responsibilities:
+Develop, maintain, and enhance enterprise web applications using the Laravel Framework and modern software development tools.
+Analyse business requirements and translate them into scalable, secure, and efficient technical solutions.
+Integrate applications with enterprise systems through APIs, web services, webhooks, and database integrations.
+Design and implement AI-powered solutions, including GenAI-assisted applications, chatbots, workflow automation, and other digital initiatives to improve business productivity.
+Ensure application quality through testing, code reviews, performance optimisation, troubleshooting, and secure coding practices.
+Manage source code, CI/CD pipelines, application deployments, system enhancements, and production support.
+Evaluate and adopt emerging technologies, AI tools, frameworks, and Low-Code/No-Code platforms to improve development efficiency and innovation.
+Collaborate with business users, vendors, product owners, and cross-functional teams to deliver digital transformation projects within agreed timelines.
+Prepare and maintain technical documentation, user guides, and system specifications.
+Requirements:
+Bachelor's Degree in Computer Science, Software Engineering, Information Technology, or a related field.
+Minimum five (5) years of experience in software application development, including at least two (2) years of hands-on experience with the Laravel Framework.
+Experience in enterprise web application development, RESTful API integration, CI/CD, Git, SQL databases, and Agile methodologies.
+Experience with GenAI-assisted coding tools (e.g. GitHub Copilot, Cursor, Claude Code, Gemini CLI) and AI application development is preferred. Exposure to Low-Code/No-Code platforms and cloud technologies will be an added advantage.
+Work location: Setia Alam
+Employer questions:
+Which of the following statements best describes your right to work in Malaysia?
+What's your expected monthly basic salary?
+Which of the following types of qualifications do you have?
+How many years' experience do you have as a software developer?
+How many years of web app development experience do you have?
+How many years' experience do you have working in an agile environment?
+How many years' experience do you have using SQL queries?
+How many years' experience do you have as a Laravel Developer?

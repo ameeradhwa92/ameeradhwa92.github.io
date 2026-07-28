@@ -1,0 +1,8 @@
+Responsibilities:
+Build and release customer-facing mobile applications across Android and iOS for public launch.
+Requirements:
+- Xamarin
+- Android
+- iOS
+- cross-platform mobile development
+- App Store and Google Play release support

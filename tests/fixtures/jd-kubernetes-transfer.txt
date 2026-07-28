@@ -1,0 +1,10 @@
+Responsibilities:
+Own cloud application deployments, delivery automation, incident response, and production support for business platforms.
+Requirements:
+- Kubernetes
+- Azure App Service
+- Azure DevOps
+- Bicep
+- CI/CD
+- production support
+- troubleshooting

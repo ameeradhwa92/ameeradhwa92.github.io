@@ -673,9 +673,15 @@ test('JD matcher keeps the deterministic score visible until recruiter reasoning
   assert.equal(buildCalls.length, 1, 'the reasoning payload should be built exactly once');
   assert.equal(validateCalls.length, 1, 'local reasoning output should be validated');
   assert.equal(mergeCalls.length, 1, 'validated reasoning should merge back into the deterministic result');
+  assert.match(afterReasoning, /Deterministic compatibility/i, 'the merged recruiter view should keep the deterministic baseline audit card');
   assert.match(afterReasoning, /Verified match/i);
   assert.match(afterReasoning, /Transferable opportunity/i);
   assert.match(afterReasoning, /Calibrated fit/i);
+  assert.match(afterReasoning, /Azure DevOps release ownership/i, 'the merged recruiter view should surface evidence provenance');
+  assert.match(afterReasoning, /Boundary/i, 'the merged recruiter view should surface recruiter-safe limitations');
+  assert.match(afterReasoning, /production Kubernetes rollout/i, 'the merged recruiter view should keep the limitation text');
+  assert.match(afterReasoning, /Verification question/i, 'the merged recruiter view should surface verification prompts');
+  assert.match(afterReasoning, /What hands-on Kubernetes rollout, if any, has he completed directly\?/i, 'the merged recruiter view should preserve verification questions');
   assert.match(afterReasoning, /on this device/i, 'the local reasoning status should explain that reasoning stayed local');
 
   setLanguage('ms');

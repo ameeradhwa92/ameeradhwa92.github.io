@@ -5,9 +5,14 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const repoRoot = path.join(__dirname, '..');
+const fixturesRoot = path.join(__dirname, 'fixtures');
 const profilePath = path.join(repoRoot, 'assets', 'data', 'aimeer-profile.json');
 const extractorPath = path.join(repoRoot, 'assets', 'js', 'jd-extractor.js');
 const matcherPath = path.join(repoRoot, 'assets', 'js', 'jd-matcher.js');
+
+function loadTask6Fixture(name) {
+  return fs.readFileSync(path.join(fixturesRoot, name), 'utf8');
+}
 
 function loadProfile() {
   return JSON.parse(fs.readFileSync(profilePath, 'utf8'));
@@ -478,4 +483,69 @@ test('matcher rejects recruiter evidence refs that are not actually published in
       );
     }
   }
+});
+
+test('matcher reproduces the approved Laravel enterprise regression fixture at the 87-point baseline', () => {
+  const result = analyze(loadTask6Fixture('jd-laravel-enterprise.txt')).result;
+  const laravelDuration = requirementByTerm(result, '2 years');
+  const laravel = requirementByTerm(result, 'Laravel');
+
+  assert.equal(result.score, 87, 'the exact Laravel enterprise regression fixture should stay at the approved 87 baseline');
+  assert.equal(result.deterministicScore, 87, 'the deterministic score should preserve the approved baseline');
+  assert.equal(result.confidence.label, 'high', 'the calibrated Laravel fixture should keep high confidence');
+  assert.deepEqual(listTerms(result.unverified), [], 'the Laravel enterprise fixture should not introduce unverified requirements');
+  assert.deepEqual(
+    listTerms(result.partialMatches),
+    ['2 years', 'Agile', 'AI-assisted development', 'Information Technology', 'Software Engineering'],
+    'the Laravel fixture should keep the approved partial boundaries'
+  );
+  assert.equal(laravel.classification, 'strong', 'Laravel should stay directly supported');
+  assert.equal(laravelDuration.classification, 'partial', 'the named Laravel duration should stay partial when unpublished');
+  assert.equal(laravelDuration.specificHandsOn, true, 'the duration requirement should remain tagged as specific hands-on evidence');
+  assert.deepEqual(Array.from(laravelDuration.evidenceRefs), [], 'the unpublished Laravel duration must not cite unsupported evidence refs');
+});
+
+test('matcher keeps Kubernetes unverified while preserving direct Azure delivery evidence in the transfer fixture', () => {
+  const result = analyze(loadTask6Fixture('jd-kubernetes-transfer.txt')).result;
+  const kubernetes = requirementByTerm(result, 'Kubernetes');
+  const azureAppService = requirementByTerm(result, 'Azure App Service');
+  const azureDevOps = requirementByTerm(result, 'Azure DevOps');
+  const bicep = requirementByTerm(result, 'Bicep');
+
+  assert.equal(result.score, 50, 'the Kubernetes transfer fixture should keep its deterministic baseline');
+  assert.deepEqual(listTerms(result.unverified), ['Kubernetes'], 'named Kubernetes should stay unverified in the deterministic baseline');
+  assert.equal(kubernetes.classification, 'unverified', 'Kubernetes should stay unverified before reasoning');
+  assert.deepEqual(Array.from(kubernetes.evidenceRefs), [], 'Kubernetes should not cite direct evidence refs');
+  assert.equal(azureAppService.classification, 'strong');
+  assert.deepEqual(Array.from(azureAppService.evidenceRefs), ['professional.azure-delivery']);
+  assert.equal(azureDevOps.classification, 'strong');
+  assert.deepEqual(
+    Array.from(azureDevOps.evidenceRefs).sort(),
+    ['professional.azure-delivery', 'professional.production-delivery'],
+    'Azure DevOps should retain both Azure and production-delivery provenance'
+  );
+  assert.equal(bicep.classification, 'strong');
+  assert.deepEqual(Array.from(bicep.evidenceRefs), ['professional.azure-delivery']);
+});
+
+test('matcher keeps the mobile framework transfer fixture honest about the unproven named framework', () => {
+  const result = analyze(loadTask6Fixture('jd-mobile-framework-transfer.txt')).result;
+  const xamarin = requirementByTerm(result, 'Xamarin');
+  const crossPlatform = requirementByTerm(result, 'Cross-platform Mobile Development');
+  const android = requirementByTerm(result, 'Android');
+  const ios = requirementByTerm(result, 'iOS');
+
+  assert.equal(result.score, 8, 'the mobile framework transfer fixture should preserve its low deterministic baseline');
+  assert.deepEqual(
+    listTerms(result.unverified),
+    ['App Store And Google Play Release Support', 'Cross-platform Mobile Development', 'Xamarin'],
+    'the unproven framework and release claims should stay unverified before reasoning'
+  );
+  assert.equal(xamarin.classification, 'unverified', 'the named framework must not become a deterministic direct match');
+  assert.deepEqual(Array.from(xamarin.evidenceRefs), [], 'the unproven framework must not cite unsupported evidence refs');
+  assert.equal(crossPlatform.classification, 'unverified', 'cross-platform delivery should need reasoning rather than deterministic inflation');
+  assert.equal(android.classification, 'strong');
+  assert.deepEqual(Array.from(android.evidenceRefs), ['professional.mobile-delivery']);
+  assert.equal(ios.classification, 'strong');
+  assert.deepEqual(Array.from(ios.evidenceRefs), ['professional.mobile-delivery']);
 });

@@ -5,13 +5,38 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const repoRoot = path.join(__dirname, '..');
+const fixturesRoot = path.join(__dirname, 'fixtures');
 const profilePath = path.join(repoRoot, 'assets', 'data', 'aimeer-profile.json');
 const extractorPath = path.join(repoRoot, 'assets', 'js', 'jd-extractor.js');
 const matcherPath = path.join(repoRoot, 'assets', 'js', 'jd-matcher.js');
 const reasoningPath = path.join(repoRoot, 'assets', 'js', 'jd-reasoning.js');
+const MANUAL_MATCH_LEVEL_FACTORS = {
+  'direct-professional': 1,
+  'adjacent-professional': 0.75,
+  'transferable-professional': 0.55,
+  'academic-foundation': 0.3,
+  'learning-bridge': 0.15,
+  'explicit-gap': 0,
+  unverified: 0
+};
+const MANUAL_STRENGTH_FACTORS = {
+  required: 1,
+  neutral: 0.75,
+  preferred: 0.5
+};
+const MANUAL_DETERMINISTIC_FACTORS = {
+  strong: 1,
+  partial: 0.5,
+  gap: 0,
+  unverified: 0
+};
 
 function loadProfile() {
   return JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+}
+
+function loadTask6Fixture(name) {
+  return fs.readFileSync(path.join(fixturesRoot, name), 'utf8');
 }
 
 function loadHarness() {
@@ -46,6 +71,88 @@ function analyze(text) {
 
 function requirementByTerm(result, term) {
   return result.requirements.find((item) => item.term === term);
+}
+
+function manualClampScore(value) {
+  return Math.max(0, Math.min(100, Number(value) || 0));
+}
+
+function manualBaseFactorForRequirement(requirement) {
+  return MANUAL_DETERMINISTIC_FACTORS[requirement && requirement.classification] || 0;
+}
+
+function manualVerifiedFactorForRequirement(requirement) {
+  if (!requirement) return 0;
+  if (requirement.classification !== 'strong') return 0;
+  if (requirement.evidenceType === 'professional') return 1;
+  if (requirement.category === 'educationCoursework' && requirement.evidenceType === 'academic') return 1;
+  return 0;
+}
+
+function manualEffectiveFactorForRequirement(requirement, reasoningItem) {
+  const baseFactor = manualBaseFactorForRequirement(requirement);
+  if (!reasoningItem) return baseFactor;
+  if (requirement.classification === 'strong' || requirement.classification === 'gap') return baseFactor;
+  if (requirement.specificHandsOn && requirement.yearsRequired !== null) return baseFactor;
+
+  const factor = MANUAL_MATCH_LEVEL_FACTORS[reasoningItem.matchLevel];
+  if (!Number.isFinite(factor)) return baseFactor;
+  if (!Array.isArray(reasoningItem.evidenceRefs) || !reasoningItem.evidenceRefs.length) return baseFactor;
+  return Math.max(baseFactor, factor);
+}
+
+function manualScoreByFactor(requirements, categories, factorResolver) {
+  const categoryTotals = Object.create(null);
+  const categoryMatched = Object.create(null);
+  const categoryWeights = Object.create(null);
+  let activeWeight = 0;
+  let weightedScore = 0;
+
+  for (const [category, value] of Object.entries(categories || {})) {
+    categoryWeights[category] = manualClampScore(value && value.weight);
+  }
+
+  for (const requirement of requirements) {
+    const category = requirement.category;
+    const strengthFactor = MANUAL_STRENGTH_FACTORS[requirement.strength] || MANUAL_STRENGTH_FACTORS.neutral;
+    categoryTotals[category] = (categoryTotals[category] || 0) + strengthFactor;
+    categoryMatched[category] = (categoryMatched[category] || 0) + (factorResolver(requirement) * strengthFactor);
+  }
+
+  for (const category of Object.keys(categoryTotals)) {
+    const total = categoryTotals[category];
+    if (!total) continue;
+    const weight = categoryWeights[category] || 0;
+    const score = weight * ((categoryMatched[category] || 0) / total);
+    weightedScore += score;
+    activeWeight += weight;
+  }
+
+  return activeWeight ? Math.round(manualClampScore((weightedScore / activeWeight) * 100)) : 0;
+}
+
+function manualReasoningAudit(result, reasoning, input) {
+  const requirements = Array.isArray(input && input.requirements) ? input.requirements : [];
+  const categories = result && typeof result.categories === 'object' ? result.categories : {};
+  const reasoningByRequirementId = new Map((reasoning && reasoning.requirements || []).map((item) => [item.requirementId, item]));
+  const verifiedScore = manualScoreByFactor(requirements, categories, manualVerifiedFactorForRequirement);
+  const transferableScore = manualScoreByFactor(
+    requirements,
+    categories,
+    (requirement) => manualEffectiveFactorForRequirement(requirement, reasoningByRequirementId.get(requirement.id))
+  );
+  const requiredGapCeiling = manualScoreByFactor(requirements, categories, (requirement) => {
+    const reasoningItem = reasoningByRequirementId.get(requirement.id);
+    if (reasoningItem && reasoningItem.matchLevel === 'explicit-gap' && requirement.strength === 'required') return 0;
+    return 1;
+  });
+  const deterministicScore = manualClampScore(result && (result.deterministicScore !== undefined ? result.deterministicScore : result.score));
+  return {
+    verifiedScore,
+    transferableScore,
+    requiredGapCeiling,
+    compositeScore: Math.round(Math.min(transferableScore, deterministicScore + 15, requiredGapCeiling))
+  };
 }
 
 function reasoningForFixture(input, overrides) {
@@ -472,4 +579,132 @@ Preferred Skills:
   assert.equal(fallback.sections.gaps.length > 0 || fallback.sections.limitations.length > 0, true, 'fallback should preserve deterministic gaps or limitations');
   assert.equal(fallback.sections.interviewQuestions.length > 0, true, 'fallback should preserve deterministic interview topics');
   assert.match(fallback.narrative, /deterministik|disahkan|jurang/i);
+});
+
+test('JDReasoning task 6 fixtures preserve deterministic scores and keep every score lift audited and bounded', () => {
+  const fixtures = [
+    {
+      name: 'laravel enterprise',
+      filename: 'jd-laravel-enterprise.txt',
+      expectedDeterministicScore: 87,
+      assertions({ before, after }) {
+        const laravelDuration = after.requirementReasoning.find((item) => item.term === '2 years');
+        assert.equal(laravelDuration.matchLevel, 'adjacent-professional', 'the reasoning payload should try to transfer adjacent Laravel evidence');
+        assert.equal(laravelDuration.effectiveFactor, laravelDuration.baseFactor, 'specific technology-duration requirements must not receive semantic lift');
+        assert.match(laravelDuration.limitation, /Laravel/i, 'the Laravel duration limitation should stay visible');
+        assert.match(laravelDuration.verificationQuestion, /Laravel/i, 'the Laravel duration should keep a recruiter verification question');
+        assert.equal(before.score, 87, 'the approved Laravel baseline must remain 87');
+      },
+      overrides: {
+        '2 years': {
+          matchLevel: 'adjacent-professional',
+          evidenceRefs: ['professional.production-delivery'],
+          transferableCapabilities: ['production deployments'],
+          limitation: 'Published Laravel delivery exists, but the profile does not publish two years of named Laravel-only hands-on depth.',
+          recruiterFraming: 'Treat the named Laravel duration as a follow-up topic, not a verified duration match.',
+          verificationQuestion: 'How much of the published delivery history was hands-on Laravel implementation specifically?'
+        },
+        Agile: {
+          matchLevel: 'transferable-professional',
+          evidenceRefs: ['user.agile-context'],
+          transferableCapabilities: ['Agile delivery context'],
+          limitation: 'Agile context is user-provided rather than independently published by an employer source.',
+          verificationQuestion: 'Which Agile ceremonies and delivery ownership does he currently handle directly?'
+        },
+        'AI-assisted development': {
+          matchLevel: 'transferable-professional',
+          evidenceRefs: ['user.agile-context'],
+          transferableCapabilities: ['AI-assisted development', 'workflow automation'],
+          limitation: 'AI-tool usage is user-provided context and should stay within the published project scope.',
+          verificationQuestion: 'Which current production tasks rely on Claude Code or Codex today?'
+        }
+      }
+    },
+    {
+      name: 'kubernetes transfer',
+      filename: 'jd-kubernetes-transfer.txt',
+      expectedDeterministicScore: 50,
+      assertions({ after }) {
+        const kubernetes = after.requirementReasoning.find((item) => item.term === 'Kubernetes');
+        assert.equal(kubernetes.matchLevel, 'adjacent-professional', 'Kubernetes should receive bounded adjacent transfer only');
+        assert.equal(kubernetes.verified, false, 'Kubernetes should remain outside verified direct evidence');
+        assert.match(kubernetes.limitation, /Kubernetes/i, 'the Kubernetes limitation should stay visible');
+        assert.match(kubernetes.verificationQuestion, /Kubernetes/i, 'the Kubernetes requirement should keep a recruiter verification question');
+      },
+      overrides: {
+        Kubernetes: {
+          matchLevel: 'adjacent-professional',
+          evidenceRefs: ['professional.azure-delivery', 'professional.production-delivery'],
+          transferableCapabilities: ['cloud delivery', 'infrastructure as code'],
+          limitation: 'Published Azure delivery is adjacent to Kubernetes operations, but Kubernetes itself is still unproven.',
+          recruiterFraming: 'Use the Azure delivery overlap as bounded transfer only.',
+          verificationQuestion: 'Which Kubernetes clusters or workloads has he operated directly in production?'
+        }
+      }
+    },
+    {
+      name: 'mobile framework transfer',
+      filename: 'jd-mobile-framework-transfer.txt',
+      expectedDeterministicScore: 8,
+      assertions({ after }) {
+        const xamarin = after.requirementReasoning.find((item) => item.term === 'Xamarin');
+        const crossPlatform = after.requirementReasoning.find((item) => item.term === 'Cross-platform Mobile Development');
+        assert.equal(xamarin.matchLevel, 'unverified', 'the unproven named framework must not become a direct or adjacent professional claim');
+        assert.equal(xamarin.lifted, false, 'the unproven named framework must not receive score lift');
+        assert.equal(crossPlatform.matchLevel, 'adjacent-professional', 'cross-platform mobile delivery can receive bounded transfer from published Flutter work');
+        assert.equal(crossPlatform.lifted, true, 'cross-platform delivery should receive bounded transfer credit');
+        assert.match(crossPlatform.limitation, /Flutter|framework/i, 'the cross-platform limitation should explain the framework boundary');
+      },
+      overrides: {
+        Xamarin: {
+          matchLevel: 'unverified',
+          evidenceRefs: [],
+          transferableCapabilities: [],
+          limitation: 'Published mobile work documents Flutter, Android, and iOS delivery, but not Xamarin itself.',
+          recruiterFraming: 'Do not present Xamarin as proven production experience.',
+          verificationQuestion: 'Has he ever maintained a Xamarin codebase directly?'
+        },
+        'Cross-platform Mobile Development': {
+          matchLevel: 'adjacent-professional',
+          evidenceRefs: ['professional.mobile-delivery'],
+          transferableCapabilities: ['cross-platform development', 'mobile delivery'],
+          limitation: 'Published cross-platform delivery is via Flutter rather than the JD’s named framework.',
+          recruiterFraming: 'Use the published Flutter delivery as bounded cross-platform transfer, not named-framework proof.',
+          verificationQuestion: 'Which cross-platform mobile delivery patterns from Flutter would transfer fastest here?'
+        }
+      }
+    }
+  ];
+
+  for (const fixture of fixtures) {
+    const { harness, profile, normalized, result: before } = analyze(loadTask6Fixture(fixture.filename));
+    const input = harness.JDReasoning.buildInput(normalized, before, profile, 'en');
+    const validation = harness.JDReasoning.validateModelOutput(JSON.stringify(reasoningForFixture(input, fixture.overrides)), input);
+    assert.equal(validation.ok, true, `${fixture.name}: the reasoning payload should validate`);
+
+    const after = harness.JDReasoning.mergeResult(before, validation.reasoning, input);
+    const expectedAudit = manualReasoningAudit(before, validation.reasoning, input);
+    const liftedEntries = after.requirementReasoning.filter((item) => item.lifted);
+
+    assert.equal(before.score, fixture.expectedDeterministicScore, `${fixture.name}: the deterministic fixture baseline should stay stable`);
+    assert.equal(after.deterministicScore, before.score, `${fixture.name}: reasoning must not change the deterministic score`);
+    assert.equal(after.score, before.score, `${fixture.name}: the top-level score should remain the authoritative deterministic score`);
+    assert.equal(after.verifiedScore, expectedAudit.verifiedScore, `${fixture.name}: verified score should match the independent audit`);
+    assert.equal(after.transferableScore, expectedAudit.transferableScore, `${fixture.name}: transferable score should match the independent audit`);
+    assert.equal(after.requiredGapCeiling, expectedAudit.requiredGapCeiling, `${fixture.name}: required-gap ceiling should match the independent audit`);
+    assert.equal(
+      after.compositeScore,
+      Math.min(after.transferableScore, before.score + 15, after.requiredGapCeiling),
+      `${fixture.name}: composite score should respect the bounded merge formula`
+    );
+    assert.equal(after.compositeScore, expectedAudit.compositeScore, `${fixture.name}: composite score should match the independent audit`);
+
+    for (const entry of liftedEntries) {
+      assert.ok(entry.evidenceRefs.length > 0, `${fixture.name}: every score lift must cite evidence refs`);
+      assert.ok(entry.limitation, `${fixture.name}: every score lift must keep a limitation`);
+      assert.ok(entry.verificationQuestion, `${fixture.name}: every score lift must keep a verification question`);
+    }
+
+    fixture.assertions({ before, after, input, validation });
+  }
 });
