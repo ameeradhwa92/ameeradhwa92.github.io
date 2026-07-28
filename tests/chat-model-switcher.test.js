@@ -548,6 +548,23 @@ test('JD matcher uses focused mode while retaining the AI progress card', async 
   assert.equal(elements['chat-panel'].classList.contains('chat-panel--jd-open'), false);
 });
 
+test('JD reasoning keeps local waiting state ahead of interim cloud fallback', async () => {
+  const { context } = createChatContext({ saveData: false });
+  await loadChat(context);
+
+  assert.equal(context.window.AIMeerRecruiter.getReasoningMode({
+    hasResult: true,
+    hasNormalizedText: true,
+    aiState: 'cloud',
+    localOK: true,
+    preferredMode: null,
+    route: 'local',
+    cloudOk: true,
+    dlActive: true,
+    hasEngine: false
+  }), 'waiting');
+});
+
 test('JD matcher keeps the deterministic score visible until recruiter reasoning is requested, then renders localized local reasoning sections', async () => {
   const deterministicResult = buildDeterministicResult();
   const mergedResult = buildMergedResult(deterministicResult);
@@ -667,6 +684,94 @@ test('JD matcher keeps the deterministic score visible until recruiter reasoning
   assert.match(localized, /pada peranti ini/i, 'the local reasoning status should localize into formal Bahasa Melayu');
 });
 
+test('completed recruiter reasoning keeps its captured local status after the general route changes', async () => {
+  const pendingReasoning = deferred();
+  const deterministicResult = buildDeterministicResult();
+  const chatbotWithControlledWebLLM = chatbot.replace(
+    'return import(WEBLLM_CDN).then(function (webllm) {',
+    'return window.__importWebLLM(WEBLLM_CDN).then(function (webllm) {'
+  );
+  const fakeEngine = {
+    chat: {
+      completions: {
+        create(payload) {
+          if (Array.isArray(payload.messages) && payload.messages.some((message) => /strict json/i.test(String(message.content)))) {
+            return pendingReasoning.promise;
+          }
+          return Promise.resolve({ choices: [{ message: { content: 'AIMeer local reply' } }] });
+        }
+      }
+    }
+  };
+  const { context, elements } = createChatContext({
+    saveData: false,
+    fetchImpl(url) {
+      const target = String(url);
+      if (target.endsWith('aimeer-kb.txt')) return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
+      if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
+      throw new Error(`Unexpected fetch: ${target}`);
+    }
+  });
+  context.window.__importWebLLM = () => Promise.resolve({
+    CreateMLCEngine(model, options) {
+      options.initProgressCallback({ progress: 1 });
+      return Promise.resolve(fakeEngine);
+    }
+  });
+  context.window.JDExtractor = {
+    extract() {
+      return Promise.resolve({ text: '', source: 'pdf', warnings: [] });
+    },
+    normalize(text) {
+      return { normalizedText: text, warnings: [] };
+    }
+  };
+  context.window.JDMatcher = {
+    scoreJobDescription() {
+      return clone(deterministicResult);
+    }
+  };
+  context.window.JDReasoning = {
+    buildInput(normalized, result, profile, language) {
+      return {
+        language,
+        jdText: normalized.normalizedText,
+        requirements: result.requirements || [],
+        deterministicResult: result,
+        evidenceRegistry: profile.recruiterEvidence || []
+      };
+    },
+    validateModelOutput() {
+      return { ok: true, reasoning: { narrative: 'captured local reasoning', requirements: [] } };
+    },
+    mergeResult(result) {
+      return buildMergedResult(result, { reasoningNarrative: 'captured local reasoning' });
+    },
+    fallback() {
+      throw new Error('fallback should not run on the captured local path');
+    }
+  };
+
+  await loadChat(context, { source: chatbotWithControlledWebLLM });
+  elements['chat-launcher'].dispatch('click');
+  await flushAsync();
+  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC ownership.';
+  elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+  getFirstButton(elements['chat-jd-result']).dispatch('click');
+  await flushAsync();
+
+  elements['chat-model-cloud'].dispatch('click');
+  pendingReasoning.resolve({
+    choices: [{ message: { content: '{"narrative":"captured local reasoning","requirements":[]}' } }]
+  });
+  await flushAsync();
+
+  const rendered = collectText(elements['chat-jd-result']);
+  assert.match(rendered, /on this device/i);
+  assert.doesNotMatch(rendered, /secure cloud AI/i);
+});
+
 test('cloud recruiter reasoning localizes its status and falls back without hiding the deterministic score', async () => {
   const deterministicResult = buildDeterministicResult();
   const fallback = buildFallback('ms');
@@ -698,7 +803,13 @@ test('cloud recruiter reasoning localizes its status and falls back without hidi
   };
   context.window.JDReasoning = {
     buildInput(normalized, result, profile, language) {
-      return { language, jdText: normalized.normalizedText, requirements: result.requirements || [], evidenceRegistry: profile.recruiterEvidence || [] };
+      return {
+        language,
+        jdText: normalized.normalizedText,
+        requirements: result.requirements || [],
+        deterministicResult: result,
+        evidenceRegistry: profile.recruiterEvidence || []
+      };
     },
     validateModelOutput() {
       return { ok: false, error: 'invalid reasoning payload' };
@@ -727,6 +838,22 @@ test('cloud recruiter reasoning localizes its status and falls back without hidi
 
   const rendered = collectText(elements['chat-jd-result']);
   assert.equal(cloudCalls.length, 1, 'cloud reasoning should send a single bounded request');
+  assert.deepEqual(Object.keys(cloudCalls[0]).sort(), [
+    'deterministicInput',
+    'evidenceIds',
+    'jdText',
+    'language',
+    'mode'
+  ]);
+  assert.equal(cloudCalls[0].mode, 'jd-reasoning');
+  assert.equal(cloudCalls[0].language, 'ms');
+  assert.equal(cloudCalls[0].jdText, 'Perlu ASP.NET Core MVC dan pengalaman orkestrasi kontena.');
+  assert.ok(cloudCalls[0].deterministicInput);
+  assert.equal(Array.isArray(cloudCalls[0].deterministicInput.requirements), true);
+  assert.equal(cloudCalls[0].deterministicInput.deterministicResult.score, 72);
+  assert.deepEqual(cloudCalls[0].evidenceIds, ['ev-retailaim-plus', 'ev-azure-devops']);
+  assert.equal('evidenceRegistry' in cloudCalls[0], false);
+  assert.equal('capabilityVocabulary' in cloudCalls[0], false);
   assert.match(rendered, /72%/, 'the deterministic score must remain visible after a reasoning failure');
   assert.match(rendered, /Ringkasan deterministik digunakan/i, 'the UI should show the localized fallback narrative');
   assert.match(rendered, /awan selamat/i, 'the cloud reasoning status should be localized in Bahasa Melayu');
@@ -830,6 +957,65 @@ test('a stale recruiter reasoning response cannot replace a newer JD result', as
   assert.match(afterOldResponse, /58%/, 'the stale reasoning response must not replace the newer deterministic score');
   assert.match(afterOldResponse, /React/i, 'the newer JD content must remain visible after the stale response resolves');
   assert.doesNotMatch(afterOldResponse, /Old reasoning should never replace the newer JD result/i);
+});
+
+test('a language change invalidates an in-flight recruiter reasoning response', async () => {
+  const pendingReasoning = deferred();
+  let mergeCalls = 0;
+  const deterministicResult = buildDeterministicResult();
+  const { context, elements, setLanguage } = createChatContext({
+    saveData: true,
+    fetchImpl(url) {
+      const target = String(url);
+      if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
+      if (target.includes('workers.dev')) return pendingReasoning.promise;
+      return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
+    }
+  });
+  context.window.JDExtractor = {
+    extract() {
+      return Promise.resolve({ text: '', source: 'pdf', warnings: [] });
+    },
+    normalize(text) {
+      return { normalizedText: text, warnings: [] };
+    }
+  };
+  context.window.JDMatcher = {
+    scoreJobDescription() {
+      return clone(deterministicResult);
+    }
+  };
+  context.window.JDReasoning = {
+    buildInput(normalized, result, profile, language) {
+      return { language, jdText: normalized.normalizedText, requirements: result.requirements || [], evidenceRegistry: profile.recruiterEvidence || [] };
+    },
+    validateModelOutput() {
+      return { ok: true, reasoning: { narrative: 'stale language reasoning', requirements: [] } };
+    },
+    mergeResult() {
+      mergeCalls += 1;
+      return buildMergedResult(deterministicResult, { reasoningNarrative: 'stale language reasoning' });
+    },
+    fallback() {
+      throw new Error('fallback should not run when the language changes');
+    }
+  };
+
+  await loadChat(context);
+  await flushAsync();
+  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC ownership.';
+  elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+  getFirstButton(elements['chat-jd-result']).dispatch('click');
+  await flushAsync();
+
+  setLanguage('ms');
+  pendingReasoning.resolve(makeJsonResponse({ reasoning: JSON.stringify({ narrative: 'stale language reasoning', requirements: [] }) }));
+  await flushAsync();
+
+  assert.equal(mergeCalls, 0, 'a response generated for the old language must not merge');
+  assert.match(collectText(elements['chat-jd-result']), /72%/);
+  assert.doesNotMatch(collectText(elements['chat-jd-result']), /stale language reasoning/i);
 });
 
 test('selecting eligible local AI presents Local while the active route is cloud', async () => {

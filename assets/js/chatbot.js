@@ -65,6 +65,116 @@
     "information and suggest asking Ameer directly — the chat will show WhatsApp and email buttons for that. " +
     "Never invent projects, employers, dates or links.\n\n";
 
+  /* ---------------- bounded recruiter helper compatibility ----------------
+     Older local tools consume this public helper block directly.  The live
+     reasoning request below uses JDReasoning and the jd-reasoning contract;
+     this shim remains bounded and is not used as a free-form request path. */
+  var JD_EXPLANATION_JD_MAX = 12000;
+  var JD_EXPLANATION_RESULT_MAX = 12000;
+  var JD_EXPLANATION_CATEGORY_KEYS = [
+    "coreTechnologies",
+    "professionalExperience",
+    "architectureDeliveryCloud",
+    "domainIntegrations",
+    "mobile",
+    "educationCoursework",
+    "languagesCommunication"
+  ];
+  var JD_EXPLANATION_DISCLAIMERS = {
+    en: "This is an estimated compatibility score based only on the job description and Ameer's published profile. It is not an objective hiring decision, technical assessment, or guarantee of suitability.",
+    ms: "Ini ialah skor keserasian anggaran yang berasaskan hanya pada huraian jawatan dan profil terbitan Ameer. Ia bukan keputusan pengambilan pekerja yang objektif, penilaian teknikal, atau jaminan kesesuaian."
+  };
+
+  function clipExplanationText(value, maxChars) {
+    return String(value || "").replace(/\s+/g, " ").trim().slice(0, maxChars);
+  }
+
+  function compactExplanationList(items, maxItems) {
+    return (Array.isArray(items) ? items : []).slice(0, maxItems).map(function (item) {
+      return {
+        term: clipExplanationText(item && item.term, 120),
+        label: clipExplanationText(item && item.label, 220),
+        evidenceType: clipExplanationText(item && item.evidenceType, 32),
+        evidence: (Array.isArray(item && item.evidence) ? item.evidence : []).slice(0, 3).map(function (entry) {
+          return clipExplanationText(entry, 140);
+        })
+      };
+    });
+  }
+
+  function compactExplanationCategories(categories) {
+    var source = categories && typeof categories === "object" ? categories : {};
+    var compact = {};
+    JD_EXPLANATION_CATEGORY_KEYS.forEach(function (key) {
+      var item = source[key];
+      if (!item || typeof item !== "object") return;
+      compact[key] = {
+        score: Math.max(0, Math.min(100, Number(item.score) || 0)),
+        weight: Math.max(0, Math.min(100, Number(item.weight) || 0))
+      };
+      if (typeof item.key === "string") compact[key].key = clipExplanationText(item.key, 64);
+      if (typeof item.label === "string") compact[key].label = clipExplanationText(item.label, 120);
+      if (Number.isInteger(item.matchedRequirements)) {
+        compact[key].matchedRequirements = Math.max(0, Math.min(100, item.matchedRequirements));
+      }
+      if (Number.isInteger(item.totalRequirements)) {
+        compact[key].totalRequirements = Math.max(0, Math.min(100, item.totalRequirements));
+      }
+      if (Array.isArray(item.matchedTerms)) {
+        compact[key].matchedTerms = item.matchedTerms.slice(0, 50).map(function (term) {
+          return clipExplanationText(term, 120);
+        });
+      }
+    });
+    return compact;
+  }
+
+  function compactExplanationResult(result) {
+    var compact = {
+      score: Math.round((Number(result && result.score) || 0) * 10) / 10,
+      confidence: {
+        label: clipExplanationText(result && result.confidence && result.confidence.label, 16),
+        reasons: (Array.isArray(result && result.confidence && result.confidence.reasons)
+          ? result.confidence.reasons : []).slice(0, 3).map(function (reason) {
+            return clipExplanationText(reason, 180);
+          })
+      },
+      categories: compactExplanationCategories(result && result.categories),
+      strongMatches: compactExplanationList(result && result.strongMatches, 6),
+      partialMatches: compactExplanationList(result && result.partialMatches, 6),
+      gaps: compactExplanationList(result && result.gaps, 6),
+      unverified: compactExplanationList(result && result.unverified, 6),
+      interviewTopics: compactExplanationList(result && result.interviewTopics, 6)
+    };
+    while (JSON.stringify(compact).length > JD_EXPLANATION_RESULT_MAX) {
+      if (compact.unverified.length) compact.unverified.pop();
+      else if (compact.gaps.length) compact.gaps.pop();
+      else if (compact.partialMatches.length) compact.partialMatches.pop();
+      else if (compact.strongMatches.length) compact.strongMatches.pop();
+      else if (compact.interviewTopics.length) compact.interviewTopics.pop();
+      else if (compact.confidence.reasons.length) compact.confidence.reasons.pop();
+      else break;
+    }
+    return compact;
+  }
+
+  function buildJdExplanationPayload(normalizedText, result, language) {
+    var lang = language === "ms" ? "ms" : "en";
+    return {
+      mode: "jd-explanation",
+      language: lang,
+      messages: [{
+        role: "user",
+        content: lang === "ms"
+          ? "Terangkan keputusan padanan huraian jawatan ini tanpa mengubah skor deterministik."
+          : "Explain this job-description match result without changing the deterministic score."
+      }],
+      jdText: clipExplanationText(normalizedText, JD_EXPLANATION_JD_MAX),
+      matchResult: compactExplanationResult(result || {}),
+      disclaimer: JD_EXPLANATION_DISCLAIMERS[lang]
+    };
+  }
+
   function nextExplanationToken(current) {
     return (Number(current) || 0) + 1;
   }
@@ -84,25 +194,33 @@
   function computeJdReasoningMode(state) {
     if (!state || !state.hasResult || !state.hasNormalizedText) return "unavailable";
     if (state.hasEngine && state.aiState === "ready") return "local";
-    if (state.cloudOk && (state.aiState === "cloud" || state.route === "cloud" || state.preferredMode === "cloud")) {
-      return "cloud";
-    }
     if (state.localOK) {
       if (state.dlActive || state.aiState === "loading" || state.route === "local" || state.preferredMode === "local") {
         return "waiting";
       }
+      if (state.cloudOk && (state.aiState === "cloud" || state.route === "cloud" || state.preferredMode === "cloud")) {
+        return "cloud";
+      }
       return "unavailable";
+    }
+    if (state.cloudOk && (state.aiState === "cloud" || state.route === "cloud" || state.preferredMode === "cloud")) {
+      return "cloud";
     }
     return "unavailable";
   }
 
   if (!window.AIMeerRecruiter) window.AIMeerRecruiter = {};
+  window.AIMeerRecruiter.buildExplanationPayload = buildJdExplanationPayload;
   window.AIMeerRecruiter.getExplanationMode = computeJdReasoningMode;
   window.AIMeerRecruiter.getReasoningMode = computeJdReasoningMode;
   window.AIMeerRecruiter.nextExplanationToken = nextExplanationToken;
   window.AIMeerRecruiter.canApplyExplanationToken = canApplyExplanationToken;
   window.AIMeerRecruiter.nextAnalysisToken = nextAnalysisToken;
   window.AIMeerRecruiter.canApplyAnalysisToken = canApplyAnalysisToken;
+  window.AIMeerRecruiter.jdExplanationLimits = {
+    jdText: JD_EXPLANATION_JD_MAX,
+    resultChars: JD_EXPLANATION_RESULT_MAX
+  };
 
   var WA_NUMBER = "60139610053"; /* +60 13-961 0053 in wa.me format */
   var EMAIL = "ameeradhwa92@gmail.com";
@@ -517,6 +635,7 @@
     reasoningBusy: false,
     reasoningError: "",
     reasoningFallback: false,
+    reasoningLanguage: "",
     reasoningRequestToken: 0,
     analysisRequestToken: 0,
     statusKind: "idle",
@@ -632,6 +751,7 @@
     jdState.reasoningBusy = false;
     jdState.reasoningError = "";
     jdState.reasoningFallback = false;
+    jdState.reasoningLanguage = "";
     if (recruiterUI) jdResult.innerHTML = "";
   }
 
@@ -848,7 +968,9 @@
   }
 
   function renderJdReasoning(section) {
-    var mode = getJdReasoningMode();
+    /* Once a request starts, keep its captured route visible even if the
+       general AIMeer route changes while the model is working. */
+    var mode = jdState.reasoningMode || getJdReasoningMode();
     var reasonSection = createJdNode("section", "chat-jd-section chat-jd-reasoning");
     reasonSection.appendChild(createJdNode("h6", "", t("jdReasonTitle")));
     reasonSection.appendChild(createJdNode("p", "chat-jd-hint", t(reasoningStatusKey(mode))));
@@ -1126,6 +1248,18 @@
   }
 
   function refreshLangBits() {
+    var activeLanguage = reasoningLanguage();
+    if (jdState.reasoningBusy && jdState.reasoningLanguage && jdState.reasoningLanguage !== activeLanguage) {
+      /* A structured response is language-specific.  Leave the deterministic
+         baseline visible and invalidate the in-flight response. */
+      jdState.reasoningRequestToken = nextExplanationToken(jdState.reasoningRequestToken);
+      jdState.reasoningBusy = false;
+      jdState.reasoningMode = "";
+      jdState.reasoningError = "";
+      jdState.reasoningFallback = false;
+      jdState.reasoningLanguage = "";
+      jdState.result = jdState.deterministicResult;
+    }
     input.placeholder = t("placeholder");
     refreshStatus();
     applyAiBox();
@@ -1484,11 +1618,30 @@
     });
   }
 
+  function buildJdReasoningCloudPayload(input) {
+    var safeInput = input || {};
+    var evidenceIds = (Array.isArray(safeInput.evidenceRegistry) ? safeInput.evidenceRegistry : [])
+      .map(function (record) { return record && typeof record.id === "string" ? record.id : ""; })
+      .filter(Boolean);
+    return {
+      mode: "jd-reasoning",
+      language: safeInput.language === "ms" ? "ms" : "en",
+      jdText: String(safeInput.jdText || "").slice(0, 12000),
+      deterministicInput: {
+        requirements: Array.isArray(safeInput.requirements) ? safeInput.requirements : [],
+        deterministicResult: safeInput.deterministicResult && typeof safeInput.deterministicResult === "object"
+          ? safeInput.deterministicResult
+          : {}
+      },
+      evidenceIds: evidenceIds
+    };
+  }
+
   function requestJdReasoningViaCloud(input) {
     return fetch(CLOUD_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input)
+      body: JSON.stringify(buildJdReasoningCloudPayload(input))
     }).then(function (r) {
       if (!r.ok) throw new Error("cloud-" + r.status);
       return r.json();
@@ -1525,13 +1678,16 @@
     jdState.reasoningBusy = true;
     jdState.reasoningError = "";
     jdState.reasoningMode = mode;
+    jdState.reasoningLanguage = currentLanguage;
     jdState.reasoningFallback = false;
     renderJdResult();
 
     function canApplyReasoning() {
       return canApplyExplanationToken(requestToken, jdState.reasoningRequestToken) &&
         analysisToken === jdState.analysisRequestToken &&
-        deterministicResult === jdState.deterministicResult;
+        deterministicResult === jdState.deterministicResult &&
+        currentLanguage === reasoningLanguage() &&
+        currentLanguage === jdState.reasoningLanguage;
     }
 
     function applyReasoningFallback(reason) {

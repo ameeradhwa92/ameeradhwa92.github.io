@@ -20,6 +20,12 @@ Base commit at start: `9ae40b3`
   - recruiter narrative;
   - expandable requirement-by-requirement reasoning cards;
   - verified strengths, transferable advantages, priority gaps, learning bridges, and verification-question sections.
+- Applied review fixes without touching `cloud/aimeer-worker.js`:
+  - local-capable interim download state remains `waiting` before cloud fallback;
+  - captured reasoning mode remains the rendered status/privacy source after route changes;
+  - browser cloud requests now use `{ mode: "jd-reasoning", language, jdText, deterministicInput, evidenceIds }` while retaining the bounded internal validation input;
+  - EN/BM changes invalidate in-flight language-specific reasoning;
+  - restored the bounded legacy `AIMeerRecruiter` helper block for `tools/test_recruiter_cloud_payload.mjs` without reconnecting the obsolete request path.
 - Added Task 4 focused UI/concurrency coverage in `tests/chat-model-switcher.test.js` for:
   - deterministic-first rendering before explicit reasoning;
   - localized local reasoning rendering;
@@ -38,8 +44,11 @@ Focused test command:
 
 Initial red result:
 
-- 3 new tests added
-- 2 failed for missing Task 4 reasoning behavior after fixing the test harness setup
+- 4 review regression tests added
+- 3 failed for the expected review regressions:
+  - local waiting mode was incorrectly reported as cloud;
+  - the cloud request forwarded the internal input instead of the five-field Worker envelope;
+  - a language change did not invalidate an in-flight response.
 - failures covered:
   - no explicit recruiter reasoning payload/build path;
   - no cloud reasoning/fallback request path from the current UI state.
@@ -52,7 +61,13 @@ Focused test command after implementation:
 
 Result:
 
-- 23 / 23 tests passed
+- 26 / 26 tests passed
+
+Compatibility harness:
+
+`node --test tools/test_recruiter_cloud_payload.mjs`
+
+- 10 / 10 tests passed
 
 ## Verification evidence
 
@@ -60,13 +75,13 @@ Focused UI tests:
 
 `node --test tests/chat-model-switcher.test.js`
 
-- 23 / 23 tests passed
+- 26 / 26 tests passed
 
 Full test suite:
 
 `$tests = Get-ChildItem tests -Filter '*.test.js' | Select-Object -ExpandProperty FullName; node --test $tests`
 
-- 45 / 45 tests passed
+- 48 / 48 tests passed
 
 Syntax checks:
 
