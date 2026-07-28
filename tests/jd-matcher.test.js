@@ -33,6 +33,7 @@ function loadMatcherHarness() {
 
 const profile = loadProfile();
 const harness = loadMatcherHarness();
+const recruiterEvidenceById = new Map((profile.recruiterEvidence || []).map((record) => [record.id, record]));
 
 function analyze(text) {
   const normalized = harness.JDExtractor.normalize(text);
@@ -46,6 +47,26 @@ function requirementByTerm(result, term) {
 
 function listTerms(list) {
   return Array.from(list, (item) => item.term);
+}
+
+function normalizeTerm(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[()]/g, ' ')
+    .replace(/[^a-z0-9+#./\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function registrySupportsTerm(record, term) {
+  const normalizedTerm = normalizeTerm(term);
+  const fields = []
+    .concat(record.technologies || [])
+    .concat(record.capabilities || [])
+    .concat(record.scope || []);
+
+  return fields.some((value) => normalizeTerm(value) === normalizedTerm);
 }
 
 const fixtures = [
@@ -88,7 +109,7 @@ Preferred Skills:
         specificHandsOn: false,
         classification: 'strong',
         evidenceType: 'professional',
-        evidenceRefs: ['professional.web-api-architecture']
+        evidenceRefs: []
       },
       {
         term: '5+ years',
@@ -209,7 +230,7 @@ Preferred Skills:
         specificHandsOn: false,
         classification: 'strong',
         evidenceType: 'professional',
-        evidenceRefs: ['professional.web-api-architecture']
+        evidenceRefs: []
       },
       {
         term: '2 years',
@@ -221,7 +242,7 @@ Preferred Skills:
         specificHandsOn: true,
         classification: 'partial',
         evidenceType: 'professional',
-        evidenceRefs: ['professional.web-api-architecture']
+        evidenceRefs: []
       }
     ]
   },
@@ -398,6 +419,52 @@ test('matcher exposes stable deterministic requirement metadata without changing
         first.result.requirements.some((item) => item.category === 'mobile'),
         false,
         `${fixture.name}: no mobile requirements should be emitted`
+      );
+    }
+  }
+});
+
+test('matcher rejects recruiter evidence refs that are not actually published in the authoritative registry fields', () => {
+  const csharp = analyze(`Required Skills:
+- C#
+`).result;
+  const laravel = analyze(`Required Skills:
+- Laravel
+- 2 years of hands-on experience with Laravel
+`).result;
+
+  const csharpRequirement = requirementByTerm(csharp, 'C#');
+  const laravelRequirement = requirementByTerm(laravel, 'Laravel');
+  const laravelDurationRequirement = requirementByTerm(laravel, '2 years');
+
+  assert.deepEqual(
+    Array.from(csharpRequirement.evidenceRefs),
+    [],
+    'C# should not cite recruiter evidence refs when no registry record publishes C# in its technologies/capabilities/scope'
+  );
+  assert.deepEqual(
+    Array.from(laravelRequirement.evidenceRefs),
+    [],
+    'Laravel should not cite recruiter evidence refs when no registry record publishes Laravel in its technologies/capabilities/scope'
+  );
+  assert.deepEqual(
+    Array.from(laravelDurationRequirement.evidenceRefs),
+    [],
+    'Laravel duration partials should not cite unsupported recruiter evidence refs'
+  );
+
+  for (const [term, refs] of [
+    ['C#', Array.from(csharpRequirement.evidenceRefs)],
+    ['Laravel', Array.from(laravelRequirement.evidenceRefs)],
+    ['Laravel', Array.from(laravelDurationRequirement.evidenceRefs)]
+  ]) {
+    for (const ref of refs) {
+      const record = recruiterEvidenceById.get(ref);
+      assert.ok(record, `${term}: recruiter evidence ref ${ref} should exist in the profile registry`);
+      assert.equal(
+        registrySupportsTerm(record, term),
+        true,
+        `${term}: recruiter evidence ref ${ref} should be supported by registry technologies/capabilities/scope`
       );
     }
   }

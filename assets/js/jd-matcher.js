@@ -176,8 +176,6 @@
         "asp.net",
         ".net",
         "dotnet",
-        "c#",
-        "c sharp",
         "react",
         "typescript",
         "fastapi",
@@ -187,8 +185,7 @@
         "clean architecture",
         "enterprise web application development",
         "enterprise web applications",
-        "web application development",
-        "laravel"
+        "web application development"
       ]
     },
     {
