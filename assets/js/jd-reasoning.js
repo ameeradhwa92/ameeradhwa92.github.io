@@ -57,6 +57,7 @@
     gap: 0,
     unverified: 0
   };
+  var HTML_MARKUP_PATTERN = /<\s*\/?\s*[a-z][^>]*>|<!--[\s\S]*?-->|<!--|-->/i;
 
   function clipText(value, maxChars) {
     return String(value || "").replace(/\s+/g, " ").trim().slice(0, maxChars);
@@ -251,6 +252,7 @@
   function validateTextField(value, key) {
     var maxChars = FIELD_LIMITS[key] || 320;
     if (typeof value !== "string") return key + " must be a string.";
+    if (HTML_MARKUP_PATTERN.test(value)) return key + " must not contain HTML or markup.";
     var clipped = clipText(value, maxChars);
     if (!clipped) return key + " must be present.";
     if (String(value).replace(/\s+/g, " ").trim().length > maxChars) {
@@ -344,7 +346,7 @@
           return reject("Unknown evidence ref: " + evidenceRefs[refIndex] + ".");
         }
       }
-      if (matchLevel !== "direct-professional" && EVIDENCE_BASED_MATCH_LEVELS[matchLevel] && !evidenceRefs.length) {
+      if (EVIDENCE_BASED_MATCH_LEVELS[matchLevel] && !evidenceRefs.length) {
         return reject("Evidence-based conclusions must include evidence refs.");
       }
 
@@ -354,6 +356,9 @@
         return reject("transferableCapabilities must be unique and within the allowed size.");
       }
       for (var transferableIndex = 0; transferableIndex < transferableCapabilities.length; transferableIndex += 1) {
+        if (HTML_MARKUP_PATTERN.test(transferableCapabilities[transferableIndex])) {
+          return reject("transferableCapabilities must not contain HTML or markup.");
+        }
         if (!capabilitySet[transferableCapabilities[transferableIndex]]) {
           return reject("Unsupported capability name: " + transferableCapabilities[transferableIndex] + ".");
         }

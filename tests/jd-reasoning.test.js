@@ -53,7 +53,7 @@ function reasoningForFixture(input, overrides) {
   const directProfessionalLevels = new Set(['direct-professional', 'adjacent-professional', 'transferable-professional']);
   const entries = input.requirements.map((item) => {
     const override = overrides[item.term] || {};
-    const matchLevel = override.matchLevel || (
+    const inferredMatchLevel = (
       item.classification === 'strong'
         ? 'direct-professional'
         : item.classification === 'partial'
@@ -61,6 +61,12 @@ function reasoningForFixture(input, overrides) {
           : item.classification === 'gap'
             ? 'explicit-gap'
             : 'unverified'
+    );
+    const inferredEvidenceRefs = directProfessionalLevels.has(inferredMatchLevel) ? item.evidenceRefs.slice() : [];
+    const matchLevel = override.matchLevel || (
+      directProfessionalLevels.has(inferredMatchLevel) && !inferredEvidenceRefs.length
+        ? 'unverified'
+        : inferredMatchLevel
     );
     const evidenceRefs = override.evidenceRefs !== undefined
       ? override.evidenceRefs
@@ -269,6 +275,54 @@ test('JDReasoning.validateModelOutput rejects malformed JSON', () => {
 
   assert.equal(invalid.ok, false);
   assert.match(invalid.error, /json/i);
+});
+
+test('JDReasoning.validateModelOutput rejects direct-professional conclusions without evidence refs', () => {
+  const { harness, profile, normalized, result } = analyze('Required Skills:\n- Azure\n');
+  assert.ok(harness.JDReasoning, 'JDReasoning should be loaded');
+  const input = harness.JDReasoning.buildInput(normalized, result, profile, 'en');
+  const payload = reasoningForFixture(input, {});
+  payload.requirements[0].matchLevel = 'direct-professional';
+  payload.requirements[0].evidenceRefs = [];
+
+  const validation = harness.JDReasoning.validateModelOutput(JSON.stringify(payload), input);
+
+  assert.equal(validation.ok, false);
+  assert.match(validation.error, /evidence/i);
+});
+
+test('JDReasoning.validateModelOutput rejects HTML-bearing model strings', () => {
+  const { harness, profile, normalized, result } = analyze('Required Skills:\n- Azure\n');
+  assert.ok(harness.JDReasoning, 'JDReasoning should be loaded');
+  const input = harness.JDReasoning.buildInput(normalized, result, profile, 'en');
+  const invalidCases = [
+    {
+      label: 'script payload',
+      mutate(payload) {
+        payload.narrative = '<script>alert(1)</script>';
+      }
+    },
+    {
+      label: 'bold payload',
+      mutate(payload) {
+        payload.requirements[0].recruiterIntent = '<b>Intent</b>';
+      }
+    },
+    {
+      label: 'image event payload',
+      mutate(payload) {
+        payload.requirements[0].limitation = '<img src=x onerror=alert(1)>';
+      }
+    }
+  ];
+
+  for (const invalidCase of invalidCases) {
+    const payload = reasoningForFixture(input, {});
+    invalidCase.mutate(payload);
+    const validation = harness.JDReasoning.validateModelOutput(JSON.stringify(payload), input);
+    assert.equal(validation.ok, false, `${invalidCase.label} should reject HTML-bearing strings`);
+    assert.match(validation.error, /html|markup|tag/i, `${invalidCase.label} should explain the rejection`);
+  }
 });
 
 test('JDReasoning.validateModelOutput rejects unknown requirement ids, duplicate ids, unknown evidence refs, unsupported capabilities, invalid match levels, overlong fields, and model numeric scores', () => {

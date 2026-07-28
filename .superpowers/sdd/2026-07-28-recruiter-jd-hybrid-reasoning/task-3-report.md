@@ -18,6 +18,8 @@ Status: DONE
   - invalid match-level rejection
   - overlong field rejection
   - model-supplied score rejection
+  - evidence-ref requirement for every evidence-based match level, including direct-professional
+  - HTML/markup rejection in model text fields
   - score merging with deterministic preservation and +15 composite cap
   - deterministic fallback output
 
@@ -50,7 +52,31 @@ Focused re-run:
 
 Observed result after implementation:
 
-- 7/7 tests passed
+- 9/9 tests passed
+
+### Review-fix RED/GREEN
+
+Added focused regression tests before the production fix for:
+
+- direct-professional output with `evidenceRefs: []`
+- `<script>`, `<b>`, and `<img ... onerror=...>` strings in validated model fields
+
+Focused RED command:
+
+`node --test tests/jd-reasoning.test.js`
+
+Observed result before the fix:
+
+- 7 passed, 2 failed
+- both failures showed the validator returned `ok: true` for the reported review cases
+
+Focused GREEN command after the fix:
+
+`node --test tests/jd-reasoning.test.js`
+
+Observed result:
+
+- 9/9 tests passed
 
 ## Implementation notes
 
@@ -68,8 +94,8 @@ Observed result after implementation:
 - accepts plain JSON and fenced ```json blocks
 - enforces closed root and requirement object schemas
 - rejects malformed JSON, unknown keys, duplicate requirement IDs, unknown requirement IDs, unknown evidence refs, unsupported capabilities, invalid match levels, overlong text fields, and model score fields
-- requires evidence refs for adjacent / transferable / academic evidence-based conclusions
-- allows direct deterministic matches to remain valid even when the deterministic requirement has no recruiter-evidence ref
+- requires at least one valid evidence ref for every evidence-based conclusion, including direct-professional
+- rejects HTML tags and comment markup before validated text is returned
 
 ### `mergeResult`
 
@@ -97,7 +123,7 @@ Focused reasoning tests:
 
 Result:
 
-- pass, 7 tests, 0 failures
+- pass, 9 tests, 0 failures
 
 Full suite:
 
@@ -105,7 +131,7 @@ Full suite:
 
 Result:
 
-- pass, 40 tests, 0 failures
+- pass, 42 tests, 0 failures
 
 Syntax checks:
 
@@ -135,8 +161,10 @@ Result:
 ## Files changed
 
 - `assets/js/jd-reasoning.js`
-- `index.html`
 - `tests/jd-reasoning.test.js`
+- `.superpowers/sdd/2026-07-28-recruiter-jd-hybrid-reasoning/task-3-report.md`
+
+The previously committed Task 3 files (`index.html` and the initial module/test changes) remain unchanged by this review fix.
 
 ## Out-of-scope by design
 
