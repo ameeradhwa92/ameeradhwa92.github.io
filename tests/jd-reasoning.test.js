@@ -343,6 +343,40 @@ Preferred Skills:
   assert.equal(serialized.toLowerCase().includes('salary'), false, 'reasoning input should exclude privacy terms');
 });
 
+test('JDReasoning.buildInput keeps valid medical and leave domain requirements while filtering admin privacy terms', () => {
+  const allowedCases = [
+    'Azure medical device integration',
+    'Azure leave management system'
+  ];
+  for (const requirement of allowedCases) {
+    const { harness, profile, normalized, result } = analyze(`Required Skills:\n- ${requirement}\n`);
+    const input = harness.JDReasoning.buildInput(normalized, result, profile, 'en');
+
+    assert.match(input.jdText.toLowerCase(), new RegExp(requirement.toLowerCase()), `${requirement} should remain in the recruiter-safe projection`);
+  }
+
+  const rejectedCases = [
+    'Expected monthly basic salary',
+    'Medical coverage',
+    'Annual leave',
+    'Employee benefits',
+    'NRIC verification',
+    'Home address',
+    'Date of birth',
+    'Signatures'
+  ];
+  for (const requirement of rejectedCases) {
+    const { harness, profile, normalized, result } = analyze(`Required Skills:\n- ${requirement}\n`);
+    const input = harness.JDReasoning.buildInput(normalized, result, profile, 'en');
+
+    assert.equal(
+      input.jdText.toLowerCase().includes(requirement.toLowerCase()),
+      false,
+      `${requirement} should not enter the recruiter-safe projection`
+    );
+  }
+});
+
 test('JDReasoning.validateModelOutput accepts valid strict JSON and markdown-wrapped JSON', () => {
   const { harness, profile, normalized, result } = analyze(`Required Skills:
 - Kubernetes

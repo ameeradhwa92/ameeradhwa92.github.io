@@ -159,6 +159,22 @@ const DEFAULT_PRIVACY_EXCLUSIONS = [
   "signatures",
   "confidential contract language"
 ];
+const AMBIGUOUS_PRIVACY_TERMS = {
+  salary: true,
+  benefits: true,
+  leave: true,
+  medical: true
+};
+const CONTEXTUAL_PRIVACY_PATTERNS = [
+  /\b(?:expected|expecting|monthly|basic)\s+(?:[a-z]+\s+){0,2}salary\b/i,
+  /\bsalary\s+(?:expectation|expectations|range|package|history)\b/i,
+  /\b(?:compensation|remuneration)\b/i,
+  /\bmedical\s+(?:coverage|insurance|benefits|plan|history)\b/i,
+  /\b(?:health|employee)\s+(?:benefits|coverage|insurance|plan)\b/i,
+  /\b(?:annual|sick|paid|unpaid|parental|maternity|paternity|casual)\s+leave\b/i,
+  /\bleave\s+(?:entitlement|history|balance|policy|policies|allowance)\b/i,
+  /\bbenefits\s+(?:package|coverage|plan|plans|history|entitlement)\b/i
+];
 const HTML_MARKUP_PATTERN = /<\s*\/?\s*[a-z][^>]*>|<!--[\s\S]*?-->|<!--|-->/i;
 
 const PERSONA_HEAD =
@@ -790,7 +806,15 @@ function buildCapabilityVocabulary(evidenceRegistry) {
 
 function containsPrivacyTerms(text, privacyTerms) {
   const haystack = String(text || "").toLowerCase();
-  return privacyTerms.some((term) => haystack.includes(String(term || "").toLowerCase()));
+  for (const rawTerm of privacyTerms) {
+    const term = String(rawTerm || "").toLowerCase().trim();
+    if (!term || AMBIGUOUS_PRIVACY_TERMS[term]) continue;
+    const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp("(^|[^a-z0-9])" + escapedTerm + "(?=$|[^a-z0-9])", "i").test(haystack)) {
+      return true;
+    }
+  }
+  return CONTEXTUAL_PRIVACY_PATTERNS.some((pattern) => pattern.test(haystack));
 }
 
 function isRequirementIdValid(id, category) {

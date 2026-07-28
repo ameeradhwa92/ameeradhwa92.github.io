@@ -14,6 +14,22 @@
     "signatures",
     "confidential contract language"
   ];
+  var AMBIGUOUS_PRIVACY_TERMS = {
+    salary: true,
+    benefits: true,
+    leave: true,
+    medical: true
+  };
+  var CONTEXTUAL_PRIVACY_PATTERNS = [
+    /\b(?:expected|expecting|monthly|basic)\s+(?:[a-z]+\s+){0,2}salary\b/i,
+    /\bsalary\s+(?:expectation|expectations|range|package|history)\b/i,
+    /\b(?:compensation|remuneration)\b/i,
+    /\bmedical\s+(?:coverage|insurance|benefits|plan|history)\b/i,
+    /\b(?:health|employee)\s+(?:benefits|coverage|insurance|plan)\b/i,
+    /\b(?:annual|sick|paid|unpaid|parental|maternity|paternity|casual)\s+leave\b/i,
+    /\bleave\s+(?:entitlement|history|balance|policy|policies|allowance)\b/i,
+    /\bbenefits\s+(?:package|coverage|plan|plans|history|entitlement)\b/i
+  ];
   var ROOT_KEYS = ["narrative", "requirements"];
   var REQUIREMENT_KEYS = [
     "requirementId",
@@ -110,11 +126,16 @@
   function containsPrivacyTerms(text, privacyTerms) {
     var haystack = String(text || "").toLowerCase();
     for (var index = 0; index < privacyTerms.length; index += 1) {
-      if (haystack.indexOf(String(privacyTerms[index] || "").toLowerCase()) !== -1) {
+      var term = String(privacyTerms[index] || "").toLowerCase().trim();
+      if (!term || AMBIGUOUS_PRIVACY_TERMS[term]) continue;
+      var escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (new RegExp("(^|[^a-z0-9])" + escapedTerm + "(?=$|[^a-z0-9])", "i").test(haystack)) {
         return true;
       }
     }
-    return false;
+    return CONTEXTUAL_PRIVACY_PATTERNS.some(function (pattern) {
+      return pattern.test(haystack);
+    });
   }
 
   function getPrivacyTerms(profile) {

@@ -306,10 +306,10 @@ test('jd-reasoning Worker enforces evidence provenance for evidence-based match 
 test('jd-reasoning keeps noisy salary and benefits sections out of the bounded browser-to-worker payload', async () => {
   const request = buildValidRequest({
     language: 'en',
-    text: `Required Skills:
-- ASP.NET Core
-- Azure DevOps
+text: `Required Skills:
+- Azure DevOps leave management system
 - CI/CD
+- ASP.NET Core medical device integration
 Preferred Skills:
 - Kubernetes
 Employer Questions:
@@ -325,13 +325,45 @@ Application Questions:
     aiResponse: buildValidReasoningResponse(request, profile)
   });
 
-  assert.equal(request.jdText.toLowerCase().includes('salary'), false, 'projected jdText should exclude salary terms');
-  assert.equal(request.jdText.toLowerCase().includes('medical'), false, 'projected jdText should exclude medical terms');
-  assert.equal(request.jdText.toLowerCase().includes('leave'), false, 'projected jdText should exclude leave terms');
+  assert.equal(request.jdText.toLowerCase().includes('expected salary'), false, 'projected jdText should exclude salary questions');
+  assert.equal(request.jdText.toLowerCase().includes('medical coverage'), false, 'projected jdText should exclude medical coverage questions');
+  assert.equal(request.jdText.toLowerCase().includes('annual leave'), false, 'projected jdText should exclude annual leave questions');
+  assert.match(request.jdText.toLowerCase(), /medical device integration/, 'valid medical device requirements should remain in the projection');
+  assert.match(request.jdText.toLowerCase(), /leave management system/, 'valid leave management requirements should remain in the projection');
   assert.equal(request.jdText.toLowerCase().includes('employer questions'), false, 'projected jdText should exclude employer question headings');
   assert.equal(request.jdText.toLowerCase().includes('application questions'), false, 'projected jdText should exclude application question headings');
   assert.equal(response.status, 200, 'the recruiter-safe projection should remain valid at the worker contract boundary');
   assert.equal(response.aiCalls.length, 1, 'valid recruiter-safe payloads should still reach Workers AI');
+});
+
+test('jd-reasoning Worker rejects clear contractual and employee-admin privacy contexts', async () => {
+  const validRequest = buildValidRequest({
+    language: 'en',
+    text: `Required Skills:
+- ASP.NET Core medical device integration
+- Azure DevOps leave management system`
+  });
+  const rejectedContexts = [
+    'Expected monthly basic salary',
+    'Medical coverage',
+    'Annual leave',
+    'Employee benefits',
+    'NRIC verification',
+    'Home address',
+    'Date of birth',
+    'Signatures'
+  ];
+
+  for (const context of rejectedContexts) {
+    const response = await callWorker({
+      ...validRequest,
+      jdText: `${validRequest.jdText}\n${context}`
+    });
+
+    assert.equal(response.status, 400, `${context} should be rejected at the Worker privacy boundary`);
+    assert.equal(response.json.error, 'jd-privacy-invalid');
+    assert.equal(response.aiCalls.length, 0, `${context} should fail before Workers AI is invoked`);
+  }
 });
 
 test('jd-reasoning rejects invalid request shapes before calling Workers AI', async () => {
