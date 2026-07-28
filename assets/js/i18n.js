@@ -167,5 +167,5 @@ window.I18N_MS = {
   "chat.jd.clear": "Kosongkan huraian jawatan",
   "chat.jd.disclaimer": "Ini ialah skor keserasian anggaran yang berasaskan hanya pada huraian jawatan dan profil terbitan Ameer. Ia bukan keputusan pengambilan pekerja yang objektif, penilaian teknikal, atau jaminan kesesuaian.",
   "chat.jd.status.idle": "Tampal huraian jawatan atau pilih PDF/DOCX setempat untuk bermula.",
-  "chat.jd.resultTitle": "Hasil padanan anggaran"
+  "chat.jd.resultTitle": "Hasil padanan perekrut anggaran"
 };

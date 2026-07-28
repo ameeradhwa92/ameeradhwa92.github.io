@@ -1018,6 +1018,44 @@ body.modal-open { overflow: hidden; }
 .chat-jd-empty {
   color: var(--muted); font-size: 0.74rem; line-height: 1.5;
 }
+.chat-jd-score-measures {
+  display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+}
+.chat-jd-measure-card, .chat-jd-requirement-card {
+  border: 1px solid var(--line); border-radius: 12px; background: rgba(var(--teal-rgb), 0.04);
+}
+.chat-jd-measure-card {
+  padding: 12px;
+}
+.chat-jd-measure-label, .chat-jd-reason-label {
+  color: var(--muted); font-size: 0.72rem; line-height: 1.45;
+}
+.chat-jd-measure-value {
+  margin-top: 6px; font-family: var(--display); font-size: 1.2rem; line-height: 1; color: var(--paper);
+}
+.chat-jd-requirement-list {
+  display: grid; gap: 10px;
+}
+.chat-jd-requirement-summary {
+  list-style: none; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  min-height: 44px; padding: 12px; cursor: pointer;
+}
+.chat-jd-requirement-summary::-webkit-details-marker { display: none; }
+.chat-jd-requirement-summary:focus-visible {
+  outline: 2px solid var(--teal); outline-offset: 2px;
+}
+.chat-jd-requirement-card[open] .chat-jd-requirement-summary {
+  border-bottom: 1px solid var(--line);
+}
+.chat-jd-requirement-body {
+  display: grid; gap: 6px; padding: 12px;
+}
+.chat-jd-reason-row {
+  margin: 0; color: var(--paper); font-size: 0.76rem; line-height: 1.55;
+}
+.chat-jd-reasoning .chat-jd-meta {
+  margin: 0 0 8px;
+}
 
 .chat-form {
   display: flex; align-items: center; gap: 10px;
@@ -1047,6 +1085,8 @@ body.modal-open { overflow: hidden; }
   .chat-jd-actions { display: grid; grid-template-columns: 1fr; }
   .chat-jd-file-btn, .chat-jd-action, .chat-jd-promo-action { width: 100%; }
   .chat-jd-file-name { flex-basis: 100%; }
+  .chat-jd-score-measures { grid-template-columns: 1fr; }
+  .chat-jd-requirement-summary { align-items: flex-start; }
 }
 @media (max-width: 390px) {
   .chat-head { gap: 6px; padding-left: 12px; padding-right: 12px; }
@@ -1061,4 +1101,5 @@ body.modal-open { overflow: hidden; }
   .chat-launcher::before { transition: none; }
   .chat-model-choice, .chat-model-tooltip, .chat-jd-file-btn, .chat-jd-action, .chat-jd-promo-action { transition: none; }
   .chat-jd-promo-action:active { transform: none; }
+  .chat-jd-requirement-summary { scroll-behavior: auto; }
 }

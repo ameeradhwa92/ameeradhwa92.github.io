@@ -65,113 +65,6 @@
     "information and suggest asking Ameer directly — the chat will show WhatsApp and email buttons for that. " +
     "Never invent projects, employers, dates or links.\n\n";
 
-  var JD_EXPLANATION_JD_MAX = 12000;
-  var JD_EXPLANATION_RESULT_MAX = 12000;
-  var JD_EXPLANATION_CATEGORY_KEYS = [
-    "coreTechnologies",
-    "professionalExperience",
-    "architectureDeliveryCloud",
-    "domainIntegrations",
-    "mobile",
-    "educationCoursework",
-    "languagesCommunication"
-  ];
-  var JD_EXPLANATION_DISCLAIMERS = {
-    en: "This is an estimated compatibility score based only on the job description and Ameer's published profile. It is not an objective hiring decision, technical assessment, or guarantee of suitability.",
-    ms: "Ini ialah skor keserasian anggaran yang berasaskan hanya pada huraian jawatan dan profil terbitan Ameer. Ia bukan keputusan pengambilan pekerja yang objektif, penilaian teknikal, atau jaminan kesesuaian."
-  };
-
-  /* ---------------- recruiter explanation payload helpers ---------------- */
-  function clipText(value, maxChars) {
-    return String(value || "").replace(/\s+/g, " ").trim().slice(0, maxChars);
-  }
-
-  function compactExplanationList(items, maxItems) {
-    return (Array.isArray(items) ? items : []).slice(0, maxItems).map(function (item) {
-      return {
-        term: clipText(item && item.term, 120),
-        label: clipText(item && item.label, 220),
-        evidenceType: clipText(item && item.evidenceType, 32),
-        evidence: (Array.isArray(item && item.evidence) ? item.evidence : []).slice(0, 3).map(function (entry) {
-          return clipText(entry, 140);
-        })
-      };
-    });
-  }
-
-  function compactExplanationCategories(categories) {
-    var source = categories && typeof categories === "object" ? categories : {};
-    var compact = {};
-    JD_EXPLANATION_CATEGORY_KEYS.forEach(function (key) {
-      var item = source[key];
-      if (!item || typeof item !== "object") return;
-      compact[key] = {
-        score: Math.max(0, Math.min(100, Number(item.score) || 0)),
-        weight: Math.max(0, Math.min(100, Number(item.weight) || 0))
-      };
-      if (typeof item.key === "string") compact[key].key = clipText(item.key, 64);
-      if (typeof item.label === "string") compact[key].label = clipText(item.label, 120);
-      if (Number.isInteger(item.matchedRequirements)) {
-        compact[key].matchedRequirements = Math.max(0, Math.min(100, item.matchedRequirements));
-      }
-      if (Number.isInteger(item.totalRequirements)) {
-        compact[key].totalRequirements = Math.max(0, Math.min(100, item.totalRequirements));
-      }
-      if (Array.isArray(item.matchedTerms)) {
-        compact[key].matchedTerms = item.matchedTerms.slice(0, 50).map(function (term) {
-          return clipText(term, 120);
-        });
-      }
-    });
-    return compact;
-  }
-
-  function compactExplanationResult(result) {
-    var compact = {
-      score: Math.round((Number(result && result.score) || 0) * 10) / 10,
-      confidence: {
-        label: clipText(result && result.confidence && result.confidence.label, 16),
-        reasons: (Array.isArray(result && result.confidence && result.confidence.reasons)
-          ? result.confidence.reasons : []).slice(0, 3).map(function (reason) {
-            return clipText(reason, 180);
-          })
-      },
-      categories: compactExplanationCategories(result && result.categories),
-      strongMatches: compactExplanationList(result && result.strongMatches, 6),
-      partialMatches: compactExplanationList(result && result.partialMatches, 6),
-      gaps: compactExplanationList(result && result.gaps, 6),
-      unverified: compactExplanationList(result && result.unverified, 6),
-      interviewTopics: compactExplanationList(result && result.interviewTopics, 6)
-    };
-    while (JSON.stringify(compact).length > JD_EXPLANATION_RESULT_MAX) {
-      if (compact.unverified.length) compact.unverified.pop();
-      else if (compact.gaps.length) compact.gaps.pop();
-      else if (compact.partialMatches.length) compact.partialMatches.pop();
-      else if (compact.strongMatches.length) compact.strongMatches.pop();
-      else if (compact.interviewTopics.length) compact.interviewTopics.pop();
-      else if (compact.confidence.reasons.length) compact.confidence.reasons.pop();
-      else break;
-    }
-    return compact;
-  }
-
-  function buildJdExplanationPayload(normalizedText, result, language) {
-    var lang = language === "ms" ? "ms" : "en";
-    return {
-      mode: "jd-explanation",
-      language: lang,
-      messages: [{
-        role: "user",
-        content: lang === "ms"
-          ? "Terangkan keputusan padanan huraian jawatan ini tanpa mengubah skor deterministik."
-          : "Explain this job-description match result without changing the deterministic score."
-      }],
-      jdText: clipText(normalizedText, JD_EXPLANATION_JD_MAX),
-      matchResult: compactExplanationResult(result || {}),
-      disclaimer: JD_EXPLANATION_DISCLAIMERS[lang]
-    };
-  }
-
   function nextExplanationToken(current) {
     return (Number(current) || 0) + 1;
   }
@@ -188,31 +81,28 @@
     return requestToken === currentToken;
   }
 
-  function computeJdExplanationMode(state) {
+  function computeJdReasoningMode(state) {
     if (!state || !state.hasResult || !state.hasNormalizedText) return "unavailable";
     if (state.hasEngine && state.aiState === "ready") return "local";
+    if (state.cloudOk && (state.aiState === "cloud" || state.route === "cloud" || state.preferredMode === "cloud")) {
+      return "cloud";
+    }
     if (state.localOK) {
-      if (state.preferredMode === "cloud") return state.cloudOk ? "cloud" : "unavailable";
       if (state.dlActive || state.aiState === "loading" || state.route === "local" || state.preferredMode === "local") {
         return "waiting";
       }
       return "unavailable";
     }
-    if (state.cloudOk && (state.aiState === "cloud" || state.route === "cloud")) return "cloud";
     return "unavailable";
   }
 
   if (!window.AIMeerRecruiter) window.AIMeerRecruiter = {};
-  window.AIMeerRecruiter.buildExplanationPayload = buildJdExplanationPayload;
-  window.AIMeerRecruiter.getExplanationMode = computeJdExplanationMode;
+  window.AIMeerRecruiter.getExplanationMode = computeJdReasoningMode;
+  window.AIMeerRecruiter.getReasoningMode = computeJdReasoningMode;
   window.AIMeerRecruiter.nextExplanationToken = nextExplanationToken;
   window.AIMeerRecruiter.canApplyExplanationToken = canApplyExplanationToken;
   window.AIMeerRecruiter.nextAnalysisToken = nextAnalysisToken;
   window.AIMeerRecruiter.canApplyAnalysisToken = canApplyAnalysisToken;
-  window.AIMeerRecruiter.jdExplanationLimits = {
-    jdText: JD_EXPLANATION_JD_MAX,
-    resultChars: JD_EXPLANATION_RESULT_MAX
-  };
 
   var WA_NUMBER = "60139610053"; /* +60 13-961 0053 in wa.me format */
   var EMAIL = "ameeradhwa92@gmail.com";
@@ -306,14 +196,44 @@
       jdCategoryMobile: "Mobile delivery",
       jdCategoryEducationCoursework: "Education and coursework",
       jdCategoryLanguagesCommunication: "Communication and collaboration",
-      jdExplainAction: "Explain this result with AIMeer",
-      jdExplainLoading: "Generating explanation…",
-      jdExplainTitle: "AIMeer explanation",
-      jdExplainHintLocal: "This explanation stays on this device and uses the deterministic score shown above.",
-      jdExplainHintCloud: "This explanation uses secure cloud AI and sends only a bounded normalized JD plus the deterministic result to AIMeer's Worker.",
-      jdExplainHintWaiting: "On-device AIMeer is still getting ready. This explanation will stay on this device once the local model is ready.",
-      jdExplainHintUnavailable: "AI explanation is unavailable right now. The deterministic score above remains the authoritative result.",
-      jdExplainError: "AIMeer could not explain this result right now. The deterministic score above remains the authoritative result."
+      jdReasonAction: "Add recruiter reasoning",
+      jdReasonLoading: "Generating recruiter reasoning…",
+      jdReasonTitle: "Recruiter reasoning",
+      jdReasonStatusLocal: "Recruiter reasoning ran on this device. Only the bounded normalized JD, deterministic result, and recruiter-safe evidence map were used.",
+      jdReasonStatusCloud: "Recruiter reasoning used secure cloud AI. Only the bounded normalized JD, deterministic result, and recruiter-safe evidence map were sent.",
+      jdReasonStatusWaiting: "On-device AIMeer is still getting ready. Recruiter reasoning will stay on this device once the local model is ready.",
+      jdReasonStatusUnavailable: "Recruiter reasoning is unavailable right now. The deterministic score above remains the authoritative result.",
+      jdReasonStatusFallback: "Deterministic fallback is active because recruiter reasoning could not be validated. The baseline score remains authoritative.",
+      jdReasonError: "AIMeer could not validate recruiter reasoning right now. The deterministic score above remains the authoritative result.",
+      jdReasonDeterministicScore: "Deterministic compatibility",
+      jdReasonVerifiedScore: "Verified match",
+      jdReasonTransferableScore: "Transferable opportunity",
+      jdReasonCompositeScore: "Calibrated fit",
+      jdReasonRequirements: "Requirement-by-requirement reasoning",
+      jdReasonNarrativeTitle: "Recruiter narrative",
+      jdReasonVerifiedStrengths: "Verified strengths",
+      jdReasonTransferableAdvantages: "Transferable advantages",
+      jdReasonPriorityGaps: "Priority gaps",
+      jdReasonLearningBridges: "Learning bridges",
+      jdReasonInterviewQuestions: "Verification questions",
+      jdReasonIntentLabel: "Requirement intent",
+      jdReasonOutcomeLabel: "Expected outcome",
+      jdReasonBoundaryLabel: "Boundary",
+      jdReasonFramingLabel: "Recruiter framing",
+      jdReasonVerificationLabel: "Verification question",
+      jdReasonEvidenceLabel: "Evidence references",
+      jdReasonCapabilitiesLabel: "Transferable capabilities",
+      jdReasonPrivacyLabel: "Privacy status",
+      jdReasonPrivacyLocal: "Reasoning stayed on this device.",
+      jdReasonPrivacyCloud: "Reasoning used secure cloud AI with bounded recruiter-safe input only.",
+      jdReasonNoRequirementDetails: "No requirement-level reasoning is available yet.",
+      jdReasonMatchDirectProfessional: "Direct professional match",
+      jdReasonMatchAdjacentProfessional: "Adjacent professional match",
+      jdReasonMatchTransferableProfessional: "Transferable professional match",
+      jdReasonMatchAcademicFoundation: "Academic foundation",
+      jdReasonMatchLearningBridge: "Learning bridge",
+      jdReasonMatchExplicitGap: "Explicit gap",
+      jdReasonMatchUnverified: "Unverified"
     },
     ms: {
       greeting: "Salam sejahtera! Saya AIMeer — kembar AI Ameer. Tanya saya tentang kerjaya, projek dan kemahiran beliau, atau tekan cadangan di bawah. Mod AI penuh disediakan secara automatik — pada peranti anda jika mampu, melalui awan selamat jika tidak.",
@@ -402,14 +322,44 @@
       jdCategoryMobile: "Penyampaian mudah alih",
       jdCategoryEducationCoursework: "Pendidikan dan kerja kursus",
       jdCategoryLanguagesCommunication: "Komunikasi dan kolaborasi",
-      jdExplainAction: "Terangkan keputusan ini dengan AIMeer",
-      jdExplainLoading: "Sedang menjana penjelasan…",
-      jdExplainTitle: "Penjelasan AIMeer",
-      jdExplainHintLocal: "Penjelasan ini kekal pada peranti ini dan menggunakan skor deterministik yang dipaparkan di atas.",
-      jdExplainHintCloud: "Penjelasan ini menggunakan AI awan selamat dan menghantar hanya JD ternormal terhad serta keputusan deterministik ke Worker AIMeer.",
-      jdExplainHintWaiting: "AIMeer setempat masih disediakan. Penjelasan ini akan kekal pada peranti ini sebaik sahaja model setempat siap.",
-      jdExplainHintUnavailable: "Penjelasan AI tidak tersedia sekarang. Skor deterministik di atas kekal sebagai keputusan autoritatif.",
-      jdExplainError: "AIMeer tidak dapat menerangkan keputusan ini sekarang. Skor deterministik di atas kekal sebagai keputusan autoritatif."
+      jdReasonAction: "Tambah penaakulan perekrut",
+      jdReasonLoading: "Sedang menjana penaakulan perekrut…",
+      jdReasonTitle: "Penaakulan perekrut",
+      jdReasonStatusLocal: "Penaakulan perekrut dijalankan pada peranti ini. Hanya JD ternormal terhad, keputusan deterministik, dan peta bukti selamat perekrut digunakan.",
+      jdReasonStatusCloud: "Penaakulan perekrut menggunakan AI awan selamat. Hanya JD ternormal terhad, keputusan deterministik, dan peta bukti selamat perekrut dihantar.",
+      jdReasonStatusWaiting: "AIMeer setempat masih disediakan. Penaakulan perekrut akan kekal pada peranti ini sebaik sahaja model setempat siap.",
+      jdReasonStatusUnavailable: "Penaakulan perekrut tidak tersedia sekarang. Skor deterministik di atas kekal sebagai keputusan autoritatif.",
+      jdReasonStatusFallback: "Ringkasan deterministik digunakan kerana penaakulan perekrut tidak dapat disahkan. Skor asas kekal autoritatif.",
+      jdReasonError: "AIMeer tidak dapat mengesahkan penaakulan perekrut sekarang. Skor deterministik di atas kekal sebagai keputusan autoritatif.",
+      jdReasonDeterministicScore: "Keserasian deterministik",
+      jdReasonVerifiedScore: "Padanan disahkan",
+      jdReasonTransferableScore: "Peluang boleh dipindahkan",
+      jdReasonCompositeScore: "Kesesuaian terkalibrasi",
+      jdReasonRequirements: "Penaakulan mengikut keperluan",
+      jdReasonNarrativeTitle: "Naratif perekrut",
+      jdReasonVerifiedStrengths: "Kekuatan yang disahkan",
+      jdReasonTransferableAdvantages: "Kelebihan boleh dipindahkan",
+      jdReasonPriorityGaps: "Jurang keutamaan",
+      jdReasonLearningBridges: "Jambatan pembelajaran",
+      jdReasonInterviewQuestions: "Soalan pengesahan",
+      jdReasonIntentLabel: "Niat keperluan",
+      jdReasonOutcomeLabel: "Hasil yang dijangka",
+      jdReasonBoundaryLabel: "Batasan",
+      jdReasonFramingLabel: "Pembingkaian perekrut",
+      jdReasonVerificationLabel: "Soalan pengesahan",
+      jdReasonEvidenceLabel: "Rujukan bukti",
+      jdReasonCapabilitiesLabel: "Keupayaan boleh dipindahkan",
+      jdReasonPrivacyLabel: "Status privasi",
+      jdReasonPrivacyLocal: "Penaakulan kekal pada peranti ini.",
+      jdReasonPrivacyCloud: "Penaakulan menggunakan AI awan selamat dengan input selamat perekrut yang terhad sahaja.",
+      jdReasonNoRequirementDetails: "Butiran penaakulan mengikut keperluan belum tersedia.",
+      jdReasonMatchDirectProfessional: "Padanan profesional langsung",
+      jdReasonMatchAdjacentProfessional: "Padanan profesional bersebelahan",
+      jdReasonMatchTransferableProfessional: "Padanan profesional boleh dipindahkan",
+      jdReasonMatchAcademicFoundation: "Asas akademik",
+      jdReasonMatchLearningBridge: "Jambatan pembelajaran",
+      jdReasonMatchExplicitGap: "Jurang nyata",
+      jdReasonMatchUnverified: "Belum disahkan"
     }
   };
   function lang() { return root.dataset.lang === "ms" ? "ms" : "en"; }
@@ -559,14 +509,15 @@
     fileName: "",
     extractedText: "",
     extractedSource: "",
+    deterministicResult: null,
     result: null,
     normalizedText: "",
     resultSource: "",
-    explanation: "",
-    explanationMode: "",
-    explanationBusy: false,
-    explanationError: "",
-    explanationRequestToken: 0,
+    reasoningMode: "",
+    reasoningBusy: false,
+    reasoningError: "",
+    reasoningFallback: false,
+    reasoningRequestToken: 0,
     analysisRequestToken: 0,
     statusKind: "idle",
     statusLevel: "",
@@ -672,23 +623,24 @@
     if (invalidateAnalysis !== false) {
       jdState.analysisRequestToken = nextAnalysisToken(jdState.analysisRequestToken);
     }
-    jdState.explanationRequestToken = nextExplanationToken(jdState.explanationRequestToken);
+    jdState.reasoningRequestToken = nextExplanationToken(jdState.reasoningRequestToken);
+    jdState.deterministicResult = null;
     jdState.result = null;
     jdState.normalizedText = "";
     jdState.resultSource = "";
-    jdState.explanation = "";
-    jdState.explanationMode = "";
-    jdState.explanationBusy = false;
-    jdState.explanationError = "";
+    jdState.reasoningMode = "";
+    jdState.reasoningBusy = false;
+    jdState.reasoningError = "";
+    jdState.reasoningFallback = false;
     if (recruiterUI) jdResult.innerHTML = "";
   }
 
-  function explanationLanguage() {
-    return root.getAttribute("data-lang") === "ms" ? "ms" : "en";
+  function reasoningLanguage() {
+    return root.dataset.lang === "ms" ? "ms" : "en";
   }
 
-  function getJdExplanationMode() {
-    return computeJdExplanationMode({
+  function getJdReasoningMode() {
+    return computeJdReasoningMode({
       hasResult: !!jdState.result,
       hasNormalizedText: !!jdState.normalizedText,
       aiState: aiState,
@@ -701,11 +653,12 @@
     });
   }
 
-  function explanationHintKey(mode) {
-    return mode === "local" ? "jdExplainHintLocal"
-      : mode === "cloud" ? "jdExplainHintCloud"
-        : mode === "waiting" ? "jdExplainHintWaiting"
-          : "jdExplainHintUnavailable";
+  function reasoningStatusKey(mode) {
+    if (jdState.reasoningFallback) return "jdReasonStatusFallback";
+    return mode === "local" ? "jdReasonStatusLocal"
+      : mode === "cloud" ? "jdReasonStatusCloud"
+        : mode === "waiting" ? "jdReasonStatusWaiting"
+          : "jdReasonStatusUnavailable";
   }
 
   function setJdStatus(kind, options) {
@@ -751,6 +704,16 @@
 
   function createJdBadge(text, className) {
     return createJdNode("span", "chat-jd-badge " + className, text);
+  }
+
+  function matchLevelLabel(level) {
+    return level === "direct-professional" ? t("jdReasonMatchDirectProfessional")
+      : level === "adjacent-professional" ? t("jdReasonMatchAdjacentProfessional")
+        : level === "transferable-professional" ? t("jdReasonMatchTransferableProfessional")
+          : level === "academic-foundation" ? t("jdReasonMatchAcademicFoundation")
+            : level === "learning-bridge" ? t("jdReasonMatchLearningBridge")
+              : level === "explicit-gap" ? t("jdReasonMatchExplicitGap")
+                : t("jdReasonMatchUnverified");
   }
 
   function appendEvidenceList(parent, evidence) {
@@ -802,32 +765,108 @@
     return section;
   }
 
-  function renderJdExplanation(section) {
-    var mode = getJdExplanationMode();
-    var explainSection = createJdNode("section", "chat-jd-section");
-    explainSection.appendChild(createJdNode("h6", "", t("jdExplainTitle")));
-    explainSection.appendChild(createJdNode("p", "chat-jd-hint", t(explanationHintKey(mode))));
+  function renderScoreMeasureList(result) {
+    if (!result || typeof result.deterministicScore !== "number") return null;
+    var section = createJdNode("section", "chat-jd-score-measures");
+    [
+      { key: "jdReasonDeterministicScore", value: result.deterministicScore },
+      { key: "jdReasonVerifiedScore", value: result.verifiedScore },
+      { key: "jdReasonTransferableScore", value: result.transferableScore },
+      { key: "jdReasonCompositeScore", value: result.compositeScore }
+    ].forEach(function (item) {
+      if (typeof item.value !== "number") return;
+      var card = createJdNode("article", "chat-jd-measure-card");
+      card.appendChild(createJdNode("div", "chat-jd-measure-label", t(item.key)));
+      card.appendChild(createJdNode("div", "chat-jd-measure-value", formatScore(item.value) + "%"));
+      section.appendChild(card);
+    });
+    return section.children.length ? section : null;
+  }
+
+  function renderReasoningTextRow(parent, labelKey, text) {
+    var value = String(text || "").replace(/\s+/g, " ").trim();
+    if (!value) return;
+    var row = createJdNode("p", "chat-jd-reason-row");
+    row.appendChild(createJdNode("span", "chat-jd-reason-label", t(labelKey) + ": "));
+    row.appendChild(createJdNode("span", "", value));
+    parent.appendChild(row);
+  }
+
+  function renderRequirementReasoning(result) {
+    var items = Array.isArray(result && result.requirementReasoning) ? result.requirementReasoning : [];
+    var section = createJdNode("section", "chat-jd-section");
+    section.appendChild(createJdNode("h6", "", t("jdReasonRequirements")));
+    if (!items.length) {
+      section.appendChild(createJdNode("p", "chat-jd-empty", t("jdReasonNoRequirementDetails")));
+      return section;
+    }
+    var list = createJdNode("div", "chat-jd-requirement-list");
+    items.forEach(function (item) {
+      var card = document.createElement("details");
+      card.className = "chat-jd-requirement-card";
+      var summary = document.createElement("summary");
+      summary.className = "chat-jd-requirement-summary";
+      summary.appendChild(createJdNode("span", "chat-jd-term", item.term));
+      summary.appendChild(createJdBadge(matchLevelLabel(item.matchLevel), item.verified ? "is-professional" : "is-user"));
+      card.appendChild(summary);
+
+      var body = createJdNode("div", "chat-jd-requirement-body");
+      renderReasoningTextRow(body, "jdReasonIntentLabel", item.recruiterIntent);
+      renderReasoningTextRow(body, "jdReasonOutcomeLabel", item.expectedOutcome);
+      renderReasoningTextRow(body, "jdReasonBoundaryLabel", item.limitation);
+      renderReasoningTextRow(body, "jdReasonFramingLabel", item.recruiterFraming);
+      renderReasoningTextRow(body, "jdReasonVerificationLabel", item.verificationQuestion);
+      if (Array.isArray(item.transferableCapabilities) && item.transferableCapabilities.length) {
+        renderReasoningTextRow(body, "jdReasonCapabilitiesLabel", item.transferableCapabilities.join(", "));
+      }
+      if (Array.isArray(item.evidenceRecords) && item.evidenceRecords.length) {
+        renderReasoningTextRow(body, "jdReasonEvidenceLabel", item.evidenceRecords.map(function (entry) {
+          return entry && entry.title ? entry.title : "";
+        }).filter(Boolean).join("; "));
+      }
+      card.appendChild(body);
+      list.appendChild(card);
+    });
+    section.appendChild(list);
+    return section;
+  }
+
+  function renderReasoningSection(titleKey, items, valueKey) {
+    var section = createJdNode("section", "chat-jd-section");
+    section.appendChild(createJdNode("h6", "", t(titleKey)));
+    if (!items.length) {
+      section.appendChild(createJdNode("p", "chat-jd-empty", t("jdNoMatches")));
+      return section;
+    }
+    var list = createJdNode("ul", "chat-jd-topic-list");
+    items.forEach(function (item) {
+      var text = item && item.term ? item.term + ": " + String(item[valueKey] || "").trim() : String(item[valueKey] || "").trim();
+      list.appendChild(createJdNode("li", "", text));
+    });
+    section.appendChild(list);
+    return section;
+  }
+
+  function renderJdReasoning(section) {
+    var mode = getJdReasoningMode();
+    var reasonSection = createJdNode("section", "chat-jd-section chat-jd-reasoning");
+    reasonSection.appendChild(createJdNode("h6", "", t("jdReasonTitle")));
+    reasonSection.appendChild(createJdNode("p", "chat-jd-hint", t(reasoningStatusKey(mode))));
+    reasonSection.appendChild(createJdNode("p", "chat-jd-meta", t(mode === "cloud" ? "jdReasonPrivacyCloud" : "jdReasonPrivacyLocal")));
 
     var button = document.createElement("button");
     button.type = "button";
     button.className = "chat-jd-action" + (mode === "local" ? " chat-jd-action-primary" : "");
-    button.textContent = jdState.explanationBusy ? t("jdExplainLoading") : t("jdExplainAction");
-    button.disabled = jdState.explanationBusy || mode === "waiting" || mode === "unavailable";
-    button.addEventListener("click", requestJdExplanation);
-    explainSection.appendChild(button);
+    button.textContent = jdState.reasoningBusy ? t("jdReasonLoading") : t("jdReasonAction");
+    button.disabled = jdState.reasoningBusy || mode === "waiting" || mode === "unavailable";
+    button.addEventListener("click", requestJdReasoning);
+    reasonSection.appendChild(button);
 
-    if (jdState.explanationError) {
-      explainSection.appendChild(createJdNode("p", "chat-jd-status is-error", jdState.explanationError));
+    if (jdState.reasoningError) {
+      reasonSection.appendChild(createJdNode("p", "chat-jd-status is-error", jdState.reasoningError));
     }
 
-    if (jdState.explanation) {
-      jdState.explanation.split(/\n{2,}/).forEach(function (paragraph) {
-        var text = paragraph.replace(/\s+/g, " ").trim();
-        if (text) explainSection.appendChild(createJdNode("p", "", text));
-      });
-    }
-
-    section.appendChild(explainSection);
+    section.appendChild(reasonSection);
   }
 
   function renderJdResult() {
@@ -836,21 +875,25 @@
     if (!jdState.result) return;
 
     var result = jdState.result;
+    var baseline = jdState.deterministicResult || result;
     jdResult.appendChild(createJdNode("p", "chat-jd-result-disclaimer", t("jdDisclaimer")));
 
     var summary = createJdNode("section", "chat-jd-result-card");
     var scoreRow = createJdNode("div", "chat-jd-score-row");
     var scoreBlock = createJdNode("div", "");
     scoreBlock.appendChild(createJdNode("div", "chat-jd-score-label", t("jdResultScoreLabel")));
-    scoreBlock.appendChild(createJdNode("div", "chat-jd-score", formatScore(result.score) + "%"));
+    scoreBlock.appendChild(createJdNode("div", "chat-jd-score", formatScore(baseline.score) + "%"));
     scoreRow.appendChild(scoreBlock);
     var meta = createJdNode("div", "chat-jd-meta");
     meta.textContent = t("jdResultSourceLabel") + ": " + sourceLabel(jdState.resultSource || "paste");
     scoreRow.appendChild(meta);
     summary.appendChild(scoreRow);
     summary.appendChild(createJdNode("p", "chat-jd-confidence",
-      t("jdResultConfidenceLabel") + ": " + confidenceLabel(result.confidence && result.confidence.label)));
+      t("jdResultConfidenceLabel") + ": " + confidenceLabel(baseline.confidence && baseline.confidence.label)));
     jdResult.appendChild(summary);
+
+    var measures = renderScoreMeasureList(result);
+    if (measures) jdResult.appendChild(measures);
 
     var categories = createJdNode("section", "chat-jd-category-list");
     categories.appendChild(createJdNode("h6", "", t("jdResultCategories")));
@@ -863,7 +906,7 @@
       "educationCoursework",
       "languagesCommunication"
     ].forEach(function (key) {
-      var item = result.categories && result.categories[key];
+      var item = baseline.categories && baseline.categories[key];
       if (!item) return;
       var card = createJdNode("div", "chat-jd-category-item");
       var row = createJdNode("div", "chat-jd-category-row");
@@ -880,12 +923,30 @@
     });
     jdResult.appendChild(categories);
 
-    jdResult.appendChild(renderMatchItems("jdResultStrong", result.strongMatches || [], "strong"));
-    jdResult.appendChild(renderMatchItems("jdResultPartial", result.partialMatches || [], "partial"));
-    jdResult.appendChild(renderMatchItems("jdResultGaps", result.gaps || [], "gap"));
-    jdResult.appendChild(renderMatchItems("jdResultUnverified", result.unverified || [], "unverified"));
-    jdResult.appendChild(renderInterviewTopics(result.interviewTopics || []));
-    renderJdExplanation(jdResult);
+    jdResult.appendChild(renderMatchItems("jdResultStrong", baseline.strongMatches || [], "strong"));
+    jdResult.appendChild(renderMatchItems("jdResultPartial", baseline.partialMatches || [], "partial"));
+    jdResult.appendChild(renderMatchItems("jdResultGaps", baseline.gaps || [], "gap"));
+    jdResult.appendChild(renderMatchItems("jdResultUnverified", baseline.unverified || [], "unverified"));
+    jdResult.appendChild(renderInterviewTopics(baseline.interviewTopics || []));
+    renderJdReasoning(jdResult);
+    if (result.reasoningNarrative) {
+      var narrative = createJdNode("section", "chat-jd-section");
+      narrative.appendChild(createJdNode("h6", "", t("jdReasonNarrativeTitle")));
+      narrative.appendChild(createJdNode("p", "", result.reasoningNarrative));
+      jdResult.appendChild(narrative);
+    }
+    if (Array.isArray(result.requirementReasoning) && result.requirementReasoning.length) {
+      jdResult.appendChild(renderRequirementReasoning(result));
+    }
+    if (result.sections && typeof result.sections === "object") {
+      jdResult.appendChild(renderReasoningSection("jdReasonVerifiedStrengths", result.sections.strengths || [], "note"));
+      jdResult.appendChild(renderReasoningSection("jdReasonTransferableAdvantages", result.sections.transferable || [], "note"));
+      jdResult.appendChild(renderReasoningSection("jdResultPartial", result.sections.partialMatches || [], "note"));
+      jdResult.appendChild(renderReasoningSection("jdReasonPriorityGaps", result.sections.gaps || [], "note"));
+      jdResult.appendChild(renderReasoningSection("jdResultUnverified", result.sections.unverified || [], "note"));
+      jdResult.appendChild(renderReasoningSection("jdReasonLearningBridges", result.sections.learningBridges || result.sections.limitations || [], "note"));
+      jdResult.appendChild(renderReasoningSection("jdReasonInterviewQuestions", result.sections.interviewQuestions || [], "question"));
+    }
   }
 
   function resetRecruiterState() {
@@ -1384,33 +1445,35 @@
     });
   }
 
-  function explainJdLocally(payload) {
+  function buildLocalReasoningMessages(input, kb) {
+    var language = input && input.language === "ms" ? "ms" : "en";
+    return [
+      {
+        role: "system",
+        content:
+          PROMPT_HEAD + kb +
+          "\n\nYou are producing bounded recruiter reasoning for a deterministic job-description match. " +
+          "Use only the supplied JSON input. Do not invent evidence, do not recalculate any score, do not add score fields, " +
+          "and never claim academic evidence as professional delivery. Return strict JSON only with the keys narrative and requirements. " +
+          "Each requirement entry must include requirementId, recruiterIntent, expectedOutcome, matchLevel, evidenceRefs, transferableCapabilities, limitation, recruiterFraming, verificationQuestion, and confidence."
+      },
+      {
+        role: "user",
+        content:
+          (language === "ms" ? "Pulangkan strict JSON sahaja." : "Return strict JSON only.") +
+          "\n\nReasoning input JSON:\n" + JSON.stringify(input)
+      }
+    ];
+  }
+
+  function requestJdReasoningLocally(input) {
     return ensureKB().then(function (kb) {
       if (!engine) throw new Error("local-unavailable");
       return engine.chat.completions.create({
-        messages: [
-          {
-            role: "system",
-            content:
-              PROMPT_HEAD + kb +
-              "\n\nYou are explaining a deterministic recruiter match result that was already scored locally. " +
-              "Do not recalculate the score or invent new evidence. Preserve distinctions between professional evidence, " +
-              "academic exposure, and user-provided context. Never present academic exposure as professional experience. " +
-              "Repeat this estimate disclaimer verbatim as the first sentence: \"" + payload.disclaimer + "\" " +
-              "Then explain the supplied score, category breakdown, strong matches, partial matches, published evidence gaps, " +
-              "unverified requirements, and suggested interview topics in 3-6 short sentences."
-          },
-          {
-            role: "user",
-            content:
-              payload.messages[0].content +
-              "\n\nNormalized JD:\n" + payload.jdText +
-              "\n\nDeterministic match result JSON:\n" + JSON.stringify(payload.matchResult)
-          }
-        ],
+        messages: buildLocalReasoningMessages(input, kb),
         stream: false,
-        temperature: 0.2,
-        max_tokens: 320
+        temperature: 0.1,
+        max_tokens: 900
       });
     }).then(function (res) {
       var reply = res && res.choices && res.choices[0] && res.choices[0].message
@@ -1421,52 +1484,95 @@
     });
   }
 
-  function explainJdViaCloud(payload) {
+  function requestJdReasoningViaCloud(input) {
     return fetch(CLOUD_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(input)
     }).then(function (r) {
       if (!r.ok) throw new Error("cloud-" + r.status);
       return r.json();
     }).then(function (d) {
-      var reply = String((d && d.reply) || "").trim();
+      var reply = String((d && (d.reasoning || d.reply)) || "").trim();
       if (!reply) throw new Error("cloud-empty");
       return reply;
     });
   }
 
-  function requestJdExplanation() {
-    if (!jdState.result || !jdState.normalizedText || jdState.explanationBusy) return;
-    var mode = getJdExplanationMode();
-    if (mode === "waiting" || mode === "unavailable") {
-      jdState.explanationError = t("jdExplainError");
+  function requestJdReasoning() {
+    if (!jdState.deterministicResult || !jdState.normalizedText || jdState.reasoningBusy) return;
+    if (!window.JDReasoning ||
+      typeof window.JDReasoning.buildInput !== "function" ||
+      typeof window.JDReasoning.validateModelOutput !== "function" ||
+      typeof window.JDReasoning.mergeResult !== "function" ||
+      typeof window.JDReasoning.fallback !== "function") {
+      jdState.reasoningError = t("jdReasonError");
       renderJdResult();
       return;
     }
-    var payload = buildJdExplanationPayload(jdState.normalizedText, jdState.result, explanationLanguage());
-    var requestToken = nextExplanationToken(jdState.explanationRequestToken);
-    jdState.explanationRequestToken = requestToken;
-    jdState.explanationBusy = true;
-    jdState.explanationError = "";
-    jdState.explanation = "";
-    jdState.explanationMode = mode;
+    var mode = getJdReasoningMode();
+    if (mode === "waiting" || mode === "unavailable") {
+      jdState.reasoningError = t("jdReasonError");
+      renderJdResult();
+      return;
+    }
+    var deterministicResult = jdState.deterministicResult;
+    var analysisToken = jdState.analysisRequestToken;
+    var requestToken = nextExplanationToken(jdState.reasoningRequestToken);
+    var currentLanguage = reasoningLanguage();
+    var reasoningInput = null;
+    jdState.reasoningRequestToken = requestToken;
+    jdState.reasoningBusy = true;
+    jdState.reasoningError = "";
+    jdState.reasoningMode = mode;
+    jdState.reasoningFallback = false;
     renderJdResult();
 
-    var runner = mode === "local" ? explainJdLocally(payload) : explainJdViaCloud(payload);
-    runner.then(function (reply) {
-      if (!canApplyExplanationToken(requestToken, jdState.explanationRequestToken)) return;
-      jdState.explanationBusy = false;
-      jdState.explanation = reply;
-      jdState.explanationError = "";
+    function canApplyReasoning() {
+      return canApplyExplanationToken(requestToken, jdState.reasoningRequestToken) &&
+        analysisToken === jdState.analysisRequestToken &&
+        deterministicResult === jdState.deterministicResult;
+    }
+
+    function applyReasoningFallback(reason) {
+      if (!canApplyReasoning()) return;
+      if (window.console && console.warn && reason) console.warn("JD reasoning fallback:", reason);
+      jdState.reasoningBusy = false;
+      jdState.reasoningFallback = true;
+      jdState.reasoningError = t("jdReasonError");
+      jdState.result = window.JDReasoning.fallback(
+        deterministicResult,
+        reasoningInput || { language: currentLanguage },
+        currentLanguage
+      );
+      renderJdResult();
+    }
+
+    ensureProfile().then(function (profile) {
+      if (!canApplyReasoning()) return null;
+      reasoningInput = window.JDReasoning.buildInput(
+        { normalizedText: jdState.normalizedText, rawText: jdState.normalizedText },
+        deterministicResult,
+        profile,
+        currentLanguage
+      );
+      return mode === "local"
+        ? requestJdReasoningLocally(reasoningInput)
+        : requestJdReasoningViaCloud(reasoningInput);
+    }).then(function (rawOutput) {
+      if (!rawOutput || !canApplyReasoning()) return;
+      var validation = window.JDReasoning.validateModelOutput(rawOutput, reasoningInput);
+      if (!validation || !validation.ok) {
+        applyReasoningFallback(validation && validation.error ? validation.error : "reasoning-invalid");
+        return;
+      }
+      jdState.reasoningBusy = false;
+      jdState.reasoningFallback = false;
+      jdState.reasoningError = "";
+      jdState.result = window.JDReasoning.mergeResult(deterministicResult, validation.reasoning, reasoningInput);
       renderJdResult();
     }).catch(function (err) {
-      if (!canApplyExplanationToken(requestToken, jdState.explanationRequestToken)) return;
-      if (window.console && console.warn) console.warn("JD explanation failed:", err);
-      jdState.explanationBusy = false;
-      jdState.explanation = "";
-      jdState.explanationError = t("jdExplainError");
-      renderJdResult();
+      applyReasoningFallback(err);
     });
   }
 
@@ -1652,15 +1758,16 @@
       var warnings = (normalized.warnings || []).map(localizeExtractorMessage);
       var result = window.JDMatcher.scoreJobDescription(normalized, profile);
       if (!canApplyAnalysisToken(requestToken, jdState.analysisRequestToken)) return;
+      jdState.deterministicResult = result;
       jdState.result = result;
       jdState.normalizedText = normalized && normalized.normalizedText
         ? normalized.normalizedText
         : (normalized && normalized.rawText ? normalized.rawText : text);
       jdState.resultSource = source || "paste";
-      jdState.explanation = "";
-      jdState.explanationMode = "";
-      jdState.explanationBusy = false;
-      jdState.explanationError = "";
+      jdState.reasoningMode = "";
+      jdState.reasoningBusy = false;
+      jdState.reasoningError = "";
+      jdState.reasoningFallback = false;
       renderJdResult();
       setJdStatus("scored", {
         level: "success",

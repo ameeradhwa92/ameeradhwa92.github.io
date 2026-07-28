@@ -10,15 +10,23 @@ const chatbot = fs.readFileSync(path.join(__dirname, '..', 'assets', 'js', 'chat
 const css = fs.readFileSync(path.join(__dirname, '..', 'assets', 'css', 'style.css'), 'utf8');
 const { evaluate } = require('../assets/js/aimeer-device.js');
 
-function createElement() {
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function createElement(tagName = 'div') {
   const listeners = new Map();
   const classes = new Set();
-  return {
+  const element = {
+    tagName: String(tagName || 'div').toUpperCase(),
     hidden: false,
     textContent: '',
     className: '',
     children: [],
     focused: false,
+    disabled: false,
+    value: '',
+    files: null,
     style: { setProperty() {}, removeProperty() {} },
     attributes: new Map(),
     classList: {
@@ -33,9 +41,62 @@ function createElement() {
     dispatch(type, target = this) { const listener = listeners.get(type); if (listener) listener({ key: type, target }); },
     closest(selector) { return selector === 'button' ? this : null; },
     querySelector() { return null; },
-    appendChild(child) { this.children.push(child); return child; },
+    appendChild(child) { child.parentNode = this; this.children.push(child); return child; },
+    remove() {
+      if (!this.parentNode) return;
+      this.parentNode.children = this.parentNode.children.filter((child) => child !== this);
+      this.parentNode = null;
+    },
+    click() { this.dispatch('click'); },
     focus() { this.focused = true; }
   };
+  Object.defineProperty(element, 'innerHTML', {
+    get() { return ''; },
+    set() {
+      this.children = [];
+      this.textContent = '';
+    }
+  });
+  return element;
+}
+
+function makeTextResponse(text) {
+  return {
+    ok: true,
+    text: () => Promise.resolve(text),
+    json: () => Promise.resolve(JSON.parse(text))
+  };
+}
+
+function makeJsonResponse(data) {
+  return {
+    ok: true,
+    text: () => Promise.resolve(JSON.stringify(data)),
+    json: () => Promise.resolve(clone(data))
+  };
+}
+
+function collectText(node) {
+  if (!node) return '';
+  return [node.textContent || '']
+    .concat((node.children || []).map((child) => collectText(child)))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function findNode(node, predicate) {
+  if (!node) return null;
+  if (predicate(node)) return node;
+  for (const child of node.children || []) {
+    const match = findNode(child, predicate);
+    if (match) return match;
+  }
+  return null;
+}
+
+function getFirstButton(node) {
+  return findNode(node, (entry) => entry.tagName === 'BUTTON');
 }
 
 function createChatContext(options = {}) {
@@ -53,7 +114,7 @@ function createChatContext(options = {}) {
   const progress = createElement();
   const progressBar = createElement();
   const progressText = createElement();
-  const close = createElement();
+  const close = createElement('button');
   const stored = new Map(Object.entries(options.storage || {}));
   const timers = [];
   const clearedTimers = [];
@@ -121,7 +182,8 @@ function createChatContext(options = {}) {
       return id;
     },
     clearTimeout(id) { clearedTimers.push(id); },
-    fetch() {
+    fetch(url, init) {
+      if (options.fetchImpl) return options.fetchImpl(url, init);
       if (options.fetchPromise) return options.fetchPromise;
       if (options.fetchText === undefined) return new Promise(() => {});
       return Promise.resolve({
@@ -167,6 +229,200 @@ async function flushAsync() {
     await Promise.resolve();
     await new Promise(setImmediate);
   }
+}
+
+const PROFILE_FIXTURE = {
+  recruiterEvidence: [
+    {
+      id: 'ev-retailaim-plus',
+      title: 'RetailAIM Plus multi-tenant delivery',
+      evidenceType: 'professional',
+      summary: 'Production ASP.NET Core MVC delivery across Southeast Asia tenants.',
+      capabilities: ['ASP.NET Core MVC', 'Azure DevOps', 'CI/CD']
+    },
+    {
+      id: 'ev-azure-devops',
+      title: 'Azure DevOps release ownership',
+      evidenceType: 'professional',
+      summary: 'Owns release pipelines and cloud delivery workflows.',
+      capabilities: ['Azure DevOps', 'Cloud delivery', 'Release automation']
+    }
+  ]
+};
+
+function buildDeterministicResult(overrides = {}) {
+  return clone({
+    score: 72,
+    confidence: { label: 'medium', reasons: ['Published evidence covers core requirements.'] },
+    categories: {
+      coreTechnologies: { score: 24, weight: 30, active: true },
+      professionalExperience: { score: 14, weight: 20, active: true },
+      architectureDeliveryCloud: { score: 10, weight: 15, active: true },
+      domainIntegrations: { score: 7, weight: 10, active: true },
+      mobile: { score: 0, weight: 5, active: false },
+      educationCoursework: { score: 7, weight: 10, active: true },
+      languagesCommunication: { score: 10, weight: 10, active: true }
+    },
+    strongMatches: [
+      {
+        term: 'ASP.NET Core MVC',
+        label: 'Published multi-tenant delivery evidence is present.',
+        evidenceType: 'professional',
+        evidence: ['RetailAIM Plus multi-tenant delivery']
+      }
+    ],
+    partialMatches: [
+      {
+        term: 'Kubernetes',
+        label: 'Adjacent cloud delivery evidence exists but no published production Kubernetes rollout is confirmed.',
+        evidenceType: 'professional',
+        evidence: ['Azure DevOps release ownership']
+      }
+    ],
+    gaps: [
+      {
+        term: 'Salesforce Marketing Cloud',
+        label: 'No published implementation evidence is available.',
+        evidenceType: 'gap',
+        evidence: []
+      }
+    ],
+    unverified: [
+      {
+        term: 'Public speaking at conferences',
+        label: 'Published profile does not verify this requirement.',
+        evidenceType: 'unverified',
+        evidence: []
+      }
+    ],
+    interviewTopics: [
+      {
+        term: 'Kubernetes',
+        prompt: 'Ask for concrete production rollout examples and hands-on depth.'
+      }
+    ],
+    requirements: [
+      {
+        id: 'req-aspnet-core',
+        term: 'ASP.NET Core MVC',
+        category: 'coreTechnologies',
+        strength: 'required',
+        classification: 'strong',
+        evidenceRefs: ['ev-retailaim-plus']
+      },
+      {
+        id: 'req-kubernetes',
+        term: 'Kubernetes',
+        category: 'architectureDeliveryCloud',
+        strength: 'required',
+        classification: 'partial',
+        evidenceRefs: ['ev-azure-devops']
+      }
+    ],
+    ...overrides
+  });
+}
+
+function buildMergedResult(baseResult, overrides = {}) {
+  const result = clone(baseResult);
+  result.deterministicScore = 72;
+  result.verifiedScore = 68;
+  result.transferableScore = 79;
+  result.requiredGapCeiling = 88;
+  result.compositeScore = 79;
+  result.reasoningNarrative = 'Calibrated fit improves when adjacent cloud delivery is counted, but Kubernetes remains a verification topic.';
+  result.requirementReasoning = [
+    {
+      requirementId: 'req-aspnet-core',
+      term: 'ASP.NET Core MVC',
+      matchLevel: 'direct-professional',
+      recruiterIntent: 'Own production-grade web delivery on the current stack.',
+      expectedOutcome: 'Sustain and extend the current ASP.NET Core platform.',
+      evidenceRecords: [clone(PROFILE_FIXTURE.recruiterEvidence[0])],
+      transferableCapabilities: [],
+      limitation: '',
+      recruiterFraming: 'Direct published production evidence is already available.',
+      verificationQuestion: 'Which high-scale production modules did he own directly?',
+      confidence: 'high',
+      verified: true
+    },
+    {
+      requirementId: 'req-kubernetes',
+      term: 'Kubernetes',
+      matchLevel: 'learning-bridge',
+      recruiterIntent: 'Support containerized deployment and operations.',
+      expectedOutcome: 'Ramp into Kubernetes-backed delivery with adjacent cloud ownership.',
+      evidenceRecords: [clone(PROFILE_FIXTURE.recruiterEvidence[1])],
+      transferableCapabilities: ['Azure DevOps', 'Release automation'],
+      limitation: 'Published work does not yet confirm a production Kubernetes rollout.',
+      recruiterFraming: 'Adjacent cloud delivery shortens the ramp, but screening should confirm direct cluster experience.',
+      verificationQuestion: 'What hands-on Kubernetes rollout, if any, has he completed directly?',
+      confidence: 'medium',
+      verified: false
+    }
+  ];
+  result.sections = {
+    strengths: [
+      {
+        term: 'ASP.NET Core MVC',
+        note: 'Verified production delivery is already published.'
+      }
+    ],
+    transferable: [
+      {
+        term: 'Cloud delivery bridge',
+        note: 'Azure DevOps release ownership can shorten the move into Kubernetes-based operations.'
+      }
+    ],
+    partialMatches: [
+      {
+        term: 'Kubernetes',
+        note: 'Adjacent cloud delivery exists, but named Kubernetes depth is still a screening topic.'
+      }
+    ],
+    gaps: [
+      {
+        term: 'Salesforce Marketing Cloud',
+        note: 'No published implementation evidence is currently available.'
+      }
+    ],
+    unverified: [
+      {
+        term: 'Public speaking at conferences',
+        note: 'Published profile does not verify this requirement yet.'
+      }
+    ],
+    learningBridges: [
+      {
+        term: 'Kubernetes',
+        note: 'Bridge from Azure DevOps and cloud-release ownership into container operations.'
+      }
+    ],
+    interviewQuestions: [
+      {
+        term: 'Kubernetes',
+        question: 'What production cluster rollout, if any, has he handled directly?'
+      }
+    ]
+  };
+  return Object.assign(result, overrides);
+}
+
+function buildFallback(language = 'en', overrides = {}) {
+  return Object.assign({
+    mode: 'deterministic-fallback',
+    language,
+    deterministicScore: 72,
+    narrative: language === 'ms'
+      ? 'Ringkasan deterministik digunakan. Kekuatan yang disahkan, jurang yang nyata, dan soalan saringan kekal dipaparkan tanpa penaakulan AI.'
+      : 'Deterministic fallback is active. Verified strengths, explicit gaps, and recruiter screening questions remain available without AI reasoning.',
+    sections: {
+      strengths: [{ term: 'ASP.NET Core MVC', note: 'Verified production delivery is already published.' }],
+      gaps: [{ term: 'Salesforce Marketing Cloud', note: 'No published implementation evidence is currently available.' }],
+      limitations: [{ term: 'Kubernetes', note: 'This remains a partial match and should be validated during screening.' }],
+      interviewQuestions: [{ term: 'Kubernetes', question: 'What production cluster rollout, if any, has he handled directly?' }]
+    }
+  }, overrides);
 }
 
 test('chat header exposes cloud and local model choices with accessible state', () => {
@@ -290,6 +546,290 @@ test('JD matcher uses focused mode while retaining the AI progress card', async 
 
   elements['chat-chips'].dispatch('click', elements['chat-jd-toggle']);
   assert.equal(elements['chat-panel'].classList.contains('chat-panel--jd-open'), false);
+});
+
+test('JD matcher keeps the deterministic score visible until recruiter reasoning is requested, then renders localized local reasoning sections', async () => {
+  const deterministicResult = buildDeterministicResult();
+  const mergedResult = buildMergedResult(deterministicResult);
+  const buildCalls = [];
+  const validateCalls = [];
+  const mergeCalls = [];
+  const chatbotWithControlledWebLLM = chatbot.replace(
+    'return import(WEBLLM_CDN).then(function (webllm) {',
+    'return window.__importWebLLM(WEBLLM_CDN).then(function (webllm) {'
+  );
+  const fakeEngine = {
+    chat: {
+      completions: {
+        create(payload) {
+          if (Array.isArray(payload.messages) && payload.messages.some((message) => /strict json/i.test(String(message.content)))) {
+            return Promise.resolve({
+              choices: [{
+                message: {
+                  content: JSON.stringify({ narrative: 'Local recruiter reasoning', requirements: [] })
+                }
+              }]
+            });
+          }
+          return Promise.resolve({
+            choices: [{
+              message: {
+                content: 'AIMeer local reply'
+              }
+            }]
+          });
+        }
+      }
+    }
+  };
+  const { context, elements, setLanguage } = createChatContext({
+    saveData: false,
+    fetchImpl(url) {
+      const target = String(url);
+      if (target.endsWith('aimeer-kb.txt')) return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
+      if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
+      throw new Error(`Unexpected fetch: ${target}`);
+    }
+  });
+  context.window.__importWebLLM = () => Promise.resolve({
+    CreateMLCEngine(model, options) {
+      options.initProgressCallback({ progress: 1 });
+      return Promise.resolve(fakeEngine);
+    }
+  });
+  context.window.JDExtractor = {
+    extract() {
+      return Promise.resolve({ text: '', source: 'pdf', warnings: [] });
+    },
+    normalize(text) {
+      return { normalizedText: text, warnings: [] };
+    }
+  };
+  context.window.JDMatcher = {
+    scoreJobDescription() {
+      return clone(deterministicResult);
+    }
+  };
+  context.window.JDReasoning = {
+    buildInput(normalized, result, profile, language) {
+      buildCalls.push({ normalized, result, profile, language });
+      return { language, requirements: result.requirements || [], evidenceRegistry: profile.recruiterEvidence || [] };
+    },
+    validateModelOutput(raw, input) {
+      validateCalls.push({ raw, input });
+      return {
+        ok: true,
+        reasoning: {
+          narrative: 'Validated recruiter reasoning',
+          requirements: []
+        }
+      };
+    },
+    mergeResult(result, reasoning, input) {
+      mergeCalls.push({ result, reasoning, input });
+      return clone(mergedResult);
+    },
+    fallback() {
+      throw new Error('fallback should not run on the happy local path');
+    }
+  };
+
+  await loadChat(context, { source: chatbotWithControlledWebLLM });
+  await flushAsync();
+  elements['chat-launcher'].dispatch('click');
+  await flushAsync();
+
+  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC and Kubernetes ownership.';
+  elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+
+  const beforeReasoning = collectText(elements['chat-jd-result']);
+  assert.match(beforeReasoning, /72%/, 'the deterministic score should render immediately');
+  assert.doesNotMatch(beforeReasoning, /verified match/i, 'reasoning sections should not render before an explicit request');
+
+  const reasonButton = getFirstButton(elements['chat-jd-result']);
+  assert.ok(reasonButton, 'the recruiter result should expose an explicit reasoning action');
+  reasonButton.dispatch('click');
+  await flushAsync();
+
+  const afterReasoning = collectText(elements['chat-jd-result']);
+  assert.equal(buildCalls.length, 1, 'the reasoning payload should be built exactly once');
+  assert.equal(validateCalls.length, 1, 'local reasoning output should be validated');
+  assert.equal(mergeCalls.length, 1, 'validated reasoning should merge back into the deterministic result');
+  assert.match(afterReasoning, /Verified match/i);
+  assert.match(afterReasoning, /Transferable opportunity/i);
+  assert.match(afterReasoning, /Calibrated fit/i);
+  assert.match(afterReasoning, /on this device/i, 'the local reasoning status should explain that reasoning stayed local');
+
+  setLanguage('ms');
+  const localized = collectText(elements['chat-jd-result']);
+  assert.match(localized, /Padanan disahkan/i);
+  assert.match(localized, /pada peranti ini/i, 'the local reasoning status should localize into formal Bahasa Melayu');
+});
+
+test('cloud recruiter reasoning localizes its status and falls back without hiding the deterministic score', async () => {
+  const deterministicResult = buildDeterministicResult();
+  const fallback = buildFallback('ms');
+  const cloudCalls = [];
+  const { context, elements, setLanguage } = createChatContext({
+    saveData: true,
+    fetchImpl(url, init) {
+      const target = String(url);
+      if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
+      if (target.includes('workers.dev')) {
+        cloudCalls.push(JSON.parse(init.body));
+        return Promise.resolve(makeJsonResponse({ reasoning: '{"invalid":true}' }));
+      }
+      return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
+    }
+  });
+  context.window.JDExtractor = {
+    extract() {
+      return Promise.resolve({ text: '', source: 'pdf', warnings: [] });
+    },
+    normalize(text) {
+      return { normalizedText: text, warnings: [] };
+    }
+  };
+  context.window.JDMatcher = {
+    scoreJobDescription() {
+      return clone(deterministicResult);
+    }
+  };
+  context.window.JDReasoning = {
+    buildInput(normalized, result, profile, language) {
+      return { language, jdText: normalized.normalizedText, requirements: result.requirements || [], evidenceRegistry: profile.recruiterEvidence || [] };
+    },
+    validateModelOutput() {
+      return { ok: false, error: 'invalid reasoning payload' };
+    },
+    mergeResult() {
+      throw new Error('mergeResult should not run when validation fails');
+    },
+    fallback(result, input, language) {
+      assert.equal(language, 'ms');
+      return clone({ ...fallback, inputLanguage: input.language, deterministicScore: result.score });
+    }
+  };
+
+  await loadChat(context);
+  await flushAsync();
+  setLanguage('ms');
+
+  elements['chat-jd-input'].value = 'Perlu ASP.NET Core MVC dan pengalaman orkestrasi kontena.';
+  elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+
+  const reasonButton = getFirstButton(elements['chat-jd-result']);
+  assert.ok(reasonButton, 'the deterministic cloud result should still expose an explicit reasoning action');
+  reasonButton.dispatch('click');
+  await flushAsync();
+
+  const rendered = collectText(elements['chat-jd-result']);
+  assert.equal(cloudCalls.length, 1, 'cloud reasoning should send a single bounded request');
+  assert.match(rendered, /72%/, 'the deterministic score must remain visible after a reasoning failure');
+  assert.match(rendered, /Ringkasan deterministik digunakan/i, 'the UI should show the localized fallback narrative');
+  assert.match(rendered, /awan selamat/i, 'the cloud reasoning status should be localized in Bahasa Melayu');
+});
+
+test('a stale recruiter reasoning response cannot replace a newer JD result', async () => {
+  const firstReasoning = deferred();
+  const firstResult = buildDeterministicResult({
+    score: 72,
+    strongMatches: [{ term: 'ASP.NET Core MVC', label: 'Published multi-tenant delivery evidence is present.', evidenceType: 'professional', evidence: ['RetailAIM Plus multi-tenant delivery'] }]
+  });
+  const secondResult = buildDeterministicResult({
+    score: 58,
+    strongMatches: [{ term: 'React', label: 'Published React delivery evidence is present.', evidenceType: 'professional', evidence: ['RetailAIM Plus multi-tenant delivery'] }],
+    partialMatches: [{ term: 'Salesforce', label: 'Adjacent integration evidence exists.', evidenceType: 'professional', evidence: ['Azure DevOps release ownership'] }]
+  });
+  const mergedFirst = buildMergedResult(firstResult, {
+    reasoningNarrative: 'Old reasoning should never replace the newer JD result.'
+  });
+  const mergedSecond = buildMergedResult(secondResult, {
+    deterministicScore: 58,
+    verifiedScore: 54,
+    transferableScore: 63,
+    compositeScore: 63,
+    reasoningNarrative: 'Second reasoning placeholder.'
+  });
+  let requestCount = 0;
+  const { context, elements } = createChatContext({
+    saveData: true,
+    fetchImpl(url, init) {
+      const target = String(url);
+      if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
+      if (target.includes('workers.dev')) {
+        requestCount += 1;
+        if (requestCount === 1) return firstReasoning.promise;
+        return Promise.resolve(makeJsonResponse({ reasoning: JSON.stringify({ narrative: 'newer reasoning', requirements: [] }) }));
+      }
+      return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
+    }
+  });
+  context.window.JDExtractor = {
+    extract() {
+      return Promise.resolve({ text: '', source: 'pdf', warnings: [] });
+    },
+    normalize(text) {
+      return { normalizedText: text, warnings: [] };
+    }
+  };
+  context.window.JDMatcher = {
+    scoreJobDescription(normalized) {
+      return normalized.normalizedText.includes('React') ? clone(secondResult) : clone(firstResult);
+    }
+  };
+  context.window.JDReasoning = {
+    buildInput(normalized, result, profile, language) {
+      return {
+        language,
+        jdText: normalized.normalizedText,
+        requirements: result.requirements || [],
+        evidenceRegistry: profile.recruiterEvidence || []
+      };
+    },
+    validateModelOutput() {
+      return {
+        ok: true,
+        reasoning: {
+          narrative: 'validated reasoning',
+          requirements: []
+        }
+      };
+    },
+    mergeResult(result) {
+      return clone(result.score === 58 ? mergedSecond : mergedFirst);
+    },
+    fallback(result, input, language) {
+      return buildFallback(language, { deterministicScore: result.score, inputLanguage: input.language });
+    }
+  };
+
+  await loadChat(context);
+  await flushAsync();
+
+  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC ownership.';
+  elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+  getFirstButton(elements['chat-jd-result']).dispatch('click');
+  await flushAsync();
+
+  elements['chat-jd-input'].value = 'Need React architecture ownership.';
+  elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+
+  const beforeOldResponse = collectText(elements['chat-jd-result']);
+  assert.match(beforeOldResponse, /58%/, 'the newer deterministic result should already be visible');
+  assert.match(beforeOldResponse, /React/i, 'the newer JD result should replace the earlier deterministic content');
+
+  firstReasoning.resolve(makeJsonResponse({ reasoning: JSON.stringify({ narrative: 'stale cloud reasoning', requirements: [] }) }));
+  await flushAsync();
+
+  const afterOldResponse = collectText(elements['chat-jd-result']);
+  assert.match(afterOldResponse, /58%/, 'the stale reasoning response must not replace the newer deterministic score');
+  assert.match(afterOldResponse, /React/i, 'the newer JD content must remain visible after the stale response resolves');
+  assert.doesNotMatch(afterOldResponse, /Old reasoning should never replace the newer JD result/i);
 });
 
 test('selecting eligible local AI presents Local while the active route is cloud', async () => {
