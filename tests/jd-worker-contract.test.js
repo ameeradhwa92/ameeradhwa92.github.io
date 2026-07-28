@@ -42,17 +42,21 @@ async function loadWorker() {
   return moduleNs.default;
 }
 
-function buildValidRequest(language = 'en') {
-  const harness = loadBrowserHarness();
-  const profile = loadProfile();
-  const normalized = harness.JDExtractor.normalize(`Required Skills:
+function buildValidRequest(options = {}) {
+  const language = typeof options === 'string' ? options : (options.language || 'en');
+  const text = typeof options === 'string' || !options.text
+    ? `Required Skills:
 - Kubernetes
 - Azure
 - Azure DevOps
 - Bicep
 Preferred Skills:
 - CI/CD
-`);
+`
+    : options.text;
+  const harness = loadBrowserHarness();
+  const profile = loadProfile();
+  const normalized = harness.JDExtractor.normalize(text);
   const deterministicResult = harness.JDMatcher.scoreJobDescription(normalized, profile);
   const input = harness.JDReasoning.buildInput(normalized, deterministicResult, profile, language);
 
@@ -210,7 +214,7 @@ async function callWorker(body, options = {}) {
 }
 
 test('jd-reasoning accepts a bounded valid request and returns strict JSON reasoning', async () => {
-  const request = buildValidRequest('en');
+  const request = buildValidRequest({ language: 'en' });
   const profile = loadProfile();
   const response = await callWorker(request, {
     profile,
@@ -252,8 +256,39 @@ test('jd-reasoning accepts a bounded valid request and returns strict JSON reaso
   );
 });
 
+test('jd-reasoning keeps noisy salary and benefits sections out of the bounded browser-to-worker payload', async () => {
+  const request = buildValidRequest({
+    language: 'en',
+    text: `Required Skills:
+- ASP.NET Core
+- Azure DevOps
+- CI/CD
+Preferred Skills:
+- Kubernetes
+Employer Questions:
+- What is your expected salary?
+- Do you need medical coverage?
+- How much annual leave do you expect?
+Application Questions:
+- Are you willing to relocate?`
+  });
+  const profile = loadProfile();
+  const response = await callWorker(request, {
+    profile,
+    aiResponse: buildValidReasoningResponse(request, profile)
+  });
+
+  assert.equal(request.jdText.toLowerCase().includes('salary'), false, 'projected jdText should exclude salary terms');
+  assert.equal(request.jdText.toLowerCase().includes('medical'), false, 'projected jdText should exclude medical terms');
+  assert.equal(request.jdText.toLowerCase().includes('leave'), false, 'projected jdText should exclude leave terms');
+  assert.equal(request.jdText.toLowerCase().includes('employer questions'), false, 'projected jdText should exclude employer question headings');
+  assert.equal(request.jdText.toLowerCase().includes('application questions'), false, 'projected jdText should exclude application question headings');
+  assert.equal(response.status, 200, 'the recruiter-safe projection should remain valid at the worker contract boundary');
+  assert.equal(response.aiCalls.length, 1, 'valid recruiter-safe payloads should still reach Workers AI');
+});
+
 test('jd-reasoning rejects invalid request shapes before calling Workers AI', async () => {
-  const validRequest = buildValidRequest('en');
+  const validRequest = buildValidRequest({ language: 'en' });
   const invalidCases = [
     {
       label: 'missing language',
@@ -334,7 +369,7 @@ test('jd-reasoning rejects invalid request shapes before calling Workers AI', as
 });
 
 test('jd-reasoning rejects unknown nested evidence refs in every deterministic match list', async () => {
-  const validRequest = buildValidRequest('en');
+  const validRequest = buildValidRequest({ language: 'en' });
 
   for (const listKey of DETERMINISTIC_MATCH_LISTS) {
     const request = buildRequestWithNestedMatchMutation(validRequest, listKey, {
@@ -349,7 +384,7 @@ test('jd-reasoning rejects unknown nested evidence refs in every deterministic m
 });
 
 test('jd-reasoning rejects invalid nested evidence types in every deterministic match list', async () => {
-  const validRequest = buildValidRequest('en');
+  const validRequest = buildValidRequest({ language: 'en' });
 
   for (const listKey of DETERMINISTIC_MATCH_LISTS) {
     const request = buildRequestWithNestedMatchMutation(validRequest, listKey, {
@@ -364,7 +399,7 @@ test('jd-reasoning rejects invalid nested evidence types in every deterministic 
 });
 
 test('jd-reasoning returns reasoning-invalid when the model response is not strict schema-valid JSON', async () => {
-  const request = buildValidRequest('ms');
+  const request = buildValidRequest({ language: 'ms' });
   const response = await callWorker(request, {
     aiResponse: '{"narrative":"invalid because requirements are missing"}'
   });
@@ -372,6 +407,40 @@ test('jd-reasoning returns reasoning-invalid when the model response is not stri
   assert.equal(response.status, 502);
   assert.equal(response.json.error, 'reasoning-invalid');
   assert.equal(response.aiCalls.length, 1, 'schema validation failures should still come from a single AI response');
+});
+
+test('jd-reasoning accepts all-gap deterministic requests with empty evidence ids', async () => {
+  const request = buildValidRequest({
+    language: 'en',
+    text: `Required Skills:
+- COBOL
+- Mainframe operations
+- AS400
+Preferred Skills:
+- Actuarial claims systems`
+  });
+  const profile = loadProfile();
+  const response = await callWorker(request, {
+    profile,
+    aiResponse: buildValidReasoningResponse(request, profile)
+  });
+
+  assert.equal(Array.isArray(request.evidenceIds), true, 'all-gap requests should still produce an evidenceIds array');
+  assert.equal(request.evidenceIds.length, 0, 'all-gap requests should be allowed to carry an empty evidence registry');
+  assert.equal(
+    request.deterministicInput.requirements.every((requirement) => Array.isArray(requirement.evidenceRefs) && requirement.evidenceRefs.length === 0),
+    true,
+    'all-gap deterministic requirements should not need evidence refs'
+  );
+  assert.equal(
+    ['strongMatches', 'partialMatches', 'gaps', 'unverified'].every((key) =>
+      request.deterministicInput.deterministicResult[key].every((item) => Array.isArray(item.evidenceRefs) && item.evidenceRefs.length === 0)
+    ),
+    true,
+    'all-gap deterministic match lists should not include nested evidence refs'
+  );
+  assert.equal(response.status, 200, 'empty evidence registries should still be valid when the deterministic payload is fully bounded');
+  assert.equal(response.aiCalls.length, 1, 'valid all-gap requests should still reach Workers AI');
 });
 
 test('existing chat, summary, and jd-explanation modes remain compatible', async () => {

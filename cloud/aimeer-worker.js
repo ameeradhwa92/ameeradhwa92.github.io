@@ -557,7 +557,7 @@ function validateJdReasoningBody(body, profile) {
     return { ok: false, error: "jd-text-invalid" };
   }
 
-  if (!Array.isArray(body.evidenceIds) || !body.evidenceIds.length || body.evidenceIds.length > JD_REASONING_EVIDENCE_MAX) {
+  if (!Array.isArray(body.evidenceIds) || body.evidenceIds.length > JD_REASONING_EVIDENCE_MAX) {
     return { ok: false, error: "jd-evidence-invalid" };
   }
 

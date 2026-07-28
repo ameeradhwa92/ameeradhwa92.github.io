@@ -3,6 +3,17 @@
 
   var JD_TEXT_MAX = 12000;
   var RESULT_CHARS_MAX = 12000;
+  var DEFAULT_PRIVACY_EXCLUSIONS = [
+    "salary",
+    "nric",
+    "home address",
+    "date of birth",
+    "benefits",
+    "leave",
+    "medical",
+    "signatures",
+    "confidential contract language"
+  ];
   var ROOT_KEYS = ["narrative", "requirements"];
   var REQUIREMENT_KEYS = [
     "requirementId",
@@ -87,6 +98,27 @@
       if (output.length >= maxItems) break;
     }
     return output;
+  }
+
+  function containsPrivacyTerms(text, privacyTerms) {
+    var haystack = String(text || "").toLowerCase();
+    for (var index = 0; index < privacyTerms.length; index += 1) {
+      if (haystack.indexOf(String(privacyTerms[index] || "").toLowerCase()) !== -1) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function getPrivacyTerms(profile) {
+    var terms = uniqueStrings(
+      profile && profile.privacyExclusions,
+      DEFAULT_PRIVACY_EXCLUSIONS.length,
+      64
+    ).map(function (term) {
+      return String(term || "").toLowerCase();
+    });
+    return terms.length ? terms : DEFAULT_PRIVACY_EXCLUSIONS.slice();
   }
 
   function compactRequirement(requirement) {
@@ -192,9 +224,54 @@
     return vocabulary.sort();
   }
 
+  function buildRequirementOnlyJdText(requirements, privacyTerms) {
+    var grouped = {
+      required: [],
+      neutral: [],
+      preferred: []
+    };
+    var seen = Object.create(null);
+    for (var index = 0; index < requirements.length; index += 1) {
+      var requirement = requirements[index];
+      var candidate = clipText(
+        requirement && (requirement.original || requirement.term),
+        240
+      ).replace(/^\-\s*/, "");
+      if (!candidate || containsPrivacyTerms(candidate, privacyTerms)) continue;
+      var dedupeKey = candidate.toLowerCase();
+      if (seen[dedupeKey]) continue;
+      seen[dedupeKey] = true;
+      var strength = requirement && requirement.strength === "required"
+        ? "required"
+        : requirement && requirement.strength === "preferred"
+          ? "preferred"
+          : "neutral";
+      grouped[strength].push(candidate);
+    }
+
+    var lines = [];
+    function appendSection(label, items) {
+      if (!items.length) return;
+      lines.push(label);
+      for (var itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
+        lines.push("- " + items[itemIndex]);
+      }
+    }
+
+    appendSection("Required Skills:", grouped.required);
+    appendSection("Additional Requirements:", grouped.neutral);
+    appendSection("Preferred Skills:", grouped.preferred);
+
+    if (!lines.length) {
+      return "Recruiter-safe requirement summary only.";
+    }
+    return clipText(lines.join("\n"), JD_TEXT_MAX);
+  }
+
   function buildInput(normalizedJd, deterministicResult, profile, language) {
     var requirements = (Array.isArray(deterministicResult && deterministicResult.requirements)
       ? deterministicResult.requirements : []).map(compactRequirement);
+    var privacyTerms = getPrivacyTerms(profile);
     var referencedIds = Object.create(null);
     for (var requirementIndex = 0; requirementIndex < requirements.length; requirementIndex += 1) {
       var refs = requirements[requirementIndex].evidenceRefs;
@@ -217,7 +294,7 @@
     return {
       mode: "jd-reasoning",
       language: language === "ms" ? "ms" : "en",
-      jdText: clipText(normalizedJd && normalizedJd.normalizedText, JD_TEXT_MAX),
+      jdText: buildRequirementOnlyJdText(requirements, privacyTerms),
       requirements: requirements,
       deterministicResult: compactDeterministicResult(deterministicResult || {}),
       evidenceRegistry: evidenceRegistry,
