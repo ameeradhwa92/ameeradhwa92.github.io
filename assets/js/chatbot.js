@@ -1072,7 +1072,6 @@
       var unverifiedRequirements = result.sections.unverifiedRequirements || result.sections.unverified || [];
       jdResult.appendChild(renderReasoningSection("jdReasonVerifiedStrengths", verifiedStrengths, "recruiterFraming"));
       jdResult.appendChild(renderReasoningSection("jdReasonTransferableAdvantages", transferableAdvantages, "recruiterFraming"));
-      jdResult.appendChild(renderReasoningSection("jdResultPartial", result.sections.partialMatches || [], "note"));
       jdResult.appendChild(renderReasoningSection("jdReasonPriorityGaps", explicitGaps, "limitation"));
       jdResult.appendChild(renderReasoningSection("jdResultUnverified", unverifiedRequirements, "limitation"));
       jdResult.appendChild(renderReasoningSection("jdReasonLearningBridges", learningBridges, "limitation"));

@@ -96,6 +96,15 @@ function findNode(node, predicate) {
   return null;
 }
 
+function countNodes(node, predicate) {
+  if (!node) return 0;
+  let total = predicate(node) ? 1 : 0;
+  for (const child of node.children || []) {
+    total += countNodes(child, predicate);
+  }
+  return total;
+}
+
 function getFirstButton(node) {
   return findNode(node, (entry) => entry.tagName === 'BUTTON');
 }
@@ -778,6 +787,120 @@ test('JD matcher keeps the deterministic score visible until recruiter reasoning
   const localized = collectText(elements['chat-jd-result']);
   assert.match(localized, /Padanan disahkan/i);
   assert.match(localized, /pada peranti ini/i, 'the local reasoning status should localize into formal Bahasa Melayu');
+});
+
+test('recruiter reasoning keeps a single partial matches section after the real merge renders', async () => {
+  const deterministicResult = buildDeterministicResult();
+  const chatbotWithControlledWebLLM = chatbot.replace(
+    'return import(WEBLLM_CDN).then(function (webllm) {',
+    'return window.__importWebLLM(WEBLLM_CDN).then(function (webllm) {'
+  );
+  const fakeEngine = {
+    chat: {
+      completions: {
+        create(payload) {
+          if (Array.isArray(payload.messages) && payload.messages.some((message) => /strict json/i.test(String(message.content)))) {
+            return Promise.resolve({
+              choices: [{
+                message: {
+                  content: JSON.stringify({
+                    narrative: 'Reasoning should not duplicate the deterministic partial matches section.',
+                    requirements: [
+                      {
+                        requirementId: 'req-aspnet-core',
+                        recruiterIntent: 'Own production-grade web delivery on the current stack.',
+                        expectedOutcome: 'Sustain and extend the current ASP.NET Core platform.',
+                        matchLevel: 'direct-professional',
+                        evidenceRefs: ['ev-retailaim-plus'],
+                        transferableCapabilities: [],
+                        limitation: 'Published production delivery is already verified.',
+                        recruiterFraming: 'Direct published production evidence is already available.',
+                        verificationQuestion: 'Which high-scale production modules did he own directly?',
+                        confidence: 'high'
+                      },
+                      {
+                        requirementId: 'req-kubernetes',
+                        recruiterIntent: 'Support containerized deployment and operations.',
+                        expectedOutcome: 'Ramp into Kubernetes-backed delivery with adjacent cloud ownership.',
+                        matchLevel: 'learning-bridge',
+                        evidenceRefs: ['ev-azure-devops'],
+                        transferableCapabilities: ['Azure DevOps', 'Release automation'],
+                        limitation: 'Published work does not yet confirm a production Kubernetes rollout.',
+                        recruiterFraming: 'Adjacent cloud delivery shortens the ramp, but screening should confirm direct cluster experience.',
+                        verificationQuestion: 'What hands-on Kubernetes rollout, if any, has he completed directly?',
+                        confidence: 'medium'
+                      }
+                    ]
+                  })
+                }
+              }]
+            });
+          }
+          return Promise.resolve({
+            choices: [{
+              message: {
+                content: 'AIMeer local reply'
+              }
+            }]
+          });
+        }
+      }
+    }
+  };
+  const { context, elements } = createChatContext({
+    saveData: false,
+    fetchImpl(url) {
+      const target = String(url);
+      if (target.endsWith('aimeer-kb.txt')) return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
+      if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
+      throw new Error(`Unexpected fetch: ${target}`);
+    }
+  });
+  context.window.__importWebLLM = () => Promise.resolve({
+    CreateMLCEngine(model, options) {
+      options.initProgressCallback({ progress: 1 });
+      return Promise.resolve(fakeEngine);
+    }
+  });
+  context.window.JDExtractor = {
+    extract() {
+      return Promise.resolve({ text: '', source: 'pdf', warnings: [] });
+    },
+    normalize(text) {
+      return { normalizedText: text, warnings: [] };
+    }
+  };
+  context.window.JDMatcher = {
+    scoreJobDescription() {
+      return clone(deterministicResult);
+    }
+  };
+  vm.runInNewContext(jdReasoning, context);
+
+  await loadChat(context, { source: chatbotWithControlledWebLLM });
+  await flushAsync();
+  elements['chat-launcher'].dispatch('click');
+  await flushAsync();
+
+  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC and Kubernetes ownership.';
+  elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+  getFirstButton(elements['chat-jd-result']).dispatch('click');
+  await flushAsync();
+
+  assert.equal(
+    countNodes(
+      elements['chat-jd-result'],
+      (node) => node.tagName === 'H6' && node.textContent === 'Partial or transferable matches'
+    ),
+    1,
+    'completed recruiter reasoning should keep only the deterministic partial matches heading'
+  );
+  assert.doesNotMatch(
+    collectText(elements['chat-jd-result']),
+    /Partial or transferable matches No items in this section\./i,
+    'completed recruiter reasoning should not append an empty duplicate partial matches block'
+  );
 });
 
 test('completed recruiter reasoning keeps its captured local status after the general route changes', async () => {
