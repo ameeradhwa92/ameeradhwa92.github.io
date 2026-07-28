@@ -398,6 +398,54 @@ test('JDReasoning.validateModelOutput rejects direct-professional conclusions wi
   assert.match(validation.error, /evidence/i);
 });
 
+test('JDReasoning.validateModelOutput enforces evidence provenance for every evidence-based match level', () => {
+  const { harness, profile, normalized, result } = analyze('Required Skills:\n- Kubernetes\n');
+  assert.ok(harness.JDReasoning, 'JDReasoning should be loaded');
+  const baseInput = harness.JDReasoning.buildInput(normalized, result, profile, 'en');
+  const evidenceById = new Map(profile.recruiterEvidence.map((record) => [record.id, record]));
+  const input = {
+    ...baseInput,
+    evidenceRegistry: [
+      ...baseInput.evidenceRegistry,
+      evidenceById.get('academic.intelligent-systems'),
+      evidenceById.get('user.agile-context'),
+      evidenceById.get('professional.production-delivery')
+    ]
+  };
+  const invalidCases = [
+    ['academic evidence cited as professional', 'adjacent-professional', 'academic.intelligent-systems'],
+    ['user-provided evidence cited as professional', 'transferable-professional', 'user.agile-context']
+  ];
+
+  for (const [label, matchLevel, evidenceRef] of invalidCases) {
+    const payload = reasoningForFixture(input, {});
+    payload.requirements[0].matchLevel = matchLevel;
+    payload.requirements[0].evidenceRefs = [evidenceRef];
+    const validation = harness.JDReasoning.validateModelOutput(JSON.stringify(payload), input);
+
+    assert.equal(validation.ok, false, `${label} should reject the model output`);
+    assert.match(validation.error, /evidence/i, `${label} should explain the provenance failure`);
+  }
+
+  const academicPayload = reasoningForFixture(input, {});
+  academicPayload.requirements[0].matchLevel = 'academic-foundation';
+  academicPayload.requirements[0].evidenceRefs = ['academic.intelligent-systems'];
+  assert.equal(
+    harness.JDReasoning.validateModelOutput(JSON.stringify(academicPayload), input).ok,
+    true,
+    'academic-foundation should accept academic evidence'
+  );
+
+  const professionalPayload = reasoningForFixture(input, {});
+  professionalPayload.requirements[0].matchLevel = 'adjacent-professional';
+  professionalPayload.requirements[0].evidenceRefs = ['professional.production-delivery'];
+  assert.equal(
+    harness.JDReasoning.validateModelOutput(JSON.stringify(professionalPayload), input).ok,
+    true,
+    'professional match levels should accept professional evidence'
+  );
+});
+
 test('JDReasoning.validateModelOutput rejects HTML-bearing model strings', () => {
   const { harness, profile, normalized, result } = analyze('Required Skills:\n- Azure\n');
   assert.ok(harness.JDReasoning, 'JDReasoning should be loaded');
@@ -558,6 +606,33 @@ Preferred Skills:
   );
 });
 
+test('JDReasoning.mergeResult refuses score lift from incompatible evidence records without prior validation', () => {
+  const { harness, profile, normalized, result } = analyze('Required Skills:\n- Kubernetes\n');
+  assert.ok(harness.JDReasoning, 'JDReasoning should be loaded');
+  const baseInput = harness.JDReasoning.buildInput(normalized, result, profile, 'en');
+  const evidenceById = new Map(profile.recruiterEvidence.map((record) => [record.id, record]));
+  const input = {
+    ...baseInput,
+    evidenceRegistry: [
+      ...baseInput.evidenceRegistry,
+      evidenceById.get('academic.intelligent-systems'),
+      evidenceById.get('user.agile-context')
+    ]
+  };
+
+  for (const evidenceRef of ['academic.intelligent-systems', 'user.agile-context']) {
+    const reasoning = reasoningForFixture(input, {});
+    reasoning.requirements[0].matchLevel = 'adjacent-professional';
+    reasoning.requirements[0].evidenceRefs = [evidenceRef];
+
+    const merged = harness.JDReasoning.mergeResult(result, reasoning, input);
+    const entry = merged.requirementReasoning[0];
+
+    assert.equal(entry.effectiveFactor, entry.baseFactor, `${evidenceRef} must not create a score lift`);
+    assert.equal(entry.lifted, false, `${evidenceRef} must remain unlifted even when merge bypasses validation`);
+  }
+});
+
 test('JDReasoning.fallback returns deterministic recruiter-facing reasoning without AI output', () => {
   const { harness, profile, normalized, result } = analyze(`Required Skills:
 - Kubernetes
@@ -605,14 +680,14 @@ test('JDReasoning task 6 fixtures preserve deterministic scores and keep every s
           verificationQuestion: 'How much of the published delivery history was hands-on Laravel implementation specifically?'
         },
         Agile: {
-          matchLevel: 'transferable-professional',
+          matchLevel: 'unverified',
           evidenceRefs: ['user.agile-context'],
           transferableCapabilities: ['Agile delivery context'],
           limitation: 'Agile context is user-provided rather than independently published by an employer source.',
           verificationQuestion: 'Which Agile ceremonies and delivery ownership does he currently handle directly?'
         },
         'AI-assisted development': {
-          matchLevel: 'transferable-professional',
+          matchLevel: 'unverified',
           evidenceRefs: ['user.agile-context'],
           transferableCapabilities: ['AI-assisted development', 'workflow automation'],
           limitation: 'AI-tool usage is user-provided context and should stay within the published project scope.',

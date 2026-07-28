@@ -256,6 +256,53 @@ test('jd-reasoning accepts a bounded valid request and returns strict JSON reaso
   );
 });
 
+test('jd-reasoning Worker enforces evidence provenance for evidence-based match levels', async () => {
+  const profile = loadProfile();
+  const request = buildValidRequest({ language: 'en' });
+  request.evidenceIds = Array.from(new Set([
+    ...request.evidenceIds,
+    'academic.intelligent-systems',
+    'user.agile-context'
+  ]));
+  const baseReasoning = JSON.parse(buildValidReasoningResponse(request, profile));
+
+  const invalidCases = [
+    ['academic evidence cited as professional', 'adjacent-professional', 'academic.intelligent-systems'],
+    ['user-provided evidence cited as professional', 'transferable-professional', 'user.agile-context']
+  ];
+  for (const [label, matchLevel, evidenceRef] of invalidCases) {
+    const reasoning = JSON.parse(JSON.stringify(baseReasoning));
+    reasoning.requirements[0].matchLevel = matchLevel;
+    reasoning.requirements[0].evidenceRefs = [evidenceRef];
+    const response = await callWorker(request, {
+      profile,
+      aiResponse: JSON.stringify(reasoning)
+    });
+
+    assert.equal(response.status, 502, `${label} should reject the model output`);
+    assert.equal(response.json.error, 'reasoning-invalid');
+    assert.equal(response.aiCalls.length, 1, `${label} should be rejected after the single AI response is validated`);
+  }
+
+  const validAcademic = JSON.parse(JSON.stringify(baseReasoning));
+  validAcademic.requirements[0].matchLevel = 'academic-foundation';
+  validAcademic.requirements[0].evidenceRefs = ['academic.intelligent-systems'];
+  const academicResponse = await callWorker(request, {
+    profile,
+    aiResponse: JSON.stringify(validAcademic)
+  });
+  assert.equal(academicResponse.status, 200, 'academic-foundation should accept academic evidence');
+
+  const validProfessional = JSON.parse(JSON.stringify(baseReasoning));
+  validProfessional.requirements[0].matchLevel = 'adjacent-professional';
+  validProfessional.requirements[0].evidenceRefs = ['professional.azure-delivery'];
+  const professionalResponse = await callWorker(request, {
+    profile,
+    aiResponse: JSON.stringify(validProfessional)
+  });
+  assert.equal(professionalResponse.status, 200, 'professional match levels should accept professional evidence');
+});
+
 test('jd-reasoning keeps noisy salary and benefits sections out of the bounded browser-to-worker payload', async () => {
   const request = buildValidRequest({
     language: 'en',

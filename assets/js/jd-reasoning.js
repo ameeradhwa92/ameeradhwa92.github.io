@@ -52,6 +52,13 @@
     "transferable-professional": true,
     "academic-foundation": true
   };
+  var MATCH_LEVEL_EVIDENCE_TYPES = {
+    "direct-professional": { professional: true },
+    "adjacent-professional": { professional: true },
+    "transferable-professional": { professional: true },
+    "academic-foundation": { academic: true },
+    "learning-bridge": { professional: true, academic: true }
+  };
   var CONFIDENCE_LEVELS = {
     low: true,
     medium: true,
@@ -222,6 +229,15 @@
       }
     }
     return vocabulary.sort();
+  }
+
+  function areEvidenceTypesCompatible(matchLevel, evidenceRecords) {
+    var allowedTypes = MATCH_LEVEL_EVIDENCE_TYPES[matchLevel];
+    if (!allowedTypes || !evidenceRecords.length) return true;
+    for (var index = 0; index < evidenceRecords.length; index += 1) {
+      if (!evidenceRecords[index] || !allowedTypes[evidenceRecords[index].evidenceType]) return false;
+    }
+    return true;
   }
 
   function buildRequirementOnlyJdText(requirements, privacyTerms) {
@@ -426,6 +442,12 @@
       if (EVIDENCE_BASED_MATCH_LEVELS[matchLevel] && !evidenceRefs.length) {
         return reject("Evidence-based conclusions must include evidence refs.");
       }
+      var evidenceRecords = evidenceRefs.map(function (evidenceRef) {
+        return evidenceIndex[evidenceRef];
+      });
+      if (!areEvidenceTypesCompatible(matchLevel, evidenceRecords)) {
+        return reject("Evidence refs are not compatible with the match level.");
+      }
 
       if (!Array.isArray(item.transferableCapabilities)) return reject("transferableCapabilities must be an array.");
       var transferableCapabilities = uniqueStrings(item.transferableCapabilities, MAX_CAPABILITIES, 120);
@@ -476,7 +498,7 @@
     return 0;
   }
 
-  function effectiveFactorForRequirement(requirement, reasoningItem) {
+  function effectiveFactorForRequirement(requirement, reasoningItem, evidenceRecords) {
     var baseFactor = baseFactorForRequirement(requirement);
     if (!reasoningItem) return baseFactor;
     if (requirement.classification === "strong" || requirement.classification === "gap") return baseFactor;
@@ -485,6 +507,8 @@
     var factor = MATCH_LEVEL_FACTORS[reasoningItem.matchLevel];
     if (!Number.isFinite(factor)) return baseFactor;
     if (!reasoningItem.evidenceRefs.length) return baseFactor;
+    if (!evidenceRecords || evidenceRecords.length !== reasoningItem.evidenceRefs.length) return baseFactor;
+    if (!areEvidenceTypesCompatible(reasoningItem.matchLevel, evidenceRecords || [])) return baseFactor;
     return Math.max(baseFactor, factor);
   }
 
@@ -574,8 +598,9 @@
     for (var requirementIndex = 0; requirementIndex < inputRequirements.length; requirementIndex += 1) {
       var requirement = inputRequirements[requirementIndex];
       var reasoningItem = reasoningMap[requirement.id];
+      var evidenceRecords = reasoningItem ? resolveEvidenceRecords(reasoningItem.evidenceRefs, evidenceIndex) : [];
       var baseFactor = baseFactorForRequirement(requirement);
-      var effectiveFactor = effectiveFactorForRequirement(requirement, reasoningItem);
+      var effectiveFactor = effectiveFactorForRequirement(requirement, reasoningItem, evidenceRecords);
       requirementReasoning.push({
         requirementId: requirement.id,
         term: requirement.term,
@@ -588,7 +613,7 @@
         recruiterIntent: reasoningItem ? reasoningItem.recruiterIntent : "",
         expectedOutcome: reasoningItem ? reasoningItem.expectedOutcome : "",
         evidenceRefs: reasoningItem ? reasoningItem.evidenceRefs.slice() : [],
-        evidenceRecords: reasoningItem ? resolveEvidenceRecords(reasoningItem.evidenceRefs, evidenceIndex) : [],
+        evidenceRecords: evidenceRecords,
         transferableCapabilities: reasoningItem ? reasoningItem.transferableCapabilities.slice() : [],
         limitation: reasoningItem ? reasoningItem.limitation : "",
         recruiterFraming: reasoningItem ? reasoningItem.recruiterFraming : "",

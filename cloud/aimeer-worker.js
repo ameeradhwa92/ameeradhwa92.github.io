@@ -62,6 +62,13 @@ const JD_REASONING_EVIDENCE_BASED_LEVELS = {
   "transferable-professional": true,
   "academic-foundation": true
 };
+const JD_REASONING_MATCH_EVIDENCE_TYPES = {
+  "direct-professional": { professional: true },
+  "adjacent-professional": { professional: true },
+  "transferable-professional": { professional: true },
+  "academic-foundation": { academic: true },
+  "learning-bridge": { professional: true, academic: true }
+};
 const JD_REASONING_CONFIDENCE = {
   low: true,
   medium: true,
@@ -455,6 +462,12 @@ function sanitizeRecruiterEvidenceRecord(record) {
   };
 }
 
+function areEvidenceTypesCompatible(matchLevel, evidenceRecords) {
+  const allowedTypes = JD_REASONING_MATCH_EVIDENCE_TYPES[matchLevel];
+  if (!allowedTypes || !evidenceRecords.length) return true;
+  return evidenceRecords.every((record) => record && allowedTypes[record.evidenceType] === true);
+}
+
 function validateMatchItem(item) {
   if (!isPlainObject(item) ||
     !hasOnlyKeys(item, ["term", "label", "evidenceType", "evidence"])) {
@@ -819,7 +832,7 @@ function validateJdReasoningModelOutput(rawOutput, input) {
   }
   const evidenceIndex = Object.create(null);
   for (const record of input.evidenceRegistry) {
-    evidenceIndex[record.id] = true;
+    evidenceIndex[record.id] = record;
   }
   const capabilityIndex = Object.create(null);
   for (const capability of input.capabilityVocabulary) {
@@ -866,11 +879,16 @@ function validateJdReasoningModelOutput(rawOutput, input) {
     if (evidenceRefs.length !== item.evidenceRefs.length) {
       return { ok: false, error: "evidence-invalid" };
     }
+    const evidenceRecords = [];
     for (const ref of evidenceRefs) {
       if (!evidenceIndex[ref]) return { ok: false, error: "evidence-invalid" };
+      evidenceRecords.push(evidenceIndex[ref]);
     }
     if (JD_REASONING_EVIDENCE_BASED_LEVELS[matchLevel] && !evidenceRefs.length) {
       return { ok: false, error: "evidence-required" };
+    }
+    if (!areEvidenceTypesCompatible(matchLevel, evidenceRecords)) {
+      return { ok: false, error: "evidence-provenance-invalid" };
     }
 
     if (!Array.isArray(item.transferableCapabilities) || item.transferableCapabilities.length > 4) {
