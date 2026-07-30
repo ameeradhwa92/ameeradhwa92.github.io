@@ -615,9 +615,32 @@ linter, but that tests run with `node --test "tests/*.test.js"` from the repo ro
 be green before any change ships. Keep the rest of the section (the port-8080 requirement,
 the manual browser verification list) intact.
 
-- [ ] **Step 3a: Full suite green**
+- [ ] **Step 3b: Document the `tools/` verification harnesses in CLAUDE.md**
 
-Run: `node --test "tests/*.test.js"` → 0 failing. This is the gate for the whole branch.
+This omission caused a real blind spot on this branch: `tests/*.test.js` is NOT the whole
+verification surface. `tools/` also holds `test_jd_extractor.mjs`, `test_jd_matcher.mjs`,
+`test_recruiter_cloud_payload.mjs` (run with `node tools/<file>`), plus
+`verify_recruiter_profile.ps1` and `verify_recruiter_ui.ps1` (run with
+`powershell -NoProfile -ExecutionPolicy Bypass -File tools/<file>`). `verify_recruiter_ui.ps1`
+went unnoticed-broken because nothing runs it automatically. Add all five to CLAUDE.md's
+"Running locally" section as part of the definition of a green tree, so the next session
+cannot repeat the mistake.
+
+- [ ] **Step 3c: Retire dead code and dead copy deferred from Tasks 3 and 4**
+
+- Remove the ~25 `T` keys left unused when the match report replaced the old renderer
+  (`jdResultStrong`, `jdResultCategories`, `jdCategory*`, `jdEvidence*` except the two the
+  restored gap/unverified badges use, `jdReasonLearningBridges`, and the rest). Grep each key
+  for real consumers before deleting — some were brought back into use by Task 4's fix round,
+  and deleting a live key silently drops a string to English.
+- Decide `JDReasoning.fallback` (`assets/js/jd-reasoning.js`, defined ~`:691`, exported
+  ~`:751`): it has no production caller, only a test. Either wire it to the fallback path it
+  was written for or delete it along with its test. Say which and why.
+
+- [ ] **Step 3a: Full suite and all harnesses green**
+
+Run `node --test "tests/*.test.js"` → 0 failing, **and** all five `tools/` harnesses from
+Step 3b → clean. That combination, not the `tests/` suite alone, is the gate for the branch.
 
 - [ ] **Step 4: Full manual pass (user-run; do not claim as passing)**
 
