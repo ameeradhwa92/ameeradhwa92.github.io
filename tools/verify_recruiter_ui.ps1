@@ -102,6 +102,19 @@ foreach ($chip in $expectedChips) {
 Assert-Match $index '<button class="chat-jd-file-btn" id="chat-jd-file-trigger" type="button" aria-controls="chat-jd-file" data-i18n="chat\.jd\.fileAction">' 'Recruiter file chooser must be a focusable button that controls the hidden file input.'
 Assert-Match $chatbot 'jdFileTrigger\.addEventListener\("click",\s*function \(\)\s*\{\s*jdFile\.click\(\);\s*\}\);' 'chatbot.js must wire the visible recruiter file button to the hidden file input.'
 
-Assert-Match $index '<script src="assets/js/i18n\.js" defer></script>\s*<script src="assets/js/main\.js" defer></script>\s*<script src="assets/js/aimeer-device\.js" defer></script>\s*<script src="assets/js/jd-extractor\.js" defer></script>\s*<script src="assets/js/jd-matcher\.js" defer></script>\s*<script src="assets/js/jd-reasoning\.js" defer></script>\s*<script src="assets/js/chatbot\.js" defer></script>' 'JD extractor, matcher and reasoning scripts must load before chatbot.js.'
+# (?:\?v=[^"]*)? tolerates the cache-busting tag so bumping ?v= on a deploy does
+# not break this assertion — the load ORDER is what matters here, not the query.
+Assert-Match $index '<script src="assets/js/i18n\.js(?:\?v=[^"]*)?" defer></script>\s*<script src="assets/js/main\.js(?:\?v=[^"]*)?" defer></script>\s*<script src="assets/js/aimeer-device\.js(?:\?v=[^"]*)?" defer></script>\s*<script src="assets/js/jd-extractor\.js(?:\?v=[^"]*)?" defer></script>\s*<script src="assets/js/jd-matcher\.js(?:\?v=[^"]*)?" defer></script>\s*<script src="assets/js/jd-reasoning\.js(?:\?v=[^"]*)?" defer></script>\s*<script src="assets/js/chatbot\.js(?:\?v=[^"]*)?" defer></script>' 'JD extractor, matcher and reasoning scripts must load before chatbot.js.'
+
+# The cache-busting tag must be consistent across every versioned asset, or a
+# deploy refreshes some files and serves others stale — the confusing half-updated
+# state this mechanism exists to prevent.
+# @() forces an array — under Set-StrictMode a scalar string has no .Count.
+$versionTags = @([regex]::Matches($index, '(?:href|src)="assets/(?:css|js)/[^"]*\?v=([^"]+)"') |
+  ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)
+$unversioned = @([regex]::Matches($index, '(?:href|src)="(assets/(?:css|js)/[^"?]+)"') |
+  ForEach-Object { $_.Groups[1].Value })
+Assert-True ($versionTags.Count -eq 1) "index.html must carry exactly one ?v= cache-busting tag value across its CSS and JS assets; found: $($versionTags -join ', ')"
+Assert-True ($unversioned.Count -eq 0) "Every CSS and JS asset must carry the ?v= tag, or a deploy refreshes some files and serves others stale; un-versioned: $($unversioned -join ', ')"
 
 Write-Host 'Recruiter UI verification passed.'

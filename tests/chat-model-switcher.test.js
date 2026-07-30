@@ -142,7 +142,11 @@ function createChatContext(options = {}) {
     readyState: 'complete',
     getElementById(id) { return elements[id] || null; },
     addEventListener() {},
-    createElement
+    createElement,
+    /* Absent by default, mirroring a page served without a ?v= cache-busting tag,
+       which keeps every data-file URL byte-identical to its un-versioned form.
+       Set currentScriptSrc to exercise the versioned path. */
+    currentScript: options.currentScriptSrc ? { src: options.currentScriptSrc } : undefined
   };
   const window = {
     console: { warn() {} },
@@ -498,6 +502,80 @@ test('chat chips are reduced to exactly three recruiter-focused presets with the
     buttons[2],
     /id="chat-jd-toggle"[^>]*aria-expanded="false"[^>]*aria-controls="chat-jd-panel"[^>]*data-i18n="chat\.jd\.toggle"/,
     'the third chip must retain the JD panel toggle id, aria-expanded and aria-controls wiring'
+  );
+});
+
+test('every versioned asset in index.html shares one cache-busting tag', () => {
+  const tags = [...html.matchAll(/(?:href|src)="(assets\/(?:css|js)\/[^"?]+)(\?v=([^"]+))?"/g)];
+  const versioned = tags.filter((match) => match[2]);
+
+  assert.ok(versioned.length > 0, 'index.html should carry ?v= cache-busting tags on its CSS and JS');
+  assert.equal(
+    versioned.length,
+    tags.length,
+    `every CSS and JS asset must be versioned, or a deploy refreshes some files and serves others stale; un-versioned: ${tags.filter((m) => !m[2]).map((m) => m[1]).join(', ')}`
+  );
+
+  const distinct = [...new Set(versioned.map((match) => match[3]))];
+  assert.equal(distinct.length, 1, `all ?v= tags must match; found: ${distinct.join(', ')}`);
+});
+
+async function collectProfileFetchUrls(options) {
+  const fetched = [];
+  const { context, elements } = createChatContext({
+    ...options,
+    fetchImpl(url) {
+      const target = String(url);
+      fetched.push(target);
+      if (target.includes('aimeer-kb.txt')) return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
+      if (target.includes('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
+      if (target.includes('workers.dev')) return Promise.resolve(makeJsonResponse({ error: 'ai-failed' }));
+      throw new Error(`Unexpected fetch: ${target}`);
+    }
+  });
+
+  context.window.JDExtractor = {
+    extract() {
+      return Promise.resolve({ text: '', source: 'pdf', warnings: [] });
+    },
+    normalize(text) {
+      return { normalizedText: text, warnings: [] };
+    }
+  };
+  context.window.JDMatcher = {
+    scoreJobDescription() {
+      return buildDeterministicResult();
+    }
+  };
+  vm.runInNewContext(jdReasoning, context);
+
+  await loadChat(context);
+  elements['chat-launcher'].dispatch('click');
+  await flushAsync();
+  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC and cloud delivery ownership.';
+  elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+
+  return fetched;
+}
+
+test('the cache-busting tag is forwarded from the script src to the profile fetch', async () => {
+  const fetched = await collectProfileFetchUrls({
+    currentScriptSrc: 'https://ameeradhwa92.github.io/assets/js/chatbot.js?v=2026-07-30a'
+  });
+
+  assert.ok(
+    fetched.includes('assets/data/aimeer-profile.json?v=2026-07-30a'),
+    `the profile fetch must carry the version tag, or a bumped deploy serves stale recruiter data; saw: ${fetched.join(', ')}`
+  );
+});
+
+test('data fetches stay un-versioned when the page carries no cache-busting tag', async () => {
+  const fetched = await collectProfileFetchUrls({});
+
+  assert.ok(
+    fetched.includes('assets/data/aimeer-profile.json'),
+    `without a ?v= tag on the script src the URL must be byte-identical to its un-versioned form; saw: ${fetched.join(', ')}`
   );
 });
 

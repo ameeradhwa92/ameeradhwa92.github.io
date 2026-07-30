@@ -20,13 +20,30 @@
   var cloudOk = !!CLOUD_ENDPOINT;
   var root = document.documentElement;
 
+  /* Cache busting.  GitHub Pages serves assets with Cache-Control: max-age=600,
+     so a stale visitor self-heals within ten minutes; the ?v= tag on our own
+     <script src> in index.html makes that deterministic instead.  We forward the
+     same tag to the two data files because they are fetched at runtime and are
+     not covered by the script tag: a stale aimeer-kb.txt makes AIMeer answer
+     from retired facts, which is worse than stale code.  Read from our own src
+     rather than hardcoded, so index.html stays the ONLY place to bump it.
+     Returns "" when there is no ?v= (local preview, test harness), leaving the
+     URLs byte-identical to their un-versioned form. */
+  function assetVersionQuery() {
+    var currentScript = document && document.currentScript;
+    var src = currentScript && currentScript.src;
+    var match = src ? String(src).match(/[?&]v=([^&#]+)/) : null;
+    return match ? "?v=" + match[1] : "";
+  }
+  var ASSET_VERSION_QUERY = assetVersionQuery();
+
   /* ---------------- knowledge base (fetched, shared with the cloud worker) ---------------- */
   var KB = "", kbPromise = null;
   var PROFILE = null, profilePromise = null;
   function ensureKB() {
     if (KB) return Promise.resolve(KB);
     if (!kbPromise) {
-      kbPromise = fetch(KB_URL).then(function (r) {
+      kbPromise = fetch(KB_URL + ASSET_VERSION_QUERY).then(function (r) {
         if (!r.ok) throw new Error("kb-" + r.status);
         return r.text();
       }).then(function (txt) {
@@ -43,7 +60,7 @@
   function ensureProfile() {
     if (PROFILE) return Promise.resolve(PROFILE);
     if (!profilePromise) {
-      profilePromise = fetch(PROFILE_URL).then(function (r) {
+      profilePromise = fetch(PROFILE_URL + ASSET_VERSION_QUERY).then(function (r) {
         if (!r.ok) throw new Error("profile-" + r.status);
         return r.json();
       }).then(function (data) {

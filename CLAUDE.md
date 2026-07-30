@@ -50,6 +50,21 @@ change, or it goes red unnoticed.
 Verification is manual: open in a browser, check 375 / 768 / 1440 widths, toggle
 dark/light and EN/BM, and `curl` every project URL before publishing a status change.
 
+### Bump `?v=` on every deploy that touches CSS or JS
+
+GitHub Pages serves assets with `Cache-Control: max-age=600`, so a stale visitor
+self-heals within ten minutes. The `?v=` tag on the stylesheet and the seven script tags
+in `index.html` makes that deterministic instead — **bump it in `index.html` and nowhere
+else.** `chatbot.js` reads the tag off its own `<script src>` and forwards it to the
+`aimeer-kb.txt` and `aimeer-profile.json` fetches, so there is one value to edit and no
+drift. That forwarding matters: those two files are fetched at runtime and are not covered
+by the script tag, and a stale `aimeer-kb.txt` makes AIMeer answer from retired facts —
+worse than stale code.
+
+`verify_recruiter_ui.ps1` fails if the tags disagree with each other or if any CSS/JS
+asset lacks one, and names the offending file. While iterating locally, tick
+**DevTools → Network → Disable cache** instead of bumping the tag.
+
 ## Architecture
 
 | File | Role |
