@@ -83,6 +83,12 @@ Assert-Match $index 'id="chat-jd-disclaimer"[\s\S]*?This is an estimated compati
 Assert-Match $chatbot 'createJdNode\("p",\s*"chat-jd-result-disclaimer",\s*t\("jdDisclaimer"\)\)' 'chatbot.js must render the disclaimer again above every recruiter result.'
 Assert-Match $chatbot 'jdDisclaimer:\s*"This is an estimated compatibility score based only on the job description and Ameer''s published profile\.' 'chatbot.js must keep the exact English disclaimer text for dynamic result rendering.'
 
+# NOTE: this file is saved with a UTF-8 BOM on purpose. The '->' arrow glyph in the third
+# chip below is a non-ASCII character, and under Windows PowerShell 5.1's default ANSI
+# codepage fallback a BOM-less save can silently mangle it (the script would then compare
+# against a corrupted arrow and this assertion would go red for the wrong reason). If you
+# re-save this file, keep -Encoding UTF8 (or an editor that preserves the BOM) so the arrow
+# survives.
 $expectedChips = @(
   'What''s Ameer''s strongest experience?',
   'Walk me through his cloud &amp; Azure work',
