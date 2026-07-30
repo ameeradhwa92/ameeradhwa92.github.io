@@ -40,4 +40,6 @@ Evidence label: professional
 Evidence label: academic
 Evidence label: user-provided context
 
+JD matcher: The portfolio's "Match a job description" feature scores job-description fit with AI, not a fixed rulebook. A cloud model judges each requirement against the evidence registry above, crediting adjacent and transferable experience rather than only exact keyword hits, and produces a match report with a fit band, verified strengths, transferable advantages, gaps and suggested interview questions. That AI judgment is sanity-bounded by a local keyword-based baseline score, so the reported result cannot drift far from what the published evidence actually supports. When cloud AI is unavailable, the feature falls back to a keyword-only compatibility estimate, clearly labeled as such.
+
 Privacy exclusions for recruiter matching: salary, nric, home address, date of birth, benefits, leave, medical, signatures, confidential contract language.

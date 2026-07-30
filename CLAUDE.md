@@ -11,9 +11,9 @@ directly; `.nojekyll` disables Jekyll processing. Pushing to `main` *is* the dep
 
 ## Running locally
 
-There is no build, no test runner and no linter. Serve over HTTP — do **not** open
-`index.html` via `file://`, because the chatbot `fetch()`es its knowledge base and the
-cloud relay validates the request `Origin`:
+There is no build step and no linter, but there **is** a test suite. Serve over HTTP —
+do **not** open `index.html` via `file://`, because the chatbot `fetch()`es its knowledge
+base and the cloud relay validates the request `Origin`:
 
 ```bash
 python -m http.server 8080     # port 8080 specifically — see below
@@ -22,6 +22,30 @@ python -m http.server 8080     # port 8080 specifically — see below
 The Cloudflare Worker's `ALLOWED_ORIGINS` only whitelists the live site plus
 `http://localhost:8080` and `http://127.0.0.1:8080`. Any other port silently loses the
 cloud AI tier during local preview.
+
+Before anything ships, run the test suite from the repo root and confirm 0 failing:
+
+```bash
+node --test "tests/*.test.js"
+```
+
+`tests/*.test.js` is not the whole verification surface — `tools/` holds five more
+harnesses that catch regressions the unit tests don't (recruiter profile/KB drift, JD
+extractor/matcher/cloud-payload contracts, and the recruiter UI's exact copy strings).
+Run all five too:
+
+```bash
+node tools/test_jd_extractor.mjs
+node tools/test_jd_matcher.mjs
+node tools/test_recruiter_cloud_payload.mjs
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify_recruiter_profile.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify_recruiter_ui.ps1
+```
+
+A green tree means the `tests/` suite **and** all five `tools/` harnesses pass — not the
+`tests/` suite alone. `verify_recruiter_ui.ps1` asserts on exact disclaimer and chip
+copy, so any change to that text must update the script's expectations in the same
+change, or it goes red unnoticed.
 
 Verification is manual: open in a browser, check 375 / 768 / 1440 widths, toggle
 dark/light and EN/BM, and `curl` every project URL before publishing a status change.

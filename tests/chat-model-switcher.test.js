@@ -513,7 +513,7 @@ test('JD matcher promotion provides English localization hooks and formal Bahasa
   assert.equal(promo.children[0].getAttribute('data-i18n'), 'chat.jd.promo');
   assert.equal(
     promo.children[0].textContent,
-    'Paste a job description or load a local PDF/DOCX for a deterministic compatibility estimate.'
+    'Paste a job description or load a local PDF/DOCX. AIMeer analyzes the fit with AI and shows an evidence-backed match report.'
   );
   assert.equal(promo.children[1].id, 'chat-jd-promo-action');
   assert.equal(promo.children[1].getAttribute('data-i18n'), 'chat.jd.promoAction');
@@ -522,7 +522,7 @@ test('JD matcher promotion provides English localization hooks and formal Bahasa
   vm.runInNewContext(i18n, i18nContext);
   assert.equal(
     i18nContext.window.I18N_MS['chat.jd.promo'],
-    'Tampal huraian jawatan atau muatkan PDF/DOCX setempat untuk anggaran keserasian yang deterministik.'
+    'Tampal huraian jawatan atau muatkan PDF/DOCX setempat. AIMeer menganalisis kesesuaian dengan AI dan memaparkan laporan padanan yang disokong bukti.'
   );
   assert.equal(i18nContext.window.I18N_MS['chat.jd.promoAction'], 'Buka mod padanan huraian jawatan');
 });
@@ -564,14 +564,14 @@ test('JD matcher promotion refreshes when the visitor changes the chat language'
   setLanguage('ms');
   assert.equal(
     promo.children[0].textContent,
-    'Tampal huraian jawatan atau muatkan PDF/DOCX setempat untuk anggaran keserasian yang deterministik.'
+    'Tampal huraian jawatan atau muatkan PDF/DOCX setempat. AIMeer menganalisis kesesuaian dengan AI dan memaparkan laporan padanan yang disokong bukti.'
   );
   assert.equal(promo.children[1].textContent, 'Buka mod padanan huraian jawatan');
 
   setLanguage('en');
   assert.equal(
     promo.children[0].textContent,
-    'Paste a job description or load a local PDF/DOCX for a deterministic compatibility estimate.'
+    'Paste a job description or load a local PDF/DOCX. AIMeer analyzes the fit with AI and shows an evidence-backed match report.'
   );
   assert.equal(promo.children[1].textContent, 'Open JD matcher');
 });
@@ -793,7 +793,7 @@ test('JD scoring runs automatically on the cloud without a click, keeping the de
   assert.match(afterScoring, /Verification questions/i, 'the report should render the deduped interview-question heading');
   assert.equal(
     elements['chat-jd-status'].textContent,
-    'Deterministic match ready from pasted text.',
+    'Match report ready from pasted text.',
     'the status line should settle once scoring finishes'
   );
 
@@ -1324,7 +1324,7 @@ test('a transport failure is retried once, then settles on the deterministic est
   assert.match(rendered, /Deterministic fallback is active/i, 'the fallback status should render');
   assert.equal(
     elements['chat-jd-status'].textContent,
-    'Deterministic match ready from pasted text.',
+    'Match report ready from pasted text.',
     'the status line must settle rather than stay on "analyzing"'
   );
 });
@@ -1352,7 +1352,7 @@ test('a 4xx from the Worker is not retried', async () => {
   assert.match(collectText(elements['chat-jd-result']), /72%/, 'the deterministic score stays visible');
   assert.equal(
     elements['chat-jd-status'].textContent,
-    'Deterministic match ready from pasted text.',
+    'Match report ready from pasted text.',
     'the status line must settle'
   );
 });
@@ -1534,7 +1534,7 @@ test('a language change invalidates an in-flight recruiter reasoning response', 
   assert.doesNotMatch(collectText(elements['chat-jd-result']), /stale language reasoning/i);
   assert.equal(
     elements['chat-jd-status'].textContent,
-    'Padanan deterministik siap daripada teks tampalan.',
+    'Laporan padanan sedia daripada teks tampalan.',
     'the status line must not stay stuck on the AI-analyzing message after the language change'
   );
 });

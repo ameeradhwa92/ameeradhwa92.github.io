@@ -722,67 +722,10 @@
     return result;
   }
 
-  function fallback(deterministicResult, input, language) {
-    var lang = language === "ms" ? "ms" : "en";
-    var result = isPlainObject(deterministicResult) ? deterministicResult : {};
-    var strengths = (Array.isArray(result.strongMatches) ? result.strongMatches : []).slice(0, 6).map(function (item) {
-      return {
-        term: clipText(item && item.term, 120),
-        note: clipText(item && item.label, 220)
-      };
-    });
-    var gaps = (Array.isArray(result.gaps) ? result.gaps : []).slice(0, 6).map(function (item) {
-      return {
-        term: clipText(item && item.term, 120),
-        note: clipText(item && item.label, 220)
-      };
-    });
-    var limitations = []
-      .concat((Array.isArray(result.partialMatches) ? result.partialMatches : []).slice(0, 6).map(function (item) {
-        return {
-          term: clipText(item && item.term, 120),
-          note: lang === "ms"
-            ? "Padanan ini kekal separa dan perlu disahkan semasa saringan."
-            : "This remains a partial match and should be validated during screening."
-        };
-      }))
-      .concat((Array.isArray(result.unverified) ? result.unverified : []).slice(0, 6).map(function (item) {
-        return {
-          term: clipText(item && item.term, 120),
-          note: lang === "ms"
-            ? "Tiada bukti terbitan yang mengesahkan keperluan ini setakat ini."
-            : "No published evidence verifies this requirement yet."
-        };
-      }));
-    var interviewQuestions = (Array.isArray(result.interviewTopics) ? result.interviewTopics : []).slice(0, 6).map(function (item) {
-      return {
-        term: clipText(item && item.term, 120),
-        question: clipText(item && item.prompt, 220)
-      };
-    });
-
-    return {
-      mode: "deterministic-fallback",
-      language: lang,
-      deterministicScore: clampScore(result.deterministicScore !== undefined ? result.deterministicScore : result.score),
-      narrative: lang === "ms"
-        ? "Ringkasan deterministik digunakan. Kekuatan yang disahkan, jurang yang nyata, dan soalan saringan kekal dipaparkan tanpa penaakulan AI."
-        : "Deterministic fallback is active. Verified strengths, explicit gaps, and recruiter screening questions remain available without AI reasoning.",
-      sections: {
-        strengths: strengths,
-        gaps: gaps,
-        limitations: limitations,
-        interviewQuestions: interviewQuestions
-      },
-      inputLanguage: input && input.language ? input.language : lang
-    };
-  }
-
   global.JDReasoning = {
     buildInput: buildInput,
     validateModelOutput: validateModelOutput,
     mergeResult: mergeResult,
-    fallback: fallback,
     computeFitBand: computeFitBand
   };
 }(typeof window !== "undefined" ? window : globalThis));

@@ -765,29 +765,6 @@ test('JDReasoning.mergeResult refuses score lift from incompatible evidence reco
   }
 });
 
-test('JDReasoning.fallback returns deterministic recruiter-facing reasoning without AI output', () => {
-  const { harness, profile, normalized, result } = analyze(`Required Skills:
-- Kubernetes
-- Azure
-- Azure DevOps
-- Bicep
-Preferred Skills:
-- CI/CD
-`);
-  assert.ok(harness.JDReasoning, 'JDReasoning should be loaded');
-
-  const input = harness.JDReasoning.buildInput(normalized, result, profile, 'ms');
-  const fallback = harness.JDReasoning.fallback(result, input, 'ms');
-
-  assert.equal(fallback.mode, 'deterministic-fallback');
-  assert.equal(fallback.language, 'ms');
-  assert.equal(fallback.deterministicScore, result.score);
-  assert.equal(fallback.sections.strengths.length > 0, true, 'fallback should preserve deterministic strengths');
-  assert.equal(fallback.sections.gaps.length > 0 || fallback.sections.limitations.length > 0, true, 'fallback should preserve deterministic gaps or limitations');
-  assert.equal(fallback.sections.interviewQuestions.length > 0, true, 'fallback should preserve deterministic interview topics');
-  assert.match(fallback.narrative, /deterministik|disahkan|jurang/i);
-});
-
 test('JDReasoning task 6 fixtures preserve deterministic scores and keep every score lift audited and bounded', () => {
   const fixtures = [
     {
