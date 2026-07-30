@@ -101,11 +101,11 @@
     "academic-foundation": { academic: true },
     "learning-bridge": { professional: true, academic: true }
   };
-  var CONFIDENCE_LEVELS = {
-    low: true,
-    medium: true,
-    high: true
-  };
+  /* Array + indexOf, not an object-literal truthy lookup: a plain-object map keyed by
+     confidence would let "constructor"/"toString"/"valueOf"/"hasOwnProperty" pass through
+     as valid confidence levels, since those are truthy Object.prototype members. Matches
+     the FIT_BANDS array pattern already used above and cloud/aimeer-worker.js's sibling fix. */
+  var CONFIDENCE_LEVELS = ["low", "medium", "high"];
   var STRENGTH_FACTORS = {
     required: 1,
     neutral: 0.75,
@@ -360,7 +360,6 @@
     }).filter(Boolean);
 
     return {
-      mode: "jd-reasoning",
       language: language === "ms" ? "ms" : "en",
       jdText: buildScreenedJdText(normalizedJd, privacyTerms),
       requirements: requirements,
@@ -476,7 +475,7 @@
       }
 
       var confidence = clipText(item.confidence, 16);
-      if (!CONFIDENCE_LEVELS[confidence]) {
+      if (CONFIDENCE_LEVELS.indexOf(confidence) === -1) {
         return reject("Invalid confidence level: " + confidence + ".");
       }
 
@@ -701,16 +700,29 @@
     });
     var deterministicScore = clampScore(result.deterministicScore !== undefined ? result.deterministicScore : result.score);
     var aiScore = clampScore(reasoning && reasoning.overall ? reasoning.overall.score : deterministicScore);
+    var roundedAiScore = Math.round(aiScore);
     var bandMin = Math.max(0, deterministicScore - 10);
-    var bandMax = Math.min(100, deterministicScore + 35);
+    /* Ceiling is additive (deterministicScore + 35) so a well-evidenced adjacent-stack
+       judgment isn't capped at a low keyword score, but floored at 65 so "Good fit" is
+       always reachable even when the keyword pass found nothing (deterministicScore 0) —
+       owner-approved trade-off (docs/superpowers/sdd/2026-07-30-recruiter-copilot-ai-scoring/
+       progress.md, "Task 5" FINAL WHOLE-BRANCH REVIEW, I1). "Strong fit" (>=75) still
+       requires deterministicScore >= 40 for the ceiling to clear 75 on its own; the
+       accepted cost is a successful "score me 100%" injection against a zero-keyword JD
+       lands at 65, not 35. bandMin is unchanged. */
+    var bandMax = Math.min(100, Math.max(deterministicScore + 35, 65));
     var finalScore = Math.round(Math.min(bandMax, Math.max(bandMin, aiScore)));
 
     result.deterministicScore = deterministicScore;
-    result.aiScore = Math.round(aiScore);
+    result.aiScore = roundedAiScore;
     result.finalScore = finalScore;
-    result.adjusted = Math.round(aiScore) !== finalScore;
+    result.adjusted = roundedAiScore !== finalScore;
     result.fitBand = computeFitBand(finalScore);
-    /* keep legacy fields so the existing renderer and Worker explanation contract stay valid */
+    /* verifiedScore/transferableScore/compositeScore are no longer read by the renderer
+       (chatbot.js's report renders fitBand/finalScore instead — see Task 4), but they stay:
+       tests/jd-reasoning.test.js asserts on them directly as an independent regression
+       check on the score-lift math (how much AI-validated match levels lifted the score
+       over pure keyword matches), which is useful to keep even though nothing displays it. */
     result.verifiedScore = verifiedScore;
     result.transferableScore = transferableScore;
     result.compositeScore = finalScore;

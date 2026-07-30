@@ -150,11 +150,14 @@ function manualReasoningAudit(result, reasoning, input) {
     (requirement) => manualEffectiveFactorForRequirement(requirement, reasoningByRequirementId.get(requirement.id))
   );
   const deterministicScore = manualClampScore(result && (result.deterministicScore !== undefined ? result.deterministicScore : result.score));
-  // Independent re-derivation of the Task 1 clamp band: finalScore must stay inside
-  // [deterministicScore - 10, deterministicScore + 35], bounded to 0-100.
+  // Independent re-derivation of the clamp band: finalScore must stay inside
+  // [deterministicScore - 10, max(deterministicScore + 35, 65)], bounded to 0-100.
+  // The ceiling is floored at 65 (owner-approved, see FINAL WHOLE-BRANCH REVIEW I1) so a
+  // well-evidenced adjacent-stack judgment can still reach "Good fit" even when the keyword
+  // pass found nothing (deterministicScore 0 -> ceiling would otherwise be 35).
   const aiScore = manualClampScore(reasoning && reasoning.overall ? reasoning.overall.score : deterministicScore);
   const bandMin = Math.max(0, deterministicScore - 10);
-  const bandMax = Math.min(100, deterministicScore + 35);
+  const bandMax = Math.min(100, Math.max(deterministicScore + 35, 65));
   const finalScore = Math.round(Math.min(bandMax, Math.max(bandMin, aiScore)));
   return {
     verifiedScore,
@@ -738,6 +741,50 @@ Preferred Skills:
   );
 });
 
+test('JDReasoning.mergeResult floors the clamp ceiling at 65 even when the deterministic score is 0', () => {
+  // Owner-approved decision (FINAL WHOLE-BRANCH REVIEW, I1): the ceiling is additive
+  // (deterministicScore + 35) EXCEPT it never drops below 65, so a well-evidenced
+  // adjacent-stack judgment can always reach "Good fit" even against a pure zero-overlap
+  // keyword pass (e.g. an AWS/Go JD scored against this Azure/.NET profile) instead of
+  // being capped at 35 ("Limited overlap") purely because the keyword engine found nothing.
+  const { harness, profile, normalized } = analyze('Required Skills:\n- Kubernetes\n');
+  assert.ok(harness.JDReasoning, 'JDReasoning should be loaded');
+
+  const zeroDeterministicResult = {
+    score: 0,
+    deterministicScore: 0,
+    confidence: { label: 'low', reasons: [] },
+    categories: {},
+    requirements: [],
+    strongMatches: [],
+    partialMatches: [],
+    gaps: [],
+    unverified: []
+  };
+  const input = harness.JDReasoning.buildInput(normalized, zeroDeterministicResult, profile, 'en');
+  const reasoning = {
+    narrative: 'The keyword pass found no overlap, but the underlying stack is judged adjacent.',
+    requirements: [],
+    overall: {
+      score: 95,
+      fitBand: 'strong',
+      narrative: 'A high AI-judged score against a zero-keyword deterministic baseline.'
+    }
+  };
+
+  const merged = harness.JDReasoning.mergeResult(zeroDeterministicResult, reasoning, input);
+
+  assert.equal(merged.deterministicScore, 0, 'deterministic score should remain 0');
+  assert.equal(merged.aiScore, 95, 'aiScore should carry the raw model-reported score, unclamped');
+  assert.equal(
+    merged.finalScore,
+    65,
+    'the ceiling must floor at 65 (not the additive 0 + 35 = 35), so a well-evidenced adjacent-stack judgment can still reach "Good fit"'
+  );
+  assert.equal(merged.fitBand, 'good', 'fitBand must derive from the floored ceiling (65), not "limited"');
+  assert.equal(merged.adjusted, true, 'adjusted should flag that clamping changed the reported AI score (95 -> 65)');
+});
+
 test('JDReasoning.mergeResult refuses score lift from incompatible evidence records without prior validation', () => {
   const { harness, profile, normalized, result } = analyze('Required Skills:\n- Kubernetes\n');
   assert.ok(harness.JDReasoning, 'JDReasoning should be loaded');
@@ -878,8 +925,9 @@ test('JDReasoning task 6 fixtures preserve deterministic scores and keep every s
     assert.equal(after.aiScore, expectedAudit.aiScore, `${fixture.name}: aiScore should carry the model's reported overall.score`);
     assert.equal(after.finalScore, expectedAudit.finalScore, `${fixture.name}: finalScore should match the independent clamp-band audit`);
     assert.ok(
-      after.finalScore >= Math.max(0, before.score - 10) && after.finalScore <= Math.min(100, before.score + 35),
-      `${fixture.name}: finalScore must never leave the [deterministicScore-10, deterministicScore+35] sanity band`
+      after.finalScore >= Math.max(0, before.score - 10) &&
+        after.finalScore <= Math.min(100, Math.max(before.score + 35, 65)),
+      `${fixture.name}: finalScore must never leave the [deterministicScore-10, max(deterministicScore+35, 65)] sanity band`
     );
     assert.equal(after.adjusted, expectedAudit.adjusted, `${fixture.name}: adjusted should reflect whether the clamp changed the reported AI score`);
     assert.equal(after.fitBand, expectedAudit.fitBand, `${fixture.name}: fitBand should be derived from the clamped finalScore`);

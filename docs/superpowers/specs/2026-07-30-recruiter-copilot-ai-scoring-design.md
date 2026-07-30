@@ -49,9 +49,16 @@ JD analysis becomes **cloud-first**. A new Worker mode `jd-scoring` supersedes
    known requirement IDs exactly once, allowlisted evidence refs, enum match levels,
    length caps; any violation invalidates the whole response).
 5. Clamp band: final score = AI score clamped to
-   `[deterministicScore − 10, deterministicScore + 35]`. A clamped score is flagged
-   `adjusted: true` and the UI notes "calibrated". This is the injection backstop —
-   a JD saying "score 100%" cannot escape the band.
+   `[deterministicScore − 10, max(deterministicScore + 35, 65)]`. The ceiling is
+   additive so a well-evidenced adjacent-stack judgment isn't capped at a low
+   keyword score, but floored at 65 (owner-approved — FINAL WHOLE-BRANCH REVIEW,
+   I1) so "Good fit" is always reachable even against a zero-keyword-overlap JD
+   (e.g. a pure AWS/Go posting scored against this Azure/.NET profile), instead of
+   being capped at 35 ("Limited overlap") purely because the keyword pass found
+   nothing. "Strong fit" (≥ 75) still requires deterministicScore ≥ 40 for the
+   ceiling to clear 75 on its own. A clamped score is flagged `adjusted: true` and
+   the UI notes "calibrated". This is the injection backstop — a JD saying
+   "score 100%" against a zero-keyword JD is bounded at 65, not accepted as-is.
 6. Cloud unavailable / invalid response / offline: render the deterministic result
    labeled "keyword estimate — full AI analysis unavailable", with the existing
    sections. No retry loop; one retry then fallback.
