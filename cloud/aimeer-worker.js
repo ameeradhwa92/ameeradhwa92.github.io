@@ -19,7 +19,7 @@
    deployed by hand, and a paste that silently does not take effect looks exactly like a fix that
    did not work. That cost several rounds of debugging: the same failures kept coming back because
    the revision under test was never the revision deployed. */
-const WORKER_REVISION = "2026-07-30-jd-10";
+const WORKER_REVISION = "2026-07-30-jd-11";
 
 const SITE = "https://ameeradhwa92.github.io";
 const KB_URL = SITE + "/assets/data/aimeer-kb.txt";
@@ -1225,6 +1225,46 @@ function isRequirementIdValid(id, category) {
    modes now send this exact message, and it is the one that works live. */
 const JD_REASONING_SCORE_NOTE = "\nDeterministic score is client-authoritative and must not be changed.";
 
+/* Every requirement in the input carries `classification`, whose four values are strong / partial /
+   gap / unverified. The model was copying that value straight into the `matchLevel` field it is
+   asked to produce — two adjacent fields, one of them already filled in. Confirmed against the
+   live model: rewriting every classification to "gap" turned a reliably failing request into a
+   passing one, because "gap" happens to be a recognized matchLevel synonym while "strong" and
+   "partial" are deliberately not (see JD_REASONING_MATCH_LEVEL_SYNONYMS — mapping them would
+   invent provenance the model never claimed).
+
+   So remove the temptation instead of widening what is accepted: the model is shown the same
+   information as a SENTENCE rather than as an enum token. Deliberately not a hyphenated lowercase
+   word — "keyword-hit" would have the exact shape of a matchLevel value and simply move the echo
+   rather than stop it. A short phrase with spaces reads as context, not as a value to copy into an
+   enum field, and if one ever were copied the rejection reason would name it unmistakably.
+   This changes only what the model READS. The wire contract, the validators and the accepted
+   matchLevel vocabulary are all untouched, so browser and Worker stay in lockstep.
+   buildJdScoringOverallContent already renames this same field for the same reason. */
+const JD_REASONING_BASELINE_LABELS = {
+  strong: "keyword scan matched published evidence",
+  partial: "keyword scan matched only in part",
+  gap: "keyword scan found no match",
+  unverified: "keyword scan could not verify this"
+};
+
+function toModelFacingReasoningInput(reasoningInput) {
+  if (!isPlainObject(reasoningInput) || !Array.isArray(reasoningInput.requirements)) {
+    return reasoningInput;
+  }
+  return {
+    ...reasoningInput,
+    requirements: reasoningInput.requirements.map((requirement) => {
+      const { classification, ...rest } = requirement;
+      return {
+        ...rest,
+        keywordBaseline: JD_REASONING_BASELINE_LABELS[classification] ||
+          JD_REASONING_BASELINE_LABELS.unverified
+      };
+    })
+  };
+}
+
 /* The requirement count goes in the USER message, not just the system prompt: the live jd-scoring
    model was returning one object per bullet of the job description rather than one per supplied
    requirement, and the count is the one instruction that has to survive next to the data it
@@ -1240,7 +1280,10 @@ function buildJdReasoningMessage(reasoningInput, scoreNote) {
       "\nReturn exactly " + requirementCount + " objects in requirements — one for each entry of the " +
       "requirements list below, reusing its requirementId values exactly. Judge that list, not any " +
       "other list of skills you can see." +
-      "\n\nReasoning input JSON:\n" + JSON.stringify(reasoningInput)
+      "\nkeywordBaseline is prose describing what a keyword scan already concluded. It is context " +
+      "only — never copy it into matchLevel. matchLevel is your own judgement of provenance and " +
+      "must be exactly one of the listed values." +
+      "\n\nReasoning input JSON:\n" + JSON.stringify(toModelFacingReasoningInput(reasoningInput))
   };
 }
 

@@ -1898,3 +1898,55 @@ test('existing chat, summary, and jd-explanation modes remain compatible', async
   assert.equal(explanation.fetchCalls.some((url) => url.includes('/assets/data/aimeer-kb.txt')), true);
   assert.match(explanation.aiCalls[0].payload.messages[0].content, /LEGACY-KB-FACT/);
 });
+
+/* The live model was copying each requirement's `classification` value straight into the
+   `matchLevel` field it was asked to produce, because the two fields sit next to each other and
+   one of them arrives already filled in. That is why "strong" and "partial" kept coming back as
+   match levels: they are classification values, not the model's vocabulary. Mapping them was
+   rejected on purpose (JD_REASONING_MATCH_LEVEL_SYNONYMS explains why — it would invent
+   provenance), so the fix removes the temptation instead by relabelling the field the model reads.
+
+   Assert on the prompt the model actually receives: no classification key, and none of its four
+   values anywhere in the requirements it is judging. */
+test('the reasoning prompt never shows the model a matchLevel-shaped classification value', async () => {
+  const request = buildValidRequest();
+  const profile = loadProfile();
+  const response = await callWorker(request, {
+    profile,
+    aiResponse: buildValidReasoningResponse(request, profile)
+  });
+
+  assert.equal(response.status, 200);
+
+  const userMessage = response.aiCalls[0].payload.messages
+    .filter((message) => message.role === 'user')
+    .map((message) => message.content)
+    .join('\n');
+
+  const reasoningInput = JSON.parse(userMessage.slice(userMessage.indexOf('{')));
+  assert.ok(reasoningInput.requirements.length > 0, 'the prompt should carry requirements to judge');
+
+  for (const requirement of reasoningInput.requirements) {
+    assert.equal('classification' in requirement, false,
+      'classification is renamed before the model sees it');
+    /* A phrase with spaces, not a hyphenated token: "keyword-hit" would have the exact shape of a
+       matchLevel value and would just move the echo rather than stop it. */
+    assert.match(requirement.keywordBaseline, /^keyword scan /,
+      'the keyword verdict must read as prose, not as an enum token');
+    assert.equal(/^[a-z]+(-[a-z]+)+$/.test(requirement.keywordBaseline), false,
+      'the keyword verdict must not be matchLevel-shaped');
+  }
+
+  /* Belt and braces: the two values that actually break must not survive anywhere in the
+     requirement list, whatever key they might be hiding under. Only "strong" and "partial" are
+     checked. "gap" and "unverified" also appear as classifications, but an echo of either still
+     resolves to a real matchLevel ("gap" through the synonym table, "unverified" because it is
+     one), so the response validates and simply reads weak rather than failing — and "unverified"
+     is independently a legitimate evidenceType value that belongs in the prompt. */
+  const requirementJson = JSON.stringify(reasoningInput.requirements);
+  for (const classification of ['"strong"', '"partial"']) {
+    assert.equal(requirementJson.includes(classification), false,
+      `${classification} is a classification value with no matchLevel counterpart and must not ` +
+      `appear in the model's input`);
+  }
+});
