@@ -224,7 +224,7 @@ const JD_REASONING_PROMPT =
 const JD_SCORING_MAX_TOKENS = 900;
 const JD_SCORING_ROOT_EXTRA_KEYS = ["overall"];
 const JD_SCORING_OVERALL_KEYS = ["score", "fitBand", "narrative"];
-const JD_SCORING_FIT_BANDS = { strong: true, good: true, partial: true, limited: true };
+const JD_SCORING_FIT_BANDS = ["strong", "good", "partial", "limited"];
 
 const JD_SCORING_PROMPT =
   "You are scoring how well Ameer's published professional profile fits a job description, for a recruiter. " +
@@ -277,70 +277,25 @@ export default {
     const mode = detectMode(body.mode);
 
     if (mode === "jd-reasoning") {
-      let profile = null;
-      try {
-        profile = await loadReasoningProfile();
-      } catch {}
-      if (!profile) return json({ error: "profile-unavailable" }, 502, cors);
-
-      const reasoningPayload = validateJdReasoningBody(body, profile);
-      if (!reasoningPayload.ok) {
-        return json({ error: reasoningPayload.error }, 400, cors);
-      }
-
-      try {
-        const out = await env.AI.run(MODEL, {
-          messages: [
-            { role: "system", content: PERSONA_HEAD + "\n\n" + JD_REASONING_PROMPT },
-            buildJdReasoningMessage(reasoningPayload.reasoningInput)
-          ],
-          max_tokens: JD_REASONING_MAX_TOKENS,
-          temperature: 0.1,
-        });
-        const validated = validateJdReasoningModelOutput(out && out.response ? out.response : "", reasoningPayload.reasoningInput);
-        if (!validated.ok) {
-          return json({ error: "reasoning-invalid" }, 502, cors);
-        }
-        return json({ reasoning: JSON.stringify(validated.reasoning) }, 200, cors);
-      } catch (e) {
-        return json({ error: "ai-failed", detail: String((e && e.message) || e).slice(0, 200) }, 502, cors);
-      }
+      return runJdReasoningMode(env, cors, body, {
+        prompt: JD_REASONING_PROMPT,
+        maxTokens: JD_REASONING_MAX_TOKENS,
+        validateBody: validateJdReasoningBody,
+        buildUserContent: (payload) => buildJdReasoningMessage(payload.reasoningInput).content,
+        validateOutput: validateJdReasoningModelOutput
+      });
     }
 
     if (mode === "jd-scoring") {
-      let profile = null;
-      try {
-        profile = await loadReasoningProfile();
-      } catch {}
-      if (!profile) return json({ error: "profile-unavailable" }, 502, cors);
-
-      const scoringPayload = validateJdScoringBody(body, profile);
-      if (!scoringPayload.ok) {
-        return json({ error: scoringPayload.error }, 400, cors);
-      }
-
-      try {
-        const out = await env.AI.run(MODEL, {
-          messages: [
-            { role: "system", content: PERSONA_HEAD + "\n\n" + JD_SCORING_PROMPT },
-            {
-              role: "user",
-              content:
-                buildJdReasoningMessage(scoringPayload.reasoningInput).content +
-                "\n\n===JD-START===\n" + scoringPayload.jdText + "\n===JD-END==="
-            }
-          ],
-          max_tokens: JD_SCORING_MAX_TOKENS,
-          temperature: 0.1,
-        });
-        const validated = validateJdScoringModelOutput(out && out.response ? out.response : "", scoringPayload.reasoningInput);
-        if (!validated.ok) {
-          return json({ error: "reasoning-invalid" }, 502, cors);
-        }
-        return json({ reasoning: JSON.stringify(validated.reasoning) }, 200, cors);
-      } catch (e) {
-        return json({ error: "ai-failed", detail: String((e && e.message) || e).slice(0, 200) }, 502, cors);
-      }
+      return runJdReasoningMode(env, cors, body, {
+        prompt: JD_SCORING_PROMPT,
+        maxTokens: JD_SCORING_MAX_TOKENS,
+        validateBody: validateJdScoringBody,
+        buildUserContent: (payload) =>
+          buildJdReasoningMessage(payload.reasoningInput).content +
+          "\n\n===JD-START===\n" + payload.jdText + "\n===JD-END===",
+        validateOutput: validateJdScoringModelOutput
+      });
     }
 
     if (mode === "jd-explanation" &&
@@ -391,6 +346,45 @@ export default {
     }
   },
 };
+
+/* Shared by the jd-reasoning and jd-scoring modes: load the recruiter evidence profile,
+   validate the request body, call Workers AI with a server-assembled system prompt (never
+   a client-supplied one), validate the model's output, and return the same success/error
+   response shapes either mode would produce on its own. The four differences between the
+   modes (system prompt, max_tokens, body validator, output validator) and how the user
+   message content is built are passed in as `options` so a fix to this shared shape only
+   needs to be made once in a file that is otherwise maintained by hand-pasting into the
+   Cloudflare dashboard. */
+async function runJdReasoningMode(env, cors, body, options) {
+  let profile = null;
+  try {
+    profile = await loadReasoningProfile();
+  } catch {}
+  if (!profile) return json({ error: "profile-unavailable" }, 502, cors);
+
+  const payload = options.validateBody(body, profile);
+  if (!payload.ok) {
+    return json({ error: payload.error }, 400, cors);
+  }
+
+  try {
+    const out = await env.AI.run(MODEL, {
+      messages: [
+        { role: "system", content: PERSONA_HEAD + "\n\n" + options.prompt },
+        { role: "user", content: options.buildUserContent(payload) }
+      ],
+      max_tokens: options.maxTokens,
+      temperature: 0.1,
+    });
+    const validated = options.validateOutput(out && out.response ? out.response : "", payload.reasoningInput);
+    if (!validated.ok) {
+      return json({ error: "reasoning-invalid" }, 502, cors);
+    }
+    return json({ reasoning: JSON.stringify(validated.reasoning) }, 200, cors);
+  } catch (e) {
+    return json({ error: "ai-failed", detail: String((e && e.message) || e).slice(0, 200) }, 502, cors);
+  }
+}
 
 async function loadKB() {
   return loadCachedText(KB_URL, "aimeer-kb-cache=v1", "text/plain");
@@ -1060,7 +1054,7 @@ function validateJdScoringModelOutput(rawOutput, input) {
     overall.score < 0 || overall.score > 100) {
     return { ok: false, error: "overall-score-invalid" };
   }
-  if (!JD_SCORING_FIT_BANDS[overall.fitBand]) {
+  if (!JD_SCORING_FIT_BANDS.includes(overall.fitBand)) {
     return { ok: false, error: "overall-fitband-invalid" };
   }
   if (typeof overall.narrative !== "string" || !normalizeText(overall.narrative) ||

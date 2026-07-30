@@ -518,6 +518,22 @@ test('jd-reasoning returns reasoning-invalid when the model response is not stri
   assert.equal(response.aiCalls.length, 1, 'schema validation failures should still come from a single AI response');
 });
 
+test('jd-reasoning still rejects a model response carrying an extra overall root key', async () => {
+  const request = buildValidRequest({ language: 'en' });
+  const profile = loadProfile();
+  const reasoning = JSON.parse(buildValidReasoningResponse(request, profile));
+  reasoning.overall = { score: 70, fitBand: 'good', narrative: 'Should not be accepted by jd-reasoning.' };
+
+  const response = await callWorker(request, {
+    profile,
+    aiResponse: JSON.stringify(reasoning)
+  });
+
+  assert.equal(response.status, 502, 'jd-reasoning must not accept a model-supplied overall block');
+  assert.equal(response.json.error, 'reasoning-invalid');
+  assert.equal(response.aiCalls.length, 1, 'the extra root key should be rejected after a single AI response is validated');
+});
+
 test('jd-reasoning accepts all-gap deterministic requests with empty evidence ids', async () => {
   const request = buildValidRequest({
     language: 'en',
@@ -612,11 +628,6 @@ test('jd-scoring accepts a bounded valid request and returns strict JSON reasoni
     1,
     'the worker should assemble its own single system prompt'
   );
-  assert.equal(
-    response.aiCalls[0].payload.messages.some((message) => /client supplied system prompt/i.test(message.content)),
-    false,
-    'client system prompts must never be forwarded to the model'
-  );
 });
 
 test('jd-scoring rejects client-supplied messages or system prompts', async () => {
@@ -651,6 +662,19 @@ test('jd-scoring rejects missing or empty jdText', async () => {
   assert.equal(emptyResponse.aiCalls.length, 0);
 });
 
+test('jd-scoring Worker rejects clear contractual and employee-admin privacy contexts in jdText', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+
+  const response = await callWorker({
+    ...request,
+    jdText: `${request.jdText}\nExpected monthly basic salary and NRIC verification`
+  });
+
+  assert.equal(response.status, 400, 'privacy terms in jdText should be rejected at the Worker privacy boundary');
+  assert.equal(response.json.error, 'jd-privacy-invalid');
+  assert.equal(response.aiCalls.length, 0, 'privacy violations must fail before Workers AI is invoked');
+});
+
 test('jd-scoring rejects malformed overall blocks from the model', async () => {
   const request = buildValidScoringRequest({ language: 'en' });
   const profile = loadProfile();
@@ -660,7 +684,8 @@ test('jd-scoring rejects malformed overall blocks from the model', async () => {
     ['overall.score above 100', { ...base.overall, score: 101 }],
     ['unknown fitBand', { ...base.overall, fitBand: 'excellent' }],
     ['empty narrative', { ...base.overall, narrative: '' }],
-    ['extra key in overall', { ...base.overall, confidence: 'high' }]
+    ['extra key in overall', { ...base.overall, confidence: 'high' }],
+    ['missing overall entirely', undefined]
   ];
 
   for (const [label, overall] of invalidCases) {
