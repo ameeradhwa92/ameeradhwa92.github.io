@@ -158,3 +158,53 @@ test('prose-heavy posting is accepted by the Worker jd-scoring contract', async 
     global.fetch = originalFetch;
   }
 });
+
+/* `user.agile-context` is the profile's only `user-provided` record, and no matchLevel admits that
+   evidence type. Sending it to the model was a trap: it was the only support for "AI-assisted
+   development", so the model cited it at a professional level and the Worker refused the whole
+   report with `evidence-provenance-invalid` — every other requirement lost with it. Confirmed
+   against the live model: the same payload with that one id removed succeeded on every attempt. */
+test('the cloud payload never offers evidence no match level can cite', () => {
+  const { input } = analyze();
+
+  for (const record of input.evidenceRegistry) {
+    assert.ok(['professional', 'academic'].includes(record.evidenceType),
+      `${record.id} is ${record.evidenceType}, which no matchLevel admits, so it must not be sent`);
+  }
+
+  const offered = new Set(input.evidenceRegistry.map((record) => record.id));
+  for (const requirement of input.requirements) {
+    for (const ref of requirement.evidenceRefs) {
+      assert.ok(offered.has(ref),
+        `${requirement.id} cites ${ref}, which is not in the offered registry`);
+    }
+  }
+
+  /* The deterministic match lists carry their own copies of the same ids and the Worker validates
+     those too — an uncitable id surviving here fails the request at the body check instead. */
+  const lists = input.deterministicResult;
+  for (const key of ['strongMatches', 'partialMatches', 'gaps', 'unverified']) {
+    for (const item of lists[key] || []) {
+      for (const ref of item.evidenceRefs || []) {
+        assert.ok(offered.has(ref), `${key} cites ${ref}, which is not in the offered registry`);
+      }
+    }
+  }
+});
+
+test('a requirement supported only by self-reported context still reaches the model, without refs', () => {
+  const { result, input } = analyze();
+
+  /* The deterministic pass ties "AI-assisted development" to user.agile-context. That tie is left
+     alone locally — this only governs what is offered to the model. */
+  const deterministic = result.requirements.find((item) => item.term === 'AI-assisted development');
+  assert.ok(deterministic, 'the posting names AI-assisted development');
+  assert.deepEqual(Array.from(deterministic.evidenceRefs), ['user.agile-context'],
+    'the local keyword result should keep its self-reported support');
+
+  const sent = input.requirements.find((item) => item.term === 'AI-assisted development');
+  if (sent) {
+    assert.deepEqual(Array.from(sent.evidenceRefs), [],
+      'the model should see the requirement with no citable evidence, not a citation it cannot use');
+  }
+});

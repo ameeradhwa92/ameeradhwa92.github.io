@@ -880,17 +880,24 @@ test('JDReasoning task 6 fixtures preserve deterministic scores and keep every s
           recruiterFraming: 'Treat the named Laravel duration as a follow-up topic, not a verified duration match.',
           verificationQuestion: 'How much of the published delivery history was hands-on Laravel implementation specifically?'
         },
+        /* These two once cited `user.agile-context`. That record is `user-provided`, an evidence
+           type no matchLevel admits, so offering it to the model was a trap: it was the only
+           support either requirement had, the model cited it at a professional level, and the
+           Worker refused the ENTIRE report with `evidence-provenance-invalid`. buildInput no
+           longer sends uncitable evidence, so these requirements now reach the model with no refs
+           — an honest description, since nothing published backs them. The limitation text still
+           says where the context came from; it just is not offered as a citation. */
         Agile: {
           matchLevel: 'unverified',
-          evidenceRefs: ['user.agile-context'],
-          transferableCapabilities: ['Agile delivery context'],
+          evidenceRefs: [],
+          transferableCapabilities: [],
           limitation: 'Agile context is user-provided rather than independently published by an employer source.',
           verificationQuestion: 'Which Agile ceremonies and delivery ownership does he currently handle directly?'
         },
         'AI-assisted development': {
           matchLevel: 'unverified',
-          evidenceRefs: ['user.agile-context'],
-          transferableCapabilities: ['AI-assisted development', 'workflow automation'],
+          evidenceRefs: [],
+          transferableCapabilities: [],
           limitation: 'AI-tool usage is user-provided context and should stay within the published project scope.',
           verificationQuestion: 'Which current production tasks rely on Claude Code or Codex today?'
         }

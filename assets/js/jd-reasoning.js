@@ -382,23 +382,75 @@
       .map(function (entry) { return entry.requirement; });
   }
 
+  /* Evidence types a matchLevel is allowed to cite. Derived from the same table the validators
+     enforce (MATCH_LEVEL_EVIDENCE_TYPES): every level admits `professional`, `academic`, or both.
+     Nothing admits `user-provided`, so a user-provided record cannot be cited at ANY level.
+
+     Sending one anyway was a trap. `user.agile-context` is the only support the profile holds for
+     "AI-assisted development", so the model cited it — the sensible move, and the only one
+     available — at a professional level, and the Worker refused the entire report with
+     `evidence-provenance-invalid`. Every requirement went down with it, which is exactly the
+     all-or-nothing failure the per-requirement demotion elsewhere exists to avoid. Provenance
+     mismatch is deliberately NOT tolerated (see the Worker: citing self-reported context as
+     published delivery is a misuse of the registry, not an omission), so the fix is not to widen
+     what is accepted — it is to stop offering evidence the contract forbids citing.
+
+     A requirement whose only support was self-reported now reaches the model with no refs, which
+     is an honest description of it: nothing published backs it. It still appears, still gets
+     reasoned about, and still shows up in the report as unverified. */
+  var CITABLE_EVIDENCE_TYPES = { professional: true, academic: true };
+
+  function isCitableEvidence(record) {
+    return !!(record && CITABLE_EVIDENCE_TYPES[record.evidenceType]);
+  }
+
+  function keepCitableRefs(evidenceRefs, registryById) {
+    return (Array.isArray(evidenceRefs) ? evidenceRefs : []).filter(function (id) {
+      return isCitableEvidence(registryById[id]);
+    });
+  }
+
+  /* The deterministic match lists carry their own copies of the same ids, and the Worker validates
+     those against the evidence ids the payload declares. Leaving an uncitable id here would fail
+     the request at the body check instead — the same outage, one layer earlier. */
+  function stripUncitableRefs(compactResult, registryById) {
+    ["strongMatches", "partialMatches", "gaps", "unverified"].forEach(function (key) {
+      if (!Array.isArray(compactResult[key])) return;
+      compactResult[key] = compactResult[key].map(function (item) {
+        item.evidenceRefs = keepCitableRefs(item.evidenceRefs, registryById);
+        return item;
+      });
+    });
+    return compactResult;
+  }
+
   function buildInput(normalizedJd, deterministicResult, profile, language) {
     var requirements = selectRequirements((Array.isArray(deterministicResult && deterministicResult.requirements)
       ? deterministicResult.requirements : []).map(compactRequirement), REQUIREMENT_BUDGET);
     var privacyTerms = getPrivacyTerms(profile);
-    var referencedIds = Object.create(null);
-    for (var requirementIndex = 0; requirementIndex < requirements.length; requirementIndex += 1) {
-      var refs = requirements[requirementIndex].evidenceRefs;
-      for (var refIndex = 0; refIndex < refs.length; refIndex += 1) {
-        referencedIds[refs[refIndex]] = true;
-      }
-    }
 
     var registryById = Object.create(null);
     var recruiterEvidence = Array.isArray(profile && profile.recruiterEvidence) ? profile.recruiterEvidence : [];
     for (var recordIndex = 0; recordIndex < recruiterEvidence.length; recordIndex += 1) {
       var record = compactEvidenceRecord(recruiterEvidence[recordIndex]);
       if (record && record.id) registryById[record.id] = record;
+    }
+
+    requirements = requirements.map(function (requirement) {
+      var citableRefs = keepCitableRefs(requirement.evidenceRefs, registryById);
+      if (citableRefs.length === requirement.evidenceRefs.length) return requirement;
+      var copy = {};
+      Object.keys(requirement).forEach(function (key) { copy[key] = requirement[key]; });
+      copy.evidenceRefs = citableRefs;
+      return copy;
+    });
+
+    var referencedIds = Object.create(null);
+    for (var requirementIndex = 0; requirementIndex < requirements.length; requirementIndex += 1) {
+      var refs = requirements[requirementIndex].evidenceRefs;
+      for (var refIndex = 0; refIndex < refs.length; refIndex += 1) {
+        referencedIds[refs[refIndex]] = true;
+      }
     }
 
     var evidenceRegistry = Object.keys(referencedIds).sort().map(function (id) {
@@ -409,7 +461,7 @@
       language: language === "ms" ? "ms" : "en",
       jdText: buildScreenedJdText(normalizedJd, privacyTerms),
       requirements: requirements,
-      deterministicResult: compactDeterministicResult(deterministicResult || {}),
+      deterministicResult: stripUncitableRefs(compactDeterministicResult(deterministicResult || {}), registryById),
       evidenceRegistry: evidenceRegistry,
       capabilityVocabulary: buildCapabilityVocabulary(evidenceRegistry)
     };
