@@ -1591,7 +1591,19 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(buildJdScoringCloudPayload(input))
     }).then(function (r) {
-      if (!r.ok) throw new Error("cloud-" + r.status);
+      /* A failed response body carries `error` and, for a 502 reasoning-invalid, `reason` —
+         the specific output-validation rule the model broke. Fold it into the thrown message
+         so the console.warn in applyScoringFallback names the actual cause instead of a bare
+         status code; without it a live scoring failure is indistinguishable from any other.
+         Diagnostic only — this string reaches console.warn, never the DOM. Keep the
+         "cloud-<status>" prefix intact: the retry policy below matches on it. */
+      if (!r.ok) {
+        return r.json().catch(function () { return null; }).then(function (d) {
+          var reason = d && typeof d.reason === "string" && d.reason ? d.reason
+            : (d && typeof d.error === "string" ? d.error : "");
+          throw new Error("cloud-" + r.status + (reason ? ":" + reason : ""));
+        });
+      }
       return r.json();
     }).then(function (d) {
       var reply = String((d && (d.reasoning || d.reply)) || "").trim();
@@ -1676,8 +1688,12 @@
         if (!canApplyReasoning()) return null;
         /* A 4xx is the Worker refusing this exact payload — a privacy or shape violation.
            Sending it again would fail identically, so retry only transport failures,
-           unparseable responses and invalid model output. */
-        if (/^cloud-4\d\d$/.test(String(firstError && firstError.message))) throw firstError;
+           unparseable responses and invalid model output.
+           The (?::|$) is load-bearing: requestJdScoringViaCloud appends ":<reason>" to the
+           message when the Worker names a failure reason, and an anchored /^cloud-4\d\d$/
+           would stop matching — silently re-transmitting a payload the Worker already
+           refused, including one it refused on privacy grounds. */
+        if (/^cloud-4\d\d(?::|$)/.test(String(firstError && firstError.message))) throw firstError;
         if (window.console && console.warn) console.warn("JD scoring retry after:", firstError);
         return requestScoringAttempt();
       });

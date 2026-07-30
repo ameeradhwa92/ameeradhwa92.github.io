@@ -41,6 +41,23 @@ Suggested smoke tests after a manual redeploy:
   the score.
 - `jd-reasoning` accepts a bounded valid payload and returns structured JSON
   reasoning, while invalid payloads return safe error codes.
+- `jd-scoring` accepts the same payload plus the JD prose and returns an
+  `overall` block. This is the mode the live site uses for every match report.
+
+## Diagnosing a `reasoning-invalid` 502
+
+`jd-scoring` and `jd-reasoning` reject a model response that breaks the output
+schema, and both return `502 {"error": "reasoning-invalid", "reason": "..."}`.
+The `reason` names the rule that failed — `json-invalid`, `match-level-invalid`,
+`evidence-invalid`, `capability-invalid`, `requirements-invalid`,
+`overall-fitband-invalid`, `unknown-key-invalid:<context>:<key>`, and so on. It
+is always a fixed code (the key name in the last of those is stripped to
+`[A-Za-z0-9_.-]` and clipped to 40 characters), never an echo of model prose.
+
+The browser folds the reason into a `console.warn` line — `JD scoring fallback:
+Error: cloud-502:capability-invalid` — and never renders it. A visitor still sees
+the labeled keyword estimate. So: open DevTools, paste a JD, and read the reason
+rather than guessing which rule the 8B model broke.
 
 ## Free-tier limits
 

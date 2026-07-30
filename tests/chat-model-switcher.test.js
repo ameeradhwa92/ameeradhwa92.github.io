@@ -1502,6 +1502,62 @@ test('a 4xx from the Worker is not retried', async () => {
   );
 });
 
+/* The Worker's 502 body names which output-validation rule the model broke. That reason is the
+   only way to diagnose a scoring failure that happens only in production, so it has to survive
+   the trip into the console diagnostic. */
+test('the Worker failure reason reaches the console diagnostic', async () => {
+  const warnings = [];
+  const { context, elements, cloudCalls } = createScoringFailureContext(
+    () => Promise.resolve({
+      ok: false,
+      status: 502,
+      json: () => Promise.resolve({ error: 'reasoning-invalid', reason: 'capability-invalid' })
+    })
+  );
+  context.console = { warn(...args) { warnings.push(args.map(String).join(' ')); } };
+  context.window.console = context.console;
+
+  await loadChat(context);
+  await flushAsync();
+  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC ownership.';
+  elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+
+  assert.equal(cloudCalls.length, 2, 'a 502 is still retried once');
+  assert.equal(
+    warnings.some((line) => line.includes('capability-invalid')),
+    true,
+    'the specific validation rule must appear in the console diagnostic, not just "cloud-502"'
+  );
+  assert.match(collectText(elements['chat-jd-result']), /72%/, 'the deterministic score still stands');
+});
+
+/* Guards the coupling between the message format and the retry regex: the reason is appended
+   to the thrown "cloud-<status>" message, and an anchored /^cloud-4\d\d$/ would stop matching
+   — silently re-sending a payload the Worker already refused, including on privacy grounds. */
+test('a 4xx carrying a reason is still not retried', async () => {
+  const { context, elements, cloudCalls } = createScoringFailureContext(
+    () => Promise.resolve({
+      ok: false,
+      status: 400,
+      json: () => Promise.resolve({ error: 'jd-privacy-invalid', reason: 'jd-privacy-invalid' })
+    })
+  );
+
+  await loadChat(context);
+  await flushAsync();
+  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC ownership.';
+  elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+
+  assert.equal(cloudCalls.length, 1, 'a refused payload must not be transmitted a second time');
+  assert.equal(
+    elements['chat-jd-status'].textContent,
+    'Match report ready from pasted text.',
+    'the status line must settle'
+  );
+});
+
 test('a 5xx from the Worker is still retried once', async () => {
   const { context, elements, cloudCalls } = createScoringFailureContext(
     () => Promise.resolve({

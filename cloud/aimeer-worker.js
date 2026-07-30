@@ -402,7 +402,16 @@ async function runJdReasoningMode(env, cors, body, options) {
     });
     const validated = options.validateOutput(out && out.response ? out.response : "", payload.reasoningInput);
     if (!validated.ok) {
-      return json({ error: "reasoning-invalid" }, 502, cors);
+      /* `error` stays "reasoning-invalid" — the browser's retry policy and the contract suite
+         both key off it — and `reason` names WHICH rule the model's output broke. Without it
+         every output-validation failure (unparseable JSON, a bad matchLevel, an evidence id
+         that isn't in the registry, an over-long field, a missing requirement) collapses into
+         one indistinguishable code, and a 502 seen only in production cannot be diagnosed
+         without another hand-paste into the dashboard. Every reason string is assembled by the
+         validators from fixed field names, hard-coded context labels, and — for unknown keys —
+         a key name stripped to [A-Za-z0-9_.-] and clipped, so no free model prose rides along.
+         The browser folds this into an Error message for console.warn and never renders it. */
+      return json({ error: "reasoning-invalid", reason: validated.error || "unknown" }, 502, cors);
     }
     return json({ reasoning: JSON.stringify(validated.reasoning) }, 200, cors);
   } catch (e) {
@@ -1143,14 +1152,26 @@ function stripJsonFence(rawOutput) {
   return fenced ? fenced[1].trim() : text;
 }
 
+/* The offending key name is part of the reason string: "an unknown key somewhere in a
+   requirement" is not actionable, "unknown-key-invalid:reasoning requirement:reasoning" is.
+   assets/js/jd-reasoning.js's sibling helper has always named the key ("Unknown key X in
+   reasoning root."); this brings the Worker's half up to the same level now that the reason
+   travels back in the 502 body. safeKeyLabel is what keeps that safe: the key comes from
+   model output, so it is stripped to an identifier-ish character set and clipped before it
+   goes anywhere near a response. */
+function safeKeyLabel(key) {
+  const label = String(key || "").replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 40);
+  return label || "unnamed";
+}
+
 function ensureOnlyKeys(target, allowedKeys, contextLabel) {
   const keys = Object.keys(target || {});
   for (const key of keys) {
     if (allowedKeys.includes(key)) continue;
     if (/score/i.test(key)) {
-      return "score-field-invalid:" + contextLabel;
+      return "score-field-invalid:" + contextLabel + ":" + safeKeyLabel(key);
     }
-    return "unknown-key-invalid:" + contextLabel;
+    return "unknown-key-invalid:" + contextLabel + ":" + safeKeyLabel(key);
   }
   return "";
 }
