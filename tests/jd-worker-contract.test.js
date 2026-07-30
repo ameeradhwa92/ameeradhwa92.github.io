@@ -1020,7 +1020,7 @@ test('a rejected model output names which validation rule it broke', async () =>
     ['an unknown fitBand', JSON.stringify({ ...base, overall: { ...base.overall, fitBand: 'excellent' } }), 'overall-fitband-invalid:excellent'],
     ['an unknown matchLevel', withFirstRequirement({ matchLevel: 'pretty-good' }), 'match-level-invalid:pretty-good'],
     ['an evidence id outside the registry', withFirstRequirement({ matchLevel: 'direct-professional', evidenceRefs: ['ev-invented-by-the-model'] }), 'evidence-invalid'],
-    ['a capability outside the vocabulary', withFirstRequirement({ transferableCapabilities: ['Time travel'] }), 'capability-invalid'],
+    ['transferableCapabilities not an array', withFirstRequirement({ transferableCapabilities: 'Azure DevOps' }), 'capability-invalid:not-array'],
     ['the wrong requirement count', JSON.stringify({ ...base, requirements: base.requirements.slice(1) }),
       `requirements-invalid:got=${base.requirements.length - 1},want=${base.requirements.length}`]
   ];
@@ -1208,6 +1208,104 @@ test('match levels that say nothing about provenance are still rejected', async 
   }
 });
 
+/* A capability the model invented is dropped rather than fatal. The allowlist exists so the report
+   can only name capabilities the published evidence demonstrates — dropping an invented name
+   enforces exactly that, where rejecting threw away the evidence-backed ones with it. */
+test('capabilities outside the registry vocabulary are dropped, not fatal', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const base = JSON.parse(buildValidScoringResponse(request, profile));
+  /* The vocabulary is built from the capabilities of the evidence records this request supplied, so
+     take a real one from the registry rather than inventing a name that would be dropped. */
+  const target = base.requirements.findIndex((requirement) => requirement.evidenceRefs.length);
+  assert.ok(target >= 0, 'the fixture should cite at least one evidence record');
+  const citedRecord = profile.recruiterEvidence.find(
+    (record) => record.id === base.requirements[target].evidenceRefs[0]
+  );
+  const kept = citedRecord.capabilities[0];
+
+  const response = await callWorker(request, {
+    profile,
+    aiResponse: JSON.stringify({
+      ...base,
+      requirements: base.requirements.map((requirement, index) => index === target
+        ? { ...requirement, transferableCapabilities: [kept, 'Time travel', '<b>markup</b>'] }
+        : requirement)
+    })
+  });
+
+  assert.equal(response.status, 200, 'an invented capability must not discard the report');
+  const capabilities = JSON.parse(response.json.reasoning).requirements[target].transferableCapabilities;
+  assert.deepEqual(capabilities, [kept], 'only registry-backed capability names may survive');
+});
+
+/* Shape drift the model reaches for naturally: `requirements` as an object keyed by requirementId.
+   The entries are the same, so convert rather than refuse. */
+test('requirements keyed by requirementId are read as a list', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const base = JSON.parse(buildValidScoringResponse(request, profile));
+  const keyed = {};
+  for (const requirement of base.requirements) {
+    const { requirementId, ...rest } = requirement;
+    keyed[requirementId] = rest;
+  }
+
+  const response = await callWorker(request, {
+    profile,
+    aiResponse: JSON.stringify({ ...base, requirements: keyed })
+  });
+
+  assert.equal(response.status, 200, 'an object keyed by requirementId must not discard the report');
+  const parsed = JSON.parse(response.json.reasoning);
+  assert.equal(parsed.requirements.length, request.deterministicInput.requirements.length);
+  assert.deepEqual(
+    parsed.requirements.map((requirement) => requirement.requirementId).sort(),
+    base.requirements.map((requirement) => requirement.requirementId).sort(),
+    'the key must supply the requirementId the entry omitted'
+  );
+
+  const wrongType = await callWorker(request, {
+    profile,
+    aiResponse: JSON.stringify({ ...base, requirements: 'Kubernetes, Azure' })
+  });
+  assert.equal(wrongType.status, 502);
+  assert.equal(wrongType.json.reason, 'requirements-invalid:type-string', 'the reason must report the type it got');
+});
+
+/* A live response opened and closed an object across 3784 characters and still would not parse, so
+   it was malformed inside rather than truncated. A trailing comma before a closing brace is the
+   commonest way a model does that; an unescaped quote is not repairable without guessing. */
+test('a trailing comma is repaired, but a genuinely broken string is not', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const valid = buildValidScoringResponse(request, profile);
+
+  const trailing = await callWorker(request, {
+    profile,
+    aiResponse: valid.replace(/\}\s*\]/, '},]').replace(/"\}$/, '",}')
+  });
+  assert.equal(trailing.status, 200, 'a trailing comma must not discard an otherwise valid report');
+  assert.equal(JSON.parse(trailing.json.reasoning).requirements.length,
+    request.deterministicInput.requirements.length);
+
+  /* The repair must not corrupt string content that happens to contain ",]" or ",}". */
+  const withCommaText = JSON.parse(valid);
+  withCommaText.overall = { ...withCommaText.overall, narrative: 'Strong on delivery,] and honest about gaps,}' };
+  const preserved = await callWorker(request, { profile, aiResponse: JSON.stringify(withCommaText) });
+  assert.equal(preserved.status, 200);
+  assert.equal(JSON.parse(preserved.json.reasoning).overall.narrative,
+    'Strong on delivery,] and honest about gaps,}',
+    'a comma inside a string value must survive untouched');
+
+  const unrepairable = await callWorker(request, {
+    profile,
+    aiResponse: '{"narrative":"he said "yes" here","requirements":[]}'
+  });
+  assert.equal(unrepairable.status, 502, 'an unescaped quote is not guessed at');
+  assert.match(unrepairable.json.reason, /^json-invalid:/);
+});
+
 /* These two relaxations must match assets/js/jd-reasoning.js validateTextField exactly — the two
    validators see the same payload in separate deployment targets, so a rule that is stricter on
    either side rejects what the other already accepted. */
@@ -1232,14 +1330,55 @@ test('a blank per-requirement field is accepted and an overlong one is clipped',
   assert.equal(first.recruiterIntent.length, 320, 'an overlong field must still arrive clipped');
 });
 
-test('an empty narrative is still rejected, and markup still is too', async () => {
+/* jd-scoring's prompt points the model at overall.narrative, and the live model writes it there and
+   leaves the root narrative out — which was rejecting reports over a duplicated field. The root
+   narrative is backfilled from overall.narrative instead. jd-reasoning has no overall block to
+   backfill from, so an empty narrative there still means there is no report to show. */
+test('jd-scoring backfills a missing root narrative from overall.narrative', async () => {
   const request = buildValidScoringRequest({ language: 'en' });
   const profile = loadProfile();
   const base = JSON.parse(buildValidScoringResponse(request, profile));
+  const { narrative, ...withoutRootNarrative } = base;
+
+  const missing = await callWorker(request, { profile, aiResponse: JSON.stringify(withoutRootNarrative) });
+  assert.equal(missing.status, 200, 'a missing root narrative must not discard the report');
+  assert.equal(JSON.parse(missing.json.reasoning).narrative, base.overall.narrative,
+    'the headline must come from the paragraph the model was actually asked to write');
 
   const blank = await callWorker(request, { profile, aiResponse: JSON.stringify({ ...base, narrative: '  ' }) });
-  assert.equal(blank.status, 502, 'an empty narrative means there is no report to show');
+  assert.equal(blank.status, 200, 'a blank root narrative is treated the same as a missing one');
+  assert.equal(JSON.parse(blank.json.reasoning).narrative, base.overall.narrative);
+
+  /* Nothing to backfill from: overall.narrative is the report's only headline, so it must carry text. */
+  const noneAtAll = await callWorker(request, {
+    profile,
+    aiResponse: JSON.stringify({ ...withoutRootNarrative, overall: { ...base.overall, narrative: ' ' } })
+  });
+  assert.equal(noneAtAll.status, 502);
+  assert.equal(noneAtAll.json.reason, 'overall-narrative-invalid');
+});
+
+test('an empty jd-reasoning narrative is still rejected, and markup still is too', async () => {
+  const profile = loadProfile();
+  const reasoningRequest = buildValidRequest({ language: 'en' });
+  const reasoningBase = JSON.parse(buildValidReasoningResponse(reasoningRequest, profile));
+
+  const blank = await callWorker(reasoningRequest, {
+    profile,
+    aiResponse: JSON.stringify({ ...reasoningBase, narrative: '  ' })
+  });
+  assert.equal(blank.status, 502, 'jd-reasoning has no overall block to fall back on');
   assert.equal(blank.json.reason, 'narrative-invalid');
+
+  const request = buildValidScoringRequest({ language: 'en' });
+  const base = JSON.parse(buildValidScoringResponse(request, profile));
+
+  const narrativeMarkup = await callWorker(request, {
+    profile,
+    aiResponse: JSON.stringify({ ...base, overall: { ...base.overall, narrative: '<b>strong fit</b>' } })
+  });
+  assert.equal(narrativeMarkup.status, 502, 'overall.narrative reaches the report and must not carry markup');
+  assert.equal(narrativeMarkup.json.reason, 'overall-narrative-invalid');
 
   const markup = await callWorker(request, {
     profile,

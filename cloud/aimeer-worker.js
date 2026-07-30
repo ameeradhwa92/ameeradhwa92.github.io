@@ -19,7 +19,7 @@
    deployed by hand, and a paste that silently does not take effect looks exactly like a fix that
    did not work. That cost several rounds of debugging: the same failures kept coming back because
    the revision under test was never the revision deployed. */
-const WORKER_REVISION = "2026-07-30-jd-6";
+const WORKER_REVISION = "2026-07-30-jd-7";
 
 const SITE = "https://ameeradhwa92.github.io";
 const KB_URL = SITE + "/assets/data/aimeer-kb.txt";
@@ -1122,16 +1122,24 @@ function buildJdReasoningMessage(reasoningInput, scoreNote) {
   };
 }
 
-/* allowModelScoreKeys separates the two modes' contracts. jd-reasoning forbids model-supplied
-   scores outright: the deterministic score is client-authoritative there, so a `score` key
-   anywhere in that output means the model has gone off-contract and the response is refused.
-   jd-scoring is the inverse — the model IS the scoring authority, and the live model puts a
-   root-level `score` alongside its `overall` on every single request. Refusing that discarded
-   an entire valid report over where the model chose to put a number it was explicitly asked to
-   produce. Tolerating it costs nothing, because the score that gets used comes only from
-   `overall.score` via the field-by-field rebuild, and the browser then clamps it into the
-   deterministic sanity band regardless. */
-function validateJdReasoningModelOutput(rawOutput, input, extraRootKeys, allowModelScoreKeys) {
+/* options (all optional, defaults are jd-reasoning's stricter contract):
+   - extraRootKeys: additional allowed root keys — jd-scoring's `overall`.
+   - allowModelScoreKeys: separates the two modes' contracts. jd-reasoning forbids model-supplied
+     scores outright, since the deterministic score is client-authoritative there, so a `score` key
+     anywhere in that output means the model has gone off-contract. jd-scoring is the inverse — the
+     model IS the scoring authority, and the live model puts a root-level `score` beside its
+     `overall` on every request. Refusing that discarded a whole valid report over where the model
+     chose to put a number it was told to produce. Tolerating it costs nothing: only `overall.score`
+     is read out by the rebuild, and the browser clamps it into the deterministic sanity band.
+   - narrativeOptional: jd-scoring asks for a recruiter-facing paragraph in `overall.narrative`, and
+     the live model writes it there and leaves the root `narrative` out — reasonably, since the root
+     field is jd-reasoning's headline and jd-scoring's prompt points at the other one. Requiring both
+     was rejecting reports over a duplicated field (live reason `narrative-invalid`), so jd-scoring
+     backfills the root narrative from `overall.narrative` instead. */
+function validateJdReasoningModelOutput(rawOutput, input, options) {
+  const extraRootKeys = options && options.extraRootKeys;
+  const allowModelScoreKeys = !!(options && options.allowModelScoreKeys);
+  const narrativeOptional = !!(options && options.narrativeOptional);
   const parsed = parseModelJson(rawOutput);
   if (parsed === null) return { ok: false, error: "json-invalid" };
   if (!isPlainObject(parsed)) return { ok: false, error: "root-invalid" };
@@ -1140,10 +1148,22 @@ function validateJdReasoningModelOutput(rawOutput, input, extraRootKeys, allowMo
     : JD_REASONING_ROOT_KEYS;
   const rootKeyError = allowModelScoreKeys ? "" : rejectScoreKeys(parsed, rootKeys, "reasoning root");
   if (rootKeyError) return { ok: false, error: rootKeyError };
-  const narrativeError = validateReasoningTextField(parsed.narrative, "narrative");
-  if (narrativeError) return { ok: false, error: narrativeError };
-  if (!Array.isArray(parsed.requirements)) {
-    return { ok: false, error: "requirements-invalid:not-array" };
+  /* When the narrative is optional, a missing or blank one is left for the caller to backfill from
+     overall.narrative. A narrative that IS present still has to be clean — markup never passes. */
+  const narrativeAbsent = parsed.narrative === undefined || parsed.narrative === null ||
+    (typeof parsed.narrative === "string" && !normalizeText(parsed.narrative));
+  if (!(narrativeOptional && narrativeAbsent)) {
+    const narrativeError = validateReasoningTextField(parsed.narrative, "narrative");
+    if (narrativeError) return { ok: false, error: narrativeError };
+  }
+
+  const requirementList = normalizeRequirementList(parsed.requirements);
+  if (!requirementList) {
+    return {
+      ok: false,
+      error: "requirements-invalid:type-" +
+        (parsed.requirements === undefined ? "absent" : safeKeyLabel(typeof parsed.requirements))
+    };
   }
 
   const requirementIndex = Object.create(null);
@@ -1161,7 +1181,7 @@ function validateJdReasoningModelOutput(rawOutput, input, extraRootKeys, allowMo
 
   const seenRequirementIds = Object.create(null);
   const requirements = [];
-  for (const item of parsed.requirements) {
+  for (const item of requirementList) {
     if (!isPlainObject(item)) return { ok: false, error: "requirement-object-invalid" };
     const keyError = allowModelScoreKeys
       ? ""
@@ -1230,18 +1250,17 @@ function validateJdReasoningModelOutput(rawOutput, input, extraRootKeys, allowMo
       return { ok: false, error: "evidence-provenance-invalid" };
     }
 
-    if (!Array.isArray(item.transferableCapabilities) || item.transferableCapabilities.length > 4) {
-      return { ok: false, error: "capability-invalid" };
+    /* Capabilities outside the registry's vocabulary are dropped, not fatal. The allowlist exists so
+       the report can only name capabilities Ameer's published evidence actually demonstrates —
+       dropping a name the model invented enforces exactly that, while rejecting the response threw
+       away the evidence-backed capabilities alongside it (live reason `capability-invalid`). The
+       claim itself rides on evidenceRefs, which are still checked strictly; these names only label
+       it. Filtering can only ever shorten the list, never add to it. */
+    if (!Array.isArray(item.transferableCapabilities)) {
+      return { ok: false, error: "capability-invalid:not-array" };
     }
-    const transferableCapabilities = uniqueStrings(item.transferableCapabilities, 4, 120);
-    if (transferableCapabilities.length !== item.transferableCapabilities.length) {
-      return { ok: false, error: "capability-invalid" };
-    }
-    for (const capability of transferableCapabilities) {
-      if (HTML_MARKUP_PATTERN.test(capability) || !capabilityIndex[capability]) {
-        return { ok: false, error: "capability-invalid" };
-      }
-    }
+    const transferableCapabilities = uniqueStrings(item.transferableCapabilities, 4, 120)
+      .filter((capability) => !HTML_MARKUP_PATTERN.test(capability) && capabilityIndex[capability]);
 
     requirements.push({
       requirementId,
@@ -1286,7 +1305,11 @@ function validateJdReasoningModelOutput(rawOutput, input, extraRootKeys, allowMo
    fitBand in strong|good|partial|limited, non-empty narrative bounded by
    JD_REASONING_TEXT_LIMITS.narrative, and no extra keys inside overall. */
 function validateJdScoringModelOutput(rawOutput, input) {
-  const base = validateJdReasoningModelOutput(rawOutput, input, JD_SCORING_ROOT_EXTRA_KEYS, true);
+  const base = validateJdReasoningModelOutput(rawOutput, input, {
+    extraRootKeys: JD_SCORING_ROOT_EXTRA_KEYS,
+    allowModelScoreKeys: true,
+    narrativeOptional: true
+  });
   if (!base.ok) return base;
 
   const overall = base.parsed.overall;
@@ -1303,15 +1326,24 @@ function validateJdScoringModelOutput(rawOutput, input) {
   if (!JD_SCORING_FIT_BANDS.includes(fitBand)) {
     return { ok: false, error: "overall-fitband-invalid:" + safeKeyLabel(overall.fitBand) };
   }
-  if (typeof overall.narrative !== "string" || !normalizeText(overall.narrative) ||
-    overall.narrative.length > JD_REASONING_TEXT_LIMITS.narrative) {
+  /* Markup rejects here too — this string reaches the report and was previously the one text field
+     that skipped that check. Length does not reject: it is clipped just below, like every other
+     text field. */
+  if (typeof overall.narrative !== "string" || HTML_MARKUP_PATTERN.test(overall.narrative) ||
+    !normalizeText(overall.narrative)) {
     return { ok: false, error: "overall-narrative-invalid" };
   }
 
   return {
     ok: true,
     reasoning: {
-      narrative: base.reasoning.narrative,
+      /* The root narrative is jd-scoring's optional field (see narrativeOptional): when the model
+         writes only overall.narrative — which it does, and which its prompt asks for — the report's
+         headline comes from there. The browser's validator requires a non-empty root narrative, and
+         overall.narrative is guaranteed non-empty by the check above, so the backfill is what keeps
+         the two validators agreeing. */
+      narrative: base.reasoning.narrative ||
+        clipText(overall.narrative, JD_REASONING_TEXT_LIMITS.narrative),
       requirements: base.reasoning.requirements,
       overall: {
         score: overall.score,
@@ -1335,29 +1367,82 @@ function stripJsonFence(rawOutput) {
    what the model actually produced. The model's schema compliance was never the problem.
    An object is therefore taken as-is; the string path still handles a fenced or bare JSON
    reply. Returns null when there is nothing parseable, which the caller maps to json-invalid. */
+/* Four shapes are tried, in order of how much they assume:
+     1. the text as-is;
+     2. the text with trailing commas removed;
+     3. the first balanced object inside it — an instruction-tuned model will wrap the object it was
+        asked for in conversational framing ("Here is the JSON:" ... "Let me know if you need more
+        detail"), which no prompt wording reliably suppresses;
+     4. that object with trailing commas removed.
+   A live jd-reasoning response opened AND closed an object across 3784 characters and still would
+   not parse, so it was malformed inside rather than truncated; a trailing comma before a closing
+   brace is the commonest way a model does that. Unescaped quotes are NOT repaired — there is no
+   way to tell a stray quote from an intended one without guessing at content.
+   Whatever comes out is validated exactly as strictly as before: this widens what can be READ,
+   never what can be accepted. */
 function parseModelJson(rawOutput) {
   if (isPlainObject(rawOutput)) return rawOutput;
   const text = stripJsonFence(rawOutput);
-  try {
-    const parsed = JSON.parse(text);
-    return parsed === null ? null : parsed;
-  } catch {
-    /* fall through to the salvage path below */
+  for (const candidate of [text, extractFirstJsonObject(text)]) {
+    if (!candidate) continue;
+    for (const attempt of [candidate, repairTrailingCommas(candidate)]) {
+      try {
+        const parsed = JSON.parse(attempt);
+        if (parsed !== null) return parsed;
+      } catch {
+        /* try the next shape */
+      }
+    }
   }
-  /* An instruction-tuned model will sometimes wrap the object it was asked for in conversational
-     framing ("Here is the JSON:" ... "Let me know if you need more detail"), which no amount of
-     prompt wording reliably suppresses. The object itself is still exactly what the schema wants,
-     so salvage it instead of discarding a valid answer. Only the FIRST balanced object is taken,
-     and it is then validated as strictly as before — this widens what can be read, never what
-     can be accepted. */
-  const salvaged = extractFirstJsonObject(text);
-  if (!salvaged) return null;
-  try {
-    const parsed = JSON.parse(salvaged);
-    return parsed === null ? null : parsed;
-  } catch {
-    return null;
+  return null;
+}
+
+/* Drops a comma that sits immediately before a closing brace or bracket. String-aware for the same
+   reason extractFirstJsonObject is: the JSON's own string values contain braces, brackets, commas
+   and escaped quotes, and a regex would happily corrupt them. */
+function repairTrailingCommas(text) {
+  const source = String(text || "");
+  let output = "";
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (inString) {
+      output += character;
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === "\"") inString = false;
+      continue;
+    }
+    if (character === "\"") {
+      inString = true;
+      output += character;
+      continue;
+    }
+    if (character === ",") {
+      let lookahead = index + 1;
+      while (lookahead < source.length && /\s/.test(source[lookahead])) lookahead += 1;
+      if (source[lookahead] === "}" || source[lookahead] === "]") continue;
+    }
+    output += character;
   }
+  return output;
+}
+
+/* A live jd-scoring response returned `requirements` as an object keyed by requirementId instead of
+   an array, which is a shape a model reaches for naturally when every entry has an id. The entries
+   are the same; only the container differs, so convert rather than refuse. The key supplies the
+   requirementId when the entry omits it, and an entry that carries its own id keeps it — after
+   which the ids face the same known-and-unique check every array entry does.
+   Returns null when the value is neither an array nor an object, which the caller reports with the
+   type it actually got. */
+function normalizeRequirementList(value) {
+  if (Array.isArray(value)) return value;
+  if (!isPlainObject(value)) return null;
+  return Object.keys(value).map((key) => {
+    const item = value[key];
+    return isPlainObject(item) ? { requirementId: key, ...item } : item;
+  });
 }
 
 /* Brace scanner rather than a regex: a regex cannot balance braces, and the JSON's own string
