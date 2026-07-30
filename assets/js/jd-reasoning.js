@@ -38,7 +38,7 @@
     /\bleave\s+(?:entitlement|history|balance|policy|policies|allowance)\b/i,
     /\bbenefits\s+(?:package|coverage|plan|plans|history|entitlement)\b/i
   ];
-  var ROOT_KEYS = ["narrative", "requirements"];
+  var ROOT_KEYS = ["narrative", "requirements", "overall"];
   var REQUIREMENT_KEYS = [
     "requirementId",
     "recruiterIntent",
@@ -111,6 +111,16 @@
 
   function clampScore(value) {
     return Math.max(0, Math.min(100, Number(value) || 0));
+  }
+
+  var FIT_BANDS = ["strong", "good", "partial", "limited"];
+
+  function computeFitBand(score) {
+    var value = clampScore(score);
+    if (value >= 75) return "strong";
+    if (value >= 60) return "good";
+    if (value >= 40) return "partial";
+    return "limited";
   }
 
   function isPlainObject(value) {
@@ -402,6 +412,16 @@
       return reject("Every deterministic requirement must be included exactly once.");
     }
 
+    var overall = parsed.overall;
+    if (!isPlainObject(overall)) return reject("overall-missing");
+    var overallKeyError = ensureOnlyKeys(overall, ["score", "fitBand", "narrative"], "overall");
+    if (overallKeyError) return reject(overallKeyError);
+    if (typeof overall.score !== "number" || !Number.isFinite(overall.score) ||
+        overall.score < 0 || overall.score > 100) return reject("overall-score-invalid");
+    if (FIT_BANDS.indexOf(overall.fitBand) === -1) return reject("overall-fitband-invalid");
+    if (typeof overall.narrative !== "string" || !overall.narrative.trim() ||
+        overall.narrative.length > FIELD_LIMITS.narrative) return reject("overall-narrative-invalid");
+
     var inputRequirements = Array.isArray(input && input.requirements) ? input.requirements : [];
     var requirementIndex = Object.create(null);
     for (var index = 0; index < inputRequirements.length; index += 1) {
@@ -510,7 +530,12 @@
       ok: true,
       reasoning: {
         narrative: clipText(parsed.narrative, FIELD_LIMITS.narrative),
-        requirements: sanitizedRequirements
+        requirements: sanitizedRequirements,
+        overall: {
+          score: clampScore(overall.score),
+          fitBand: overall.fitBand,
+          narrative: clipText(overall.narrative, FIELD_LIMITS.narrative)
+        }
       }
     };
   }
@@ -661,26 +686,25 @@
       var entry = requirementReasoning.find(function (item) { return item.requirementId === requirement.id; });
       return entry ? entry.effectiveFactor : baseFactorForRequirement(requirement);
     });
-    var requiredGapCeiling = scoreByFactor(inputRequirements, categories, function (requirement) {
-      var entry = requirementReasoning.find(function (item) { return item.requirementId === requirement.id; });
-      if (entry && entry.matchLevel === "explicit-gap" && requirement.strength === "required") return 0;
-      return 1;
-    });
-
     var deterministicScore = clampScore(result.deterministicScore !== undefined ? result.deterministicScore : result.score);
-    var compositeScore = Math.round(Math.min(
-      transferableScore,
-      deterministicScore + 15,
-      requiredGapCeiling
-    ));
+    var aiScore = clampScore(reasoning && reasoning.overall ? reasoning.overall.score : deterministicScore);
+    var bandMin = Math.max(0, deterministicScore - 10);
+    var bandMax = Math.min(100, deterministicScore + 35);
+    var finalScore = Math.round(Math.min(bandMax, Math.max(bandMin, aiScore)));
 
     result.deterministicScore = deterministicScore;
+    result.aiScore = Math.round(aiScore);
+    result.finalScore = finalScore;
+    result.adjusted = Math.round(aiScore) !== finalScore;
+    result.fitBand = computeFitBand(finalScore);
+    /* keep legacy fields so the existing renderer and Worker explanation contract stay valid */
     result.verifiedScore = verifiedScore;
     result.transferableScore = transferableScore;
-    result.requiredGapCeiling = requiredGapCeiling;
-    result.compositeScore = compositeScore;
+    result.compositeScore = finalScore;
     result.requirementReasoning = requirementReasoning;
-    result.reasoningNarrative = clipText(reasoning && reasoning.narrative, FIELD_LIMITS.narrative);
+    result.reasoningNarrative = reasoning && reasoning.overall && reasoning.overall.narrative
+      ? clipText(reasoning.overall.narrative, FIELD_LIMITS.narrative)
+      : clipText(reasoning && reasoning.narrative, FIELD_LIMITS.narrative);
     result.sections = buildSections(requirementReasoning);
     return result;
   }
@@ -745,6 +769,7 @@
     buildInput: buildInput,
     validateModelOutput: validateModelOutput,
     mergeResult: mergeResult,
-    fallback: fallback
+    fallback: fallback,
+    computeFitBand: computeFitBand
   };
 }(typeof window !== "undefined" ? window : globalThis));
