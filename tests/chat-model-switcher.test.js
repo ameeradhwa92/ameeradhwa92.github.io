@@ -1613,11 +1613,38 @@ test('a language change invalidates an in-flight recruiter reasoning response', 
      this device — in either language. */
   assert.doesNotMatch(renderedMs, /peranti ini/i, 'the settled fallback after a mid-flight language toggle must never claim reasoning ran or will run on this device');
   assert.match(renderedMs, /Penaakulan perekrut tidak tersedia sekarang/i, 'the localized "unavailable" status should render for the new language, not a claim tied to any device state');
+  /* The privacy line is a second, independent claim from the status line above it, and it
+     used to be wrong here too: reasoningBusy goes true synchronously, well before the fetch
+     to the Worker fires and stays true for the whole round trip, so a toggle landing inside
+     that window (this test's scenario, via the pendingReasoning deferred) settles into
+     "unavailable" mode AFTER the JD prose has plausibly already left the device. The privacy
+     copy must not assert what happened to the DATA (which cannot be known at this point) —
+     only what happened to the RESULT. */
+  assert.doesNotMatch(
+    renderedMs,
+    /dihantar/i,
+    'the "unavailable" privacy line must not claim anything about whether data was or was not transmitted — the request may already be in flight to the Worker when this state renders'
+  );
+  assert.match(
+    renderedMs,
+    /Analisis ini tidak dapat diselesaikan, jadi tiada keputusan AI dipaparkan/i,
+    'the localized "unavailable" privacy line should describe the missing result, not a data-transmission claim'
+  );
 
   setLanguage('en');
   const renderedEn = collectText(elements['chat-jd-result']);
   assert.doesNotMatch(renderedEn, /on this device/i, 'toggling back to English after that settled fallback must not claim on-device reasoning either');
   assert.match(renderedEn, /Recruiter reasoning is unavailable right now/i, 'the English "unavailable" status should render after toggling back');
+  assert.doesNotMatch(
+    renderedEn,
+    /(?:content|prose|text) was (?:not )?sent/i,
+    'the "unavailable" privacy line must not claim anything about whether data was or was not transmitted, in English either'
+  );
+  assert.match(
+    renderedEn,
+    /This analysis could not be completed, so no AI result is shown/i,
+    'the English "unavailable" privacy line should describe the missing result, not a data-transmission claim'
+  );
 });
 
 test('selecting eligible local AI presents Local while the active route is cloud', async () => {
