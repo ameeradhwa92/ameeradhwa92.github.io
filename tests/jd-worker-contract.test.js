@@ -250,7 +250,15 @@ test('jd-reasoning accepts a bounded valid request and returns strict JSON reaso
   assert.equal(response.aiCalls.length, 1, 'bounded reasoning should invoke Workers AI exactly once');
   assert.equal(response.aiCalls[0].model, '@cf/meta/llama-3.1-8b-instruct-fast');
   assert.equal(response.aiCalls[0].payload.temperature <= 0.2, true, 'reasoning should use a low temperature');
-  assert.equal(response.aiCalls[0].payload.max_tokens <= 900, true, 'reasoning should keep bounded output tokens');
+  /* The cap was a flat 900, which could not hold six prose fields per requirement — the model's
+     JSON was truncated mid-object in production. It now scales with the requirement count and is
+     still bounded, because Workers AI's free tier is 10,000 neurons/day. */
+  assert.equal(response.aiCalls[0].payload.max_tokens <= 3400, true, 'reasoning should stay bounded by the ceiling');
+  assert.equal(
+    response.aiCalls[0].payload.max_tokens >= 400 + 260 * request.deterministicInput.requirements.length,
+    true,
+    'the budget must leave room for every requirement the model has to describe'
+  );
   assert.equal(
     response.aiCalls[0].payload.messages.filter((message) => message.role === 'system').length,
     1,
@@ -871,13 +879,99 @@ test('an already-parsed object from Workers AI is accepted like a JSON string', 
   );
 });
 
-test('a genuinely unparseable string response still reports json-invalid', async () => {
-  const response = await callWorker(buildValidScoringRequest({ language: 'en' }), {
-    aiResponse: 'I am afraid I cannot help with that request.'
+/* An instruction-tuned model wraps the object in conversational framing often enough that
+   discarding those responses meant discarding valid answers. The object is salvaged, then
+   validated exactly as strictly as before. */
+test('a valid object wrapped in conversational prose is salvaged', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const valid = buildValidScoringResponse(request, profile);
+
+  const response = await callWorker(request, {
+    profile,
+    aiResponse: `Sure! Here is the JSON you asked for:\n\n${valid}\n\nLet me know if you need more detail.`
   });
 
+  assert.equal(response.status, 200, 'prose framing around a valid object must not discard the answer');
+  assert.equal(JSON.parse(response.json.reasoning).overall.fitBand, 'good');
+});
+
+test('salvage widens what can be read, never what can be accepted', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const invalid = JSON.parse(buildValidScoringResponse(request, profile));
+  invalid.overall.fitBand = 'excellent';
+
+  const response = await callWorker(request, {
+    profile,
+    aiResponse: `Here you go:\n${JSON.stringify(invalid)}\nHope that helps.`
+  });
+
+  assert.equal(response.status, 502, 'a salvaged object still faces the full schema');
+  assert.equal(response.json.reason, 'overall-fitband-invalid');
+});
+
+/* The bare json-invalid code could not distinguish "ran out of tokens mid-object" from
+   "answered in prose" — opposite fixes — so it carries a structural fingerprint. */
+test('an unparseable response reports a structural fingerprint carrying no model prose', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const truncated = buildValidScoringResponse(request, profile).slice(0, 400);
+
+  const prose = await callWorker(request, {
+    profile,
+    aiResponse: 'I am afraid I cannot help with that request.'
+  });
+  assert.equal(prose.status, 502);
+  assert.equal(prose.json.reason, 'json-invalid:len=44:leads-prose:no-obj');
+
+  const cut = await callWorker(request, { profile, aiResponse: truncated });
+  assert.equal(cut.status, 502);
+  assert.match(cut.json.reason, /^json-invalid:len=400:opens-obj:unterminated$/);
+
+  const empty = await callWorker(request, { profile, aiResponse: '' });
+  assert.equal(empty.status, 502);
+  assert.equal(empty.json.reason, 'json-invalid:empty');
+
+  for (const reason of [prose.json.reason, cut.json.reason, empty.json.reason]) {
+    assert.match(reason, /^json-invalid:[a-z0-9=:-]*$/, 'the fingerprint must never echo model text');
+  }
+});
+
+/* A model capitalizes enum values as readily as not, and a live jd-reasoning response was
+   rejected as confidence-invalid for exactly that. */
+test('capitalized enum values are folded to their canonical form', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const shouted = JSON.parse(buildValidScoringResponse(request, profile));
+  shouted.requirements = shouted.requirements.map((requirement) => ({
+    ...requirement,
+    matchLevel: requirement.matchLevel.replace(/(^|-)([a-z])/g, (whole, lead, letter) => lead + letter.toUpperCase()),
+    confidence: requirement.confidence.toUpperCase()
+  }));
+  shouted.overall = { ...shouted.overall, fitBand: 'Good' };
+
+  const response = await callWorker(request, { profile, aiResponse: JSON.stringify(shouted) });
+
+  assert.equal(response.status, 200, 'capitalization must not reject an otherwise valid response');
+  const parsed = JSON.parse(response.json.reasoning);
+  assert.equal(parsed.overall.fitBand, 'good', 'the stored value must be canonical lowercase');
+  for (const requirement of parsed.requirements) {
+    assert.equal(requirement.confidence, requirement.confidence.toLowerCase());
+    assert.equal(requirement.matchLevel, requirement.matchLevel.toLowerCase());
+  }
+});
+
+test('an unknown enum value is still rejected regardless of case', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const base = JSON.parse(buildValidScoringResponse(request, profile));
+  base.requirements[0] = { ...base.requirements[0], confidence: 'VERY HIGH' };
+
+  const response = await callWorker(request, { profile, aiResponse: JSON.stringify(base) });
+
   assert.equal(response.status, 502);
-  assert.equal(response.json.reason, 'json-invalid');
+  assert.equal(response.json.reason, 'confidence-invalid');
 });
 
 /* The same object-vs-string trap reached plain chat: a visitor only had to ask AIMeer to reply
@@ -911,7 +1005,7 @@ test('a rejected model output names which validation rule it broke', async () =>
   }
 
   const cases = [
-    ['not JSON at all', 'I cannot produce JSON for this request.', 'json-invalid'],
+    ['not JSON at all', 'I cannot produce JSON for this request.', 'json-invalid:len=39:leads-prose:no-obj'],
     ['an unknown root key', JSON.stringify({ ...base, mood: 'confident' }), 'unknown-key-invalid:reasoning root:mood'],
     ['a missing overall block', JSON.stringify({ narrative: base.narrative, requirements: base.requirements }), 'overall-missing'],
     ['an unknown fitBand', JSON.stringify({ ...base, overall: { ...base.overall, fitBand: 'excellent' } }), 'overall-fitband-invalid'],
@@ -944,8 +1038,12 @@ test('the failure reason travels on jd-reasoning too, and carries no free model 
   });
 
   assert.equal(response.status, 502);
-  assert.equal(response.json.reason, 'json-invalid', 'jd-reasoning shares runJdReasoningMode, so it shares the reason');
-  assert.doesNotMatch(response.json.reason, /poem|Sorry/i, 'the reason must be a fixed code, never an echo of the model output');
+  assert.match(
+    response.json.reason,
+    /^json-invalid:len=\d+:leads-prose:no-obj$/,
+    'jd-reasoning shares runJdReasoningMode, so it shares the reason and its fingerprint'
+  );
+  assert.doesNotMatch(response.json.reason, /poem|Sorry|Kubernetes/i, 'the reason must be a fixed code, never an echo of the model output');
 });
 
 /* The one reason string that embeds model-supplied text is the unknown-key name. safeKeyLabel

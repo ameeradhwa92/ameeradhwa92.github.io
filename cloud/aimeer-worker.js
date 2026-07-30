@@ -25,7 +25,20 @@ const JD_REASONING_JD_MAX = 12000;
 const JD_REASONING_RESULT_MAX = 12000;
 const JD_REASONING_REQUIREMENT_MAX = 48;
 const JD_REASONING_EVIDENCE_MAX = 24;
-const JD_REASONING_MAX_TOKENS = 900;
+/* Output budget. 900 was a flat cap for both JD modes and it cannot hold the schema: every
+   requirement object carries six prose fields (recruiterIntent, expectedOutcome, limitation,
+   recruiterFraming, verificationQuestion, plus the narrative's share), so one requirement costs
+   roughly 150-250 output tokens and the field limits alone put ten requirements past 6000
+   characters. The model's JSON was being cut off mid-object and the parse failed — one of the
+   two reasons the live AI tier never returned a result.
+   Scale the cap with the requirement count instead, and keep a ceiling: Workers AI's free tier
+   allows 10,000 neurons/day, so an unbounded cap would let one long JD eat the day's quota.
+   Requirements past REQUIREMENT_TOKEN_CAP still get judged — they just share the ceiling's
+   headroom rather than each adding to it. */
+const JD_REASONING_MAX_TOKENS_CEILING = 3400;
+const JD_REASONING_TOKENS_PER_REQUIREMENT = 260;
+const JD_REASONING_TOKENS_BASE = 400;
+const JD_REASONING_REQUIREMENT_TOKEN_CAP = 12;
 const JD_REASONING_ROOT_KEYS = ["narrative", "requirements"];
 const JD_REASONING_REQUIREMENT_KEYS = [
   "requirementId",
@@ -237,7 +250,6 @@ const JD_REASONING_PROMPT =
    those rules in sync with assets/js/jd-reasoning.js's ROOT_KEYS/overall validation,
    since the browser and this Worker are separate deployment targets that validate
    independently. */
-const JD_SCORING_MAX_TOKENS = 900;
 const JD_SCORING_ROOT_EXTRA_KEYS = ["overall"];
 const JD_SCORING_OVERALL_KEYS = ["score", "fitBand", "narrative"];
 const JD_SCORING_FIT_BANDS = ["strong", "good", "partial", "limited"];
@@ -295,7 +307,6 @@ export default {
     if (mode === "jd-reasoning") {
       return runJdReasoningMode(env, cors, body, {
         prompt: JD_REASONING_PROMPT,
-        maxTokens: JD_REASONING_MAX_TOKENS,
         validateBody: validateJdReasoningBody,
         buildUserContent: (payload) => buildJdReasoningMessage(payload.reasoningInput).content,
         validateOutput: validateJdReasoningModelOutput
@@ -305,7 +316,6 @@ export default {
     if (mode === "jd-scoring") {
       return runJdReasoningMode(env, cors, body, {
         prompt: JD_SCORING_PROMPT,
-        maxTokens: JD_SCORING_MAX_TOKENS,
         validateBody: validateJdScoringBody,
         /* jdText is stripped from reasoningInput before it goes into buildJdReasoningMessage's
            JSON.stringify — reasoningInput already carries it (see validateJdReasoningBody),
@@ -375,10 +385,11 @@ export default {
    validate the request body, call Workers AI with a server-assembled system prompt (never
    a client-supplied one), validate the model's output, and return the same success/error
    response shapes either mode would produce on its own. The four differences between the
-   modes (system prompt, max_tokens, body validator, output validator) and how the user
-   message content is built are passed in as `options` so a fix to this shared shape only
-   needs to be made once in a file that is otherwise maintained by hand-pasting into the
-   Cloudflare dashboard. */
+   modes (system prompt, body validator, output validator) and how the user message content is
+   built are passed in as `options` so a fix to this shared shape only needs to be made once in
+   a file that is otherwise maintained by hand-pasting into the Cloudflare dashboard. The token
+   budget is no longer per-mode: both modes emit the same schema, so both size it the same way
+   from the requirement count. */
 async function runJdReasoningMode(env, cors, body, options) {
   let profile = null;
   try {
@@ -397,10 +408,11 @@ async function runJdReasoningMode(env, cors, body, options) {
         { role: "system", content: PERSONA_HEAD + "\n\n" + options.prompt },
         { role: "user", content: options.buildUserContent(payload) }
       ],
-      max_tokens: options.maxTokens,
+      max_tokens: jdReasoningMaxTokens(payload.reasoningInput.requirements.length),
       temperature: 0.1,
     });
-    const validated = options.validateOutput(out && out.response ? out.response : "", payload.reasoningInput);
+    const rawOutput = out && out.response !== undefined ? out.response : "";
+    const validated = options.validateOutput(rawOutput, payload.reasoningInput);
     if (!validated.ok) {
       /* `error` stays "reasoning-invalid" — the browser's retry policy and the contract suite
          both key off it — and `reason` names WHICH rule the model's output broke. Without it
@@ -410,8 +422,14 @@ async function runJdReasoningMode(env, cors, body, options) {
          without another hand-paste into the dashboard. Every reason string is assembled by the
          validators from fixed field names, hard-coded context labels, and — for unknown keys —
          a key name stripped to [A-Za-z0-9_.-] and clipped, so no free model prose rides along.
-         The browser folds this into an Error message for console.warn and never renders it. */
-      return json({ error: "reasoning-invalid", reason: validated.error || "unknown" }, 502, cors);
+         The browser folds this into an Error message for console.warn and never renders it.
+         json-invalid gets the extra structural fingerprint, because "the output would not parse"
+         does not say whether the model led with prose or ran out of tokens mid-object — and those
+         have opposite fixes. */
+      const reason = validated.error === "json-invalid"
+        ? jsonInvalidFingerprint(rawOutput)
+        : (validated.error || "unknown");
+      return json({ error: "reasoning-invalid", reason }, 502, cors);
     }
     return json({ reasoning: JSON.stringify(validated.reasoning) }, 200, cors);
   } catch (e) {
@@ -531,6 +549,17 @@ function normalizeText(value) {
 
 function clipText(value, maxChars) {
   return normalizeText(value).slice(0, maxChars);
+}
+
+/* Enum-valued fields (matchLevel, confidence, fitBand) come from a language model, which
+   capitalizes them as readily as not — "High", "Medium", "Direct-Professional". Those carry the
+   identical meaning to the allowed value, so case-folding them is tolerance, not a weakened
+   check: the value must still be one of the listed members, and the canonical lowercase form is
+   what gets stored, so every downstream lookup and the browser's own validator see the same
+   thing they always did. A live jd-reasoning response was rejected as confidence-invalid for
+   exactly this. */
+function normalizeEnumValue(value, maxChars) {
+  return clipText(value, maxChars).toLowerCase();
 }
 
 /* The job description is the one field where line structure carries meaning. The browser's
@@ -1025,11 +1054,11 @@ function validateJdReasoningModelOutput(rawOutput, input, extraRootKeys) {
     }
     seenRequirementIds[requirementId] = true;
 
-    const matchLevel = clipText(item.matchLevel, 32);
+    const matchLevel = normalizeEnumValue(item.matchLevel, 32);
     if (!JD_REASONING_MATCH_LEVELS.includes(matchLevel)) {
       return { ok: false, error: "match-level-invalid" };
     }
-    const confidence = clipText(item.confidence, 16);
+    const confidence = normalizeEnumValue(item.confidence, 16);
     if (!JD_REASONING_CONFIDENCE.includes(confidence)) {
       return { ok: false, error: "confidence-invalid" };
     }
@@ -1119,7 +1148,8 @@ function validateJdScoringModelOutput(rawOutput, input) {
     overall.score < 0 || overall.score > 100) {
     return { ok: false, error: "overall-score-invalid" };
   }
-  if (!JD_SCORING_FIT_BANDS.includes(overall.fitBand)) {
+  const fitBand = normalizeEnumValue(overall.fitBand, 16);
+  if (!JD_SCORING_FIT_BANDS.includes(fitBand)) {
     return { ok: false, error: "overall-fitband-invalid" };
   }
   if (typeof overall.narrative !== "string" || !normalizeText(overall.narrative) ||
@@ -1134,7 +1164,7 @@ function validateJdScoringModelOutput(rawOutput, input) {
       requirements: base.reasoning.requirements,
       overall: {
         score: overall.score,
-        fitBand: overall.fitBand,
+        fitBand,
         narrative: clipText(overall.narrative, JD_REASONING_TEXT_LIMITS.narrative)
       }
     }
@@ -1156,12 +1186,87 @@ function stripJsonFence(rawOutput) {
    reply. Returns null when there is nothing parseable, which the caller maps to json-invalid. */
 function parseModelJson(rawOutput) {
   if (isPlainObject(rawOutput)) return rawOutput;
+  const text = stripJsonFence(rawOutput);
   try {
-    const parsed = JSON.parse(stripJsonFence(rawOutput));
+    const parsed = JSON.parse(text);
+    return parsed === null ? null : parsed;
+  } catch {
+    /* fall through to the salvage path below */
+  }
+  /* An instruction-tuned model will sometimes wrap the object it was asked for in conversational
+     framing ("Here is the JSON:" ... "Let me know if you need more detail"), which no amount of
+     prompt wording reliably suppresses. The object itself is still exactly what the schema wants,
+     so salvage it instead of discarding a valid answer. Only the FIRST balanced object is taken,
+     and it is then validated as strictly as before — this widens what can be read, never what
+     can be accepted. */
+  const salvaged = extractFirstJsonObject(text);
+  if (!salvaged) return null;
+  try {
+    const parsed = JSON.parse(salvaged);
     return parsed === null ? null : parsed;
   } catch {
     return null;
   }
+}
+
+/* Brace scanner rather than a regex: a regex cannot balance braces, and the JSON's own string
+   values contain both braces and escaped quotes. Returns "" when no balanced object closes —
+   which is exactly what a token-truncated response looks like. */
+function extractFirstJsonObject(text) {
+  const source = String(text || "");
+  const start = source.indexOf("{");
+  if (start === -1) return "";
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < source.length; index += 1) {
+    const character = source[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === "\"") inString = false;
+      continue;
+    }
+    if (character === "\"") {
+      inString = true;
+    } else if (character === "{") {
+      depth += 1;
+    } else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  return "";
+}
+
+/* Structural fingerprint for an unparseable response. Carries no model prose — only the type,
+   the length, and whether the text opens and closes an object:
+     json-invalid:empty                          the model returned nothing
+     json-invalid:len=1834:opens-obj:unterminated ran out of tokens mid-object -> raise the cap
+     json-invalid:len=210:leads-prose:no-obj      answered in prose instead of JSON -> prompt
+   The two diagnoses have opposite fixes, which is why the bare code was not enough. */
+function jsonInvalidFingerprint(rawOutput) {
+  if (rawOutput === undefined || rawOutput === null) return "json-invalid:absent";
+  if (typeof rawOutput !== "string") {
+    return "json-invalid:type-" + (Array.isArray(rawOutput) ? "array" : typeof rawOutput);
+  }
+  const text = stripJsonFence(rawOutput);
+  if (!text) return "json-invalid:empty";
+  const opensObject = text.charAt(0) === "{";
+  const closesObject = text.charAt(text.length - 1) === "}";
+  const hasObject = text.indexOf("{") !== -1;
+  return "json-invalid:len=" + text.length +
+    ":" + (opensObject ? "opens-obj" : "leads-prose") +
+    ":" + (closesObject ? "closes-obj" : hasObject ? "unterminated" : "no-obj");
+}
+
+/* See JD_REASONING_MAX_TOKENS_CEILING for why this scales instead of using one flat cap. */
+function jdReasoningMaxTokens(requirementCount) {
+  const count = Math.max(1, Math.min(Number(requirementCount) || 1, JD_REASONING_REQUIREMENT_TOKEN_CAP));
+  return Math.min(
+    JD_REASONING_MAX_TOKENS_CEILING,
+    JD_REASONING_TOKENS_BASE + count * JD_REASONING_TOKENS_PER_REQUIREMENT
+  );
 }
 
 /* The sibling of parseModelJson for the free-text modes (chat, summary, jd-explanation).
