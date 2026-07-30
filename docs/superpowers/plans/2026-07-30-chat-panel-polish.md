@@ -1,10 +1,14 @@
-# Recruiter JD Progress Indicator and AI Confidence Implementation Plan
+# Chat Panel Polish Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Show an honest indeterminate progress bar while the recruiter JD match is being scored, and stop the report pairing an AI-derived score with a keyword-derived confidence label.
+**Goal:** Two presentation fixes shipping together. In the recruiter JD report: an honest indeterminate progress bar while scoring runs, and a confidence label that belongs to the pass that produced the score. In the chat log: iMessage-style send / wait / receive motion in place of instant bubbles, a `"Thinking…"` string, and a scroll jump.
 
-**Architecture:** Presentation-only change across four files. `jd-reasoning.js` gains an `aiConfidence` aggregate derived from per-requirement confidences it already validates. `chatbot.js` picks the confidence source by scoring mode, drives a decorative progress bar from the existing `jdState.statusKind`, and surfaces the previously silent retry as its own phase. `index.html` and `style.css` carry the markup and the animation.
+**Specs:**
+- `docs/superpowers/specs/2026-07-30-recruiter-jd-progress-and-confidence-design.md` (Tasks 1–3)
+- `docs/superpowers/specs/2026-07-30-chat-message-motion-design.md` (Tasks 4–5)
+
+**Architecture:** Presentation-only across five files. `jd-reasoning.js` gains an `aiConfidence` aggregate derived from per-requirement confidences it already validates. `chatbot.js` picks the confidence source by scoring mode, drives a decorative progress bar from the existing `jdState.statusKind`, surfaces the previously silent retry as its own phase, and builds typing-dot markup instead of setting text. `index.html` and `style.css` carry the markup and all animation. Task 6 is the shared closing gate: harness assertions, one `?v=` bump, full green tree.
 
 **Tech Stack:** Hand-written ES5-style IIFE JavaScript, plain CSS with custom properties, `node --test`, PowerShell verification harnesses. No framework, no build step, no package manager.
 
@@ -513,14 +517,321 @@ git commit -m "feat: show an indeterminate progress bar and a visible retry whil
 
 ---
 
-### Task 4: Lock the new markup into the UI harness, bump `?v=`, verify green
+### Task 4: Bubble entrance motion and smooth scrolling
+
+**Files:**
+- Modify: `assets/css/style.css` (rules after `.chat-msg` at line ~794; `.chat-log` at line ~789; reduced-motion block at line ~1095)
+- Test: `tests/chat-model-switcher.test.js` (append)
+
+**Interfaces:**
+- Consumes: nothing from earlier tasks.
+- Produces: the `chat-msg-in` keyframe name and `scroll-behavior: smooth` on `.chat-log`. Task 5 adds the typing-dot rules alongside these; Task 6 asserts none of it animates under reduced motion.
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `tests/chat-model-switcher.test.js`:
+
+```js
+/* The chat read as dated because nothing moved at the moments a conversation has beats: addMsg
+   appended a bubble and set scrollTop directly, so bubbles appeared instantly and the log jumped.
+   A restrained ease-out was chosen over an iMessage-style overshoot — next to the site's editorial
+   typography a bounce reads as toy-like. */
+test('chat bubbles animate in from their own corner', () => {
+  assert.match(css, /@keyframes chat-msg-in\s*\{[\s\S]*?scale\(0\.96\)/,
+    'chat-msg-in should scale up from 0.96');
+  assert.match(css, /\.chat-msg\b[^{]*\{[^}]*animation:\s*chat-msg-in/,
+    '.chat-msg should use the entrance animation');
+  assert.match(css, /\.chat-msg-bot\b[^{]*\{[^}]*transform-origin:\s*bottom left/,
+    'bot bubbles should grow from the bottom-left');
+  assert.match(css, /\.chat-msg-user\b[^{]*\{[^}]*transform-origin:\s*bottom right/,
+    'user bubbles should grow from the bottom-right');
+});
+
+/* Done in CSS so the existing log.scrollTop = log.scrollHeight calls ease instead of jumping —
+   no JS change, and no reduced-motion branch in JS either. */
+test('the chat log scrolls smoothly', () => {
+  assert.match(css, /\.chat-log\b[^{]*\{[^}]*scroll-behavior:\s*smooth/,
+    '.chat-log should scroll smoothly');
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `node --test tests/chat-model-switcher.test.js`
+Expected: FAIL — `chat-msg-in` is not defined in `style.css`.
+
+- [ ] **Step 3: Write minimal implementation**
+
+In `assets/js/../css/style.css`, add `scroll-behavior: smooth;` to the existing `.chat-log` rule (line ~789), so it reads:
+
+```css
+.chat-log {
+  flex: 1; overflow-y: auto; overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch; scroll-behavior: smooth;
+  padding: 16px 18px; display: flex; flex-direction: column; gap: 10px;
+}
+```
+
+Add the entrance animation to the existing `.chat-msg` rule and a keyframe block after it:
+
+```css
+.chat-msg {
+  max-width: 86%; padding: 10px 14px; border-radius: 14px;
+  font-size: 0.88rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
+  animation: chat-msg-in 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+/* Safe on every .chat-msg because messages are only ever added one at a time — greeting, AI
+   status changes, conversation turns. There is no bulk history restore that would fire dozens of
+   entrances at once. See docs/superpowers/specs/2026-07-30-chat-message-motion-design.md. */
+@keyframes chat-msg-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+```
+
+Add `transform-origin` to the two existing side rules so each bubble grows from its own corner —
+`.chat-msg-bot` (line ~798) gains `transform-origin: bottom left;` and `.chat-msg-user`
+(line ~818) gains `transform-origin: bottom right;`.
+
+In the `@media (prefers-reduced-motion: reduce)` block at line ~1095, add:
+
+```css
+  .chat-msg { animation: none; }
+  .chat-log { scroll-behavior: auto; }
+```
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `node --test "tests/*.test.js"`
+Expected: PASS, 0 failing.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add assets/css/style.css tests/chat-model-switcher.test.js
+git commit -m "feat: animate chat bubbles in and ease the log scroll"
+```
+
+---
+
+### Task 5: Typing dots in place of the "Thinking…" text
+
+**Files:**
+- Modify: `assets/js/chatbot.js` (add `setThinkingDots`; call it at line ~1878-1879; fade content in where the reply lands at lines ~1536, ~1858)
+- Modify: `assets/css/style.css` (replace `.chat-msg.thinking` at line ~822; add typing rules; reduced-motion entry)
+- Test: `tests/chat-model-switcher.test.js` (append)
+
+**Interfaces:**
+- Consumes: the `chat-msg-in` entrance from Task 4 — the dots bubble uses it, and the reply reuses the same element so the bubble is continuous.
+- Produces: `.chat-typing` markup with three `<i>` children and an `aria-label`; the `chat-msg-settle` class for the content swap.
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `tests/chat-model-switcher.test.js`:
+
+```js
+/* The wait state was the literal string "Thinking…". Dots replace it visually, but the string is
+   NOT deleted — it moves to aria-label, so the wait state is still announced. Dropping it would
+   make waiting silent to assistive technology: a regression dressed as a visual upgrade. */
+test('the waiting bubble shows three dots and still announces itself', async () => {
+  const { context, elements } = createChatContext({ saveData: false });
+  await loadChat(context);
+  elements['chat-launcher'].dispatch('click');
+
+  elements['chat-input'].value = 'What did he build at Abbott?';
+  elements['chat-form'].dispatch('submit');
+
+  const bubbles = elements['chat-log'].children;
+  const waiting = bubbles[bubbles.length - 1];
+  assert.equal(waiting.classList.contains('thinking'), true, 'the last bubble should be the waiting one');
+
+  const dots = waiting.children.find((child) => child.className === 'chat-typing');
+  assert.ok(dots, 'the waiting bubble should contain a .chat-typing group');
+  assert.equal(dots.children.length, 3, 'three dots');
+  assert.equal(dots.getAttribute('aria-label'), 'Thinking…',
+    'the dots must carry the thinking string for screen readers');
+  assert.equal(waiting.textContent, '', 'the literal Thinking… text should be gone');
+});
+
+test('the typing dots are styled and staggered', () => {
+  assert.match(css, /@keyframes chat-typing-bounce/, 'the dots need a bounce keyframe');
+  assert.match(css, /\.chat-typing i\b[^{]*\{[^}]*animation:\s*chat-typing-bounce/,
+    'each dot should run the bounce');
+  assert.match(css, /\.chat-typing i:nth-child\(2\)[^{]*\{[^}]*animation-delay/,
+    'the second dot should be offset');
+  assert.match(css, /\.chat-typing i:nth-child\(3\)[^{]*\{[^}]*animation-delay/,
+    'the third dot should be offset');
+
+  /* The old whole-bubble pulse is removed: the dots carry the motion now, and pulsing the
+     container as well would double it. */
+  assert.equal(/\.chat-msg\.thinking\b[^{]*\{[^}]*animation:\s*pulse/.test(css), false,
+    'the whole-bubble pulse should be gone');
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `node --test tests/chat-model-switcher.test.js`
+Expected: FAIL — no `.chat-typing` group exists, so `assert.ok(dots, …)` fails.
+
+- [ ] **Step 3: Write minimal implementation**
+
+**5a — `assets/js/chatbot.js`.** Add beside `addMsg` (line ~623):
+
+```js
+  /* Three dots instead of the literal "Thinking…" string. The string is not dropped — it becomes
+     the group's aria-label, so the wait state stays audible to screen readers while sighted users
+     see dots. See docs/superpowers/specs/2026-07-30-chat-message-motion-design.md. */
+  function setThinkingDots(bubble) {
+    bubble.textContent = "";
+    bubble.classList.add("thinking");
+    var dots = document.createElement("span");
+    dots.className = "chat-typing";
+    dots.setAttribute("aria-label", t("thinking"));
+    for (var index = 0; index < 3; index += 1) {
+      dots.appendChild(document.createElement("i"));
+    }
+    bubble.appendChild(dots);
+    return bubble;
+  }
+
+  /* The reply lands in the element the dots occupied, so the bubble itself is continuous — it does
+     not exit and re-enter. Only the content changes, faded so the swap is not a hard cut.
+     The fade fires ONLY on the dots-to-text transition. The streaming path calls this once per
+     token and finishReply calls it again at the end; animating every time would strobe. */
+  function settleBubbleContent(bubble, text) {
+    var wasThinking = bubble.classList.contains("thinking");
+    bubble.classList.remove("thinking");
+    bubble.textContent = text;
+    if (!wasThinking) return;
+    bubble.classList.remove("chat-msg-settle");
+    /* Reading offsetWidth restarts the animation; without it the class is removed and re-added in
+       the same frame and the browser never sees a change. */
+    void bubble.offsetWidth;
+    bubble.classList.add("chat-msg-settle");
+  }
+
+  /* Token streaming writes to the log many times a second. With scroll-behavior: smooth every one
+     of those would retarget an in-flight scroll animation, which lags behind the text instead of
+     following it. Streaming jumps; message boundaries ease. */
+  function scrollLogToEndNow() {
+    var previous = log.style.scrollBehavior;
+    log.style.scrollBehavior = "auto";
+    log.scrollTop = log.scrollHeight;
+    log.style.scrollBehavior = previous;
+  }
+```
+
+Replace the two lines at ~1878:
+
+```js
+    var bubble = addMsg("bot", t("thinking"));
+    bubble.classList.add("thinking");
+```
+
+with:
+
+```js
+    var bubble = setThinkingDots(addMsg("bot", ""));
+```
+
+In the WebLLM streaming loop at ~1531, replace:
+
+```js
+      if (delta && delta.content) {
+        reply += delta.content;
+        bubble.textContent = reply;
+        bubble.classList.remove("thinking");
+        log.scrollTop = log.scrollHeight;
+      }
+```
+
+with:
+
+```js
+      if (delta && delta.content) {
+        reply += delta.content;
+        settleBubbleContent(bubble, reply);
+        scrollLogToEndNow();
+      }
+```
+
+In `finishReply` at ~1857, replace:
+
+```js
+    bubble.classList.remove("thinking");
+    bubble.textContent = reply;
+```
+
+with:
+
+```js
+    settleBubbleContent(bubble, reply);
+```
+
+**5b — `assets/css/style.css`.** Replace line ~822:
+
+```css
+.chat-msg.thinking { color: var(--muted); animation: pulse 1.4s infinite; }
+```
+
+with:
+
+```css
+.chat-msg.thinking { color: var(--muted); }
+.chat-typing { display: inline-flex; align-items: center; gap: 4px; padding: 2px 0; }
+.chat-typing i {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--muted);
+  animation: chat-typing-bounce 1.2s ease-in-out infinite;
+}
+.chat-typing i:nth-child(2) { animation-delay: 0.15s; }
+.chat-typing i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes chat-typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.45; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+.chat-msg-settle { animation: chat-msg-settle 180ms ease-out both; }
+@keyframes chat-msg-settle {
+  from { opacity: 0.4; }
+  to   { opacity: 1; }
+}
+```
+
+In the `@media (prefers-reduced-motion: reduce)` block, add:
+
+```css
+  .chat-typing i { animation: none; opacity: 1; }
+  .chat-msg-settle { animation: none; }
+```
+
+The dots stay visible and static, so the wait state still reads without movement.
+
+Also remove `.chat-msg.thinking` from the existing reduced-motion `animation: none` list on line
+~1099, since it no longer animates — leaving it there would be a rule with nothing to disable.
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `node --test "tests/*.test.js"`
+Expected: PASS, 0 failing.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add assets/js/chatbot.js assets/css/style.css tests/chat-model-switcher.test.js
+git commit -m "feat: replace the Thinking… text with an accessible typing-dot indicator"
+```
+
+---
+
+### Task 6: Lock the new markup into the UI harness, bump `?v=`, verify green
 
 **Files:**
 - Modify: `tools/verify_recruiter_ui.ps1` (add `$cssPath`; add id and reduced-motion assertions)
 - Modify: `index.html` (`?v=` bump only)
 
 **Interfaces:**
-- Consumes: the `chat-jd-progress` id and `.chat-jd-progress-bar` class from Task 3.
+- Consumes: the `chat-jd-progress` id and `.chat-jd-progress-bar` class from Task 3; the
+  `.chat-msg` entrance from Task 4; the `.chat-typing i` dots from Task 5.
 - Produces: nothing consumed by later tasks — this is the closing gate.
 
 - [ ] **Step 1: Add the harness assertions**
@@ -566,11 +877,26 @@ Assert-Match $index 'id="chat-jd-progress"[^>]*aria-hidden="true"' 'The recruite
 $reducedMotionBlocks = @([regex]::Matches($css, '@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\n\}'))
 Assert-True ($reducedMotionBlocks.Count -gt 0) 'style.css must carry at least one prefers-reduced-motion block.'
 
-$disablesProgressBar = $false
-foreach ($block in $reducedMotionBlocks) {
-  if ($block.Value -match '\.chat-jd-progress-bar[^}]*animation:\s*none') { $disablesProgressBar = $true }
+$motionSelectors = @{
+  '.chat-jd-progress-bar' = 'the recruiter progress bar'
+  '.chat-msg'             = 'the chat bubble entrance'
+  '.chat-typing i'        = 'the typing dots'
 }
-Assert-True $disablesProgressBar 'The reduced-motion block must disable the recruiter progress bar animation.'
+foreach ($selector in $motionSelectors.Keys) {
+  $pattern = [regex]::Escape($selector) + '[^}]*animation:\s*none'
+  $disabled = $false
+  foreach ($block in $reducedMotionBlocks) {
+    if ($block.Value -match $pattern) { $disabled = $true }
+  }
+  Assert-True $disabled "The reduced-motion block must disable $($motionSelectors[$selector]) animation ($selector)."
+}
+
+# Smooth scrolling is motion too: a log that eases under prefers-reduced-motion still moves.
+$scrollDisabled = $false
+foreach ($block in $reducedMotionBlocks) {
+  if ($block.Value -match '\.chat-log[^}]*scroll-behavior:\s*auto') { $scrollDisabled = $true }
+}
+Assert-True $scrollDisabled 'The reduced-motion block must set scroll-behavior: auto on .chat-log.'
 ```
 
 - [ ] **Step 2: Run the harness to verify it passes**
@@ -622,7 +948,23 @@ Open `http://localhost:8080`, open AIMeer, open the JD matcher, paste
 - [ ] Widths 375 / 768 / 1440 — the bar spans the panel and never causes horizontal scroll.
 - [ ] Dark and light themes — the track is visible in both.
 - [ ] EN and BM — switch language mid-analysis and confirm the phase text swaps.
-- [ ] DevTools → Rendering → Emulate `prefers-reduced-motion: reduce`: the bar is full-width and static, never animating.
+
+Then close the JD panel and send an ordinary chat message:
+
+- [ ] The user bubble grows from the bottom-right; bot bubbles grow from the bottom-left.
+- [ ] Three dots appear in a bot bubble while waiting, staggered rather than in unison.
+- [ ] The reply appears in that same bubble — it does not disappear and come back.
+- [ ] The log eases to the bottom instead of jumping, including on a long reply.
+- [ ] Send several messages quickly — no stutter, and the log stays pinned to the bottom.
+- [ ] On a device that runs the on-device model, watch a streamed reply: the text should stay
+      pinned to the bottom as it arrives, with the scroll tracking it rather than lagging behind.
+
+Finally, with DevTools → Rendering → Emulate `prefers-reduced-motion: reduce`:
+
+- [ ] The JD progress bar is full-width and static, never animating.
+- [ ] Chat bubbles appear with no entrance animation.
+- [ ] The typing dots are visible but still.
+- [ ] The log jumps rather than eases.
 
 - [ ] **Step 6: Commit**
 
