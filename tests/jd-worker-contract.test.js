@@ -318,7 +318,7 @@ test('jd-reasoning Worker enforces evidence provenance for evidence-based match 
   assert.equal(professionalResponse.status, 200, 'professional match levels should accept professional evidence');
 });
 
-test('jd-reasoning keeps noisy salary and benefits sections out of the bounded browser-to-worker payload', async () => {
+test('the browser-to-worker payload carries the job description prose, employer pay and benefits boilerplate included', async () => {
   const request = buildValidRequest({
     language: 'en',
 text: `Required Skills:
@@ -340,59 +340,139 @@ Application Questions:
     profile,
     aiResponse: buildValidReasoningResponse(request, profile)
   });
+  const jdText = request.jdText.toLowerCase();
+  const requirementLines = request.deterministicInput.requirements
+    .map((requirement) => String(requirement.original || requirement.term).toLowerCase());
 
-  assert.equal(request.jdText.toLowerCase().includes('expected salary'), false, 'projected jdText should exclude salary questions');
-  assert.equal(request.jdText.toLowerCase().includes('medical coverage'), false, 'projected jdText should exclude medical coverage questions');
-  assert.equal(request.jdText.toLowerCase().includes('annual leave'), false, 'projected jdText should exclude annual leave questions');
-  assert.match(request.jdText.toLowerCase(), /medical device integration/, 'valid medical device requirements should remain in the projection');
-  assert.match(request.jdText.toLowerCase(), /leave management system/, 'valid leave management requirements should remain in the projection');
-  assert.match(request.jdText.toLowerCase(), /compensation analytics platform/, 'valid compensation analytics requirements should remain in the projection');
-  assert.equal(request.jdText.toLowerCase().includes('employer questions'), false, 'projected jdText should exclude employer question headings');
-  assert.equal(request.jdText.toLowerCase().includes('application questions'), false, 'projected jdText should exclude application question headings');
-  assert.equal(response.status, 200, 'the recruiter-safe projection should remain valid at the worker contract boundary');
-  assert.equal(response.aiCalls.length, 1, 'valid recruiter-safe payloads should still reach Workers AI');
+  assert.match(jdText, /expected salary/, 'employer pay boilerplate is not private data and must reach the model');
+  assert.match(jdText, /medical coverage/, 'employer medical boilerplate must reach the model');
+  assert.match(jdText, /annual leave/, 'employer leave boilerplate must reach the model');
+  assert.match(jdText, /medical device integration/, 'domain requirements must survive');
+  assert.match(jdText, /leave management system/, 'domain requirements must survive');
+  assert.match(jdText, /compensation analytics platform/, 'domain requirements must survive');
+  /* The point of the change: the model now sees prose the extractor never turned into a
+     requirement, which is what lets it judge the role rather than a keyword digest. */
+  assert.match(jdText, /are you willing to relocate\?/, 'jdText should carry prose beyond the extracted requirement lines');
+  assert.equal(
+    requirementLines.some((line) => line.includes('are you willing to relocate')),
+    false,
+    'that prose really is absent from the extracted requirements'
+  );
+  assert.equal(response.status, 200, 'the payload should remain valid at the Worker contract boundary');
+  assert.equal(response.aiCalls.length, 1, 'valid payloads should still reach Workers AI');
 });
 
-test('jd-reasoning Worker rejects clear contractual and employee-admin privacy contexts', async () => {
+test('jd-reasoning Worker accepts employer offer boilerplate and still rejects personal identifiers', async () => {
   const validRequest = buildValidRequest({
     language: 'en',
     text: `Required Skills:
 - ASP.NET Core medical device integration
 - Azure DevOps leave management system`
   });
-  const rejectedContexts = [
-    'Expected monthly basic salary',
-    'Expected compensation',
-    'Total compensation',
-    'Compensation package',
-    'Compensation history',
-    'Compensation range',
-    'Remuneration package',
-    'Remuneration expectation',
-    'Remuneration range',
-    'Employee compensation',
-    'Pay remuneration',
-    'candidate compensation review',
-    'candidate remuneration review',
-    'admin compensation workflow',
-    'Medical coverage',
-    'Annual leave',
-    'Employee benefits',
-    'NRIC verification',
-    'Home address',
-    'Date of birth',
-    'Signatures'
+  const profile = loadProfile();
+  const acceptedContexts = [
+    'Expected monthly basic salary RM12,000',
+    'Salary range is negotiable',
+    'Expected compensation discussed at offer stage',
+    'Total compensation includes a performance bonus',
+    'Compensation package is competitive',
+    'Remuneration package reviewed annually',
+    'Employee compensation is benchmarked to market',
+    'Medical coverage for you and your dependents',
+    'Medical insurance from day one',
+    'Health benefits and dental',
+    '18 days annual leave plus public holidays',
+    'Parental leave and flexible hours',
+    'Leave entitlement grows with tenure',
+    'Employee benefits package includes gym membership'
   ];
+  const rejectedContexts = [
+    'NRIC verification required',
+    'Attach a copy of your MyKad',
+    'State your IC number in the application form',
+    'Reference 920101-14-5523 on file',
+    'Home address must be stated',
+    'Date of birth must be stated',
+    'Passport number required for travel',
+    'Bank account number for payroll setup',
+    'Signatures required on the appointment letter',
+    'See the confidential contract language attached'
+  ];
+
+  for (const context of acceptedContexts) {
+    const request = { ...validRequest, jdText: `${validRequest.jdText}\n${context}` };
+    const response = await callWorker(request, {
+      profile,
+      aiResponse: buildValidReasoningResponse(request, profile)
+    });
+
+    assert.equal(response.status, 200, `"${context}" describes the employer's offer and must be accepted`);
+    assert.equal(response.aiCalls.length, 1, `"${context}" should reach Workers AI`);
+  }
 
   for (const context of rejectedContexts) {
     const response = await callWorker({
       ...validRequest,
       jdText: `${validRequest.jdText}\n${context}`
+    }, { profile });
+
+    assert.equal(response.status, 400, `"${context}" should be rejected at the Worker privacy boundary`);
+    assert.equal(response.json.error, 'jd-privacy-invalid');
+    assert.equal(response.aiCalls.length, 0, `"${context}" should fail before Workers AI is invoked`);
+  }
+});
+
+/* The browser and the Worker cannot share code — one is a static asset, the other is pasted
+   into the Cloudflare dashboard — so the only thing keeping their privacy rules aligned is
+   this test. A JD the browser is willing to send must be one the Worker is willing to
+   accept, and vice versa; otherwise every visitor silently gets the keyword estimate. */
+test('the browser screen and the Worker screen agree on which job descriptions are safe', async () => {
+  const profile = loadProfile();
+  const baseJd = `Required Skills:
+- Kubernetes
+- Azure
+- Azure DevOps
+- Bicep
+Preferred Skills:
+- CI/CD`;
+  const cases = [
+    { label: 'employer offer boilerplate', safe: true, probe: /competitive salary, medical insurance and 18 days annual leave/i, line: 'We offer a competitive salary, medical insurance and 18 days annual leave.' },
+    { label: 'compensation review duties', safe: true, probe: /payroll compensation review workflow/i, line: 'You will own the payroll compensation review workflow.' },
+    { label: 'NRIC word', safe: false, probe: /nric/i, line: 'Please attach your NRIC copy.' },
+    { label: 'NRIC-shaped number', safe: false, probe: /920101-14-5523/, line: 'Candidate 920101-14-5523 already applied.' },
+    { label: 'MyKad', safe: false, probe: /mykad/i, line: 'Bring your MyKad to the interview.' },
+    { label: 'IC number', safe: false, probe: /ic number/i, line: 'State your IC number in the application form.' },
+    { label: 'home address', safe: false, probe: /home address/i, line: 'Provide your home address.' },
+    { label: 'date of birth', safe: false, probe: /date of birth/i, line: 'State your date of birth.' },
+    { label: 'passport number', safe: false, probe: /passport number/i, line: 'Passport number required for travel.' },
+    { label: 'bank account number', safe: false, probe: /bank account number/i, line: 'Bank account number for payroll setup.' },
+    { label: 'signatures', safe: false, probe: /signatures/i, line: 'Signatures required on the appointment letter.' }
+  ];
+
+  for (const entry of cases) {
+    const browserRequest = buildValidRequest({ language: 'en', text: `${baseJd}\n${entry.line}\n` });
+
+    if (entry.safe) {
+      assert.match(browserRequest.jdText, entry.probe, 'the browser should forward the prose for: ' + entry.label);
+    } else {
+      assert.doesNotMatch(browserRequest.jdText, entry.probe, 'the browser must withhold the prose for: ' + entry.label);
+      assert.match(browserRequest.jdText, /withheld/i, 'the withheld notice should stand in for: ' + entry.label);
+    }
+
+    /* Feed the Worker the raw prose whatever the browser decided, so the server-side
+       backstop is what is under test on this leg. */
+    const workerRequest = { ...browserRequest, jdText: `${baseJd}\n${entry.line}` };
+    const response = await callWorker(workerRequest, {
+      profile,
+      aiResponse: buildValidReasoningResponse(workerRequest, profile)
     });
 
-    assert.equal(response.status, 400, `${context} should be rejected at the Worker privacy boundary`);
-    assert.equal(response.json.error, 'jd-privacy-invalid');
-    assert.equal(response.aiCalls.length, 0, `${context} should fail before Workers AI is invoked`);
+    assert.equal(
+      response.status,
+      entry.safe ? 200 : 400,
+      (entry.safe ? 'the Worker should accept' : 'the Worker should reject') + ' the same prose for: ' + entry.label
+    );
+    if (!entry.safe) assert.equal(response.json.error, 'jd-privacy-invalid');
   }
 });
 

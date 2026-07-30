@@ -3,6 +3,9 @@
 
   var JD_TEXT_MAX = 12000;
   var RESULT_CHARS_MAX = 12000;
+  /* Stands in for the JD prose when the screen below refuses it.  Must stay non-empty (the
+     Worker rejects a blank jdText) and must not itself trip the screen. */
+  var JD_TEXT_WITHHELD_NOTICE = "Job description prose withheld: it carried personal identifiers. Score from the structured requirements only.";
   var DEFAULT_PRIVACY_EXCLUSIONS = [
     "salary",
     "nric",
@@ -14,29 +17,32 @@
     "signatures",
     "confidential contract language"
   ];
-  var AMBIGUOUS_PRIVACY_TERMS = {
+  /* Terms from the exclusion list that describe the EMPLOYER's offer when they appear in a
+     job description, not private data about anyone.  A bare substring match on them would
+     reject nearly every real posting ("competitive salary", "medical insurance", "annual
+     leave"), so this screen skips them.  jd-matcher.js still drops requirement lines that
+     contain them, so they never become scored requirements. */
+  var EMPLOYER_BOILERPLATE_TERMS = {
     salary: true,
     benefits: true,
     leave: true,
     medical: true
   };
-  var CONTEXTUAL_PRIVACY_PATTERNS = [
-    /\b(?:expected|expecting|monthly|basic)\s+(?:[a-z]+\s+){0,2}salary\b/i,
-    /\bsalary\s+(?:expectation|expectations|range|package|history)\b/i,
-    /\b(?:expected|total)\s+compensation\b/i,
-    /\bcompensation\s+(?:package|history|range)\b/i,
-    /\bremuneration\s+(?:package|expectation|range)\b/i,
-    /\b(?:salary|employee|pay)\s+(?:[a-z]+\s+){0,2}(?:compensation|remuneration)\b/i,
-    /\b(?:compensation|remuneration)\s+(?:[a-z]+\s+){0,2}(?:salary|employee|pay)\b/i,
-    /\b(?:candidate|applicant|employee|staff|admin|administrative|payroll|hr)\s+(?:[a-z]+\s+){0,2}(?:compensation|remuneration)\b/i,
-    /\b(?:compensation|remuneration)\s+(?:[a-z]+\s+){0,2}(?:candidate|applicant|employee|staff|admin|administrative|payroll|hr)\b/i,
-    /\b(?:compensation|remuneration)\s+(?:review|workflow|administration)\b/i,
-    /\b(?:review|workflow|administration)\s+(?:of|for|around|on)?\s*(?:compensation|remuneration)\b/i,
-    /\bmedical\s+(?:coverage|insurance|benefits|plan|history)\b/i,
-    /\b(?:health|employee)\s+(?:benefits|coverage|insurance|plan)\b/i,
-    /\b(?:annual|sick|paid|unpaid|parental|maternity|paternity|casual)\s+leave\b/i,
-    /\bleave\s+(?:entitlement|history|balance|policy|policies|allowance)\b/i,
-    /\bbenefits\s+(?:package|coverage|plan|plans|history|entitlement)\b/i
+  /* A pasted document can carry a THIRD PARTY's personal identifiers — someone else's
+     NRIC, home address or date of birth.  Forwarding those to the cloud model would leak
+     data that is not ours to share, so this group still blocks.  Keep it identical to
+     cloud/aimeer-worker.js: the browser and the Worker are separate deployment targets
+     that cannot share code, and the same JD must be accepted or refused by both. */
+  var PERSONAL_IDENTIFIER_PATTERNS = [
+    /\bnric\b/i,
+    /\bmy[- ]?kad\b/i,
+    /\b(?:ic|i\/c)\s*(?:no\.?|number)\b/i,
+    /\b\d{6}-\d{2}-\d{4}\b/,
+    /\bhome\s+address\b/i,
+    /\bdate\s+of\s+birth\b/i,
+    /\bpassport\s*(?:no\.?|number)\b/i,
+    /\bbank\s+account\s*(?:no\.?|number)\b/i,
+    /\bsignatures?\b/i
   ];
   var ROOT_KEYS = ["narrative", "requirements", "overall"];
   var REQUIREMENT_KEYS = [
@@ -145,13 +151,13 @@
     var haystack = String(text || "").toLowerCase();
     for (var index = 0; index < privacyTerms.length; index += 1) {
       var term = String(privacyTerms[index] || "").toLowerCase().trim();
-      if (!term || AMBIGUOUS_PRIVACY_TERMS[term]) continue;
+      if (!term || EMPLOYER_BOILERPLATE_TERMS[term]) continue;
       var escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       if (new RegExp("(^|[^a-z0-9])" + escapedTerm + "(?=$|[^a-z0-9])", "i").test(haystack)) {
         return true;
       }
     }
-    return CONTEXTUAL_PRIVACY_PATTERNS.some(function (pattern) {
+    return PERSONAL_IDENTIFIER_PATTERNS.some(function (pattern) {
       return pattern.test(haystack);
     });
   }
@@ -279,48 +285,21 @@
     return true;
   }
 
-  function buildRequirementOnlyJdText(requirements, privacyTerms) {
-    var grouped = {
-      required: [],
-      neutral: [],
-      preferred: []
-    };
-    var seen = Object.create(null);
-    for (var index = 0; index < requirements.length; index += 1) {
-      var requirement = requirements[index];
-      var candidate = clipText(
-        requirement && (requirement.original || requirement.term),
-        240
-      ).replace(/^\-\s*/, "");
-      if (!candidate || containsPrivacyTerms(candidate, privacyTerms)) continue;
-      var dedupeKey = candidate.toLowerCase();
-      if (seen[dedupeKey]) continue;
-      seen[dedupeKey] = true;
-      var strength = requirement && requirement.strength === "required"
-        ? "required"
-        : requirement && requirement.strength === "preferred"
-          ? "preferred"
-          : "neutral";
-      grouped[strength].push(candidate);
+  /* The model reads the recruiter's own prose, not a keyword digest — judging whether
+     adjacent experience actually covers a role needs the posting's wording, seniority
+     framing and responsibilities.  Employer boilerplate about pay, benefits and leave is
+     expected here and no longer withheld.  A document carrying a third party's personal
+     identifiers is different: that prose is withheld outright rather than forwarded, and
+     the Worker screens the same text again server-side. */
+  function buildScreenedJdText(normalizedJd, privacyTerms) {
+    var source = normalizedJd && typeof normalizedJd === "object"
+      ? (normalizedJd.normalizedText || normalizedJd.rawText)
+      : normalizedJd;
+    var text = clipText(source, JD_TEXT_MAX);
+    if (!text || containsPrivacyTerms(text, privacyTerms)) {
+      return JD_TEXT_WITHHELD_NOTICE;
     }
-
-    var lines = [];
-    function appendSection(label, items) {
-      if (!items.length) return;
-      lines.push(label);
-      for (var itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
-        lines.push("- " + items[itemIndex]);
-      }
-    }
-
-    appendSection("Required Skills:", grouped.required);
-    appendSection("Additional Requirements:", grouped.neutral);
-    appendSection("Preferred Skills:", grouped.preferred);
-
-    if (!lines.length) {
-      return "Recruiter-safe requirement summary only.";
-    }
-    return clipText(lines.join("\n"), JD_TEXT_MAX);
+    return text;
   }
 
   function buildInput(normalizedJd, deterministicResult, profile, language) {
@@ -349,7 +328,7 @@
     return {
       mode: "jd-reasoning",
       language: language === "ms" ? "ms" : "en",
-      jdText: buildRequirementOnlyJdText(requirements, privacyTerms),
+      jdText: buildScreenedJdText(normalizedJd, privacyTerms),
       requirements: requirements,
       deterministicResult: compactDeterministicResult(deterministicResult || {}),
       evidenceRegistry: evidenceRegistry,

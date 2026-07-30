@@ -159,29 +159,31 @@ const DEFAULT_PRIVACY_EXCLUSIONS = [
   "signatures",
   "confidential contract language"
 ];
-const AMBIGUOUS_PRIVACY_TERMS = {
+/* Terms from the exclusion list that describe the EMPLOYER's offer when they appear in a
+   job description, not private data about anyone.  A bare substring match on them would
+   reject nearly every real posting ("competitive salary", "medical insurance", "annual
+   leave"), so this screen skips them. */
+const EMPLOYER_BOILERPLATE_TERMS = {
   salary: true,
   benefits: true,
   leave: true,
   medical: true
 };
-const CONTEXTUAL_PRIVACY_PATTERNS = [
-  /\b(?:expected|expecting|monthly|basic)\s+(?:[a-z]+\s+){0,2}salary\b/i,
-  /\bsalary\s+(?:expectation|expectations|range|package|history)\b/i,
-  /\b(?:expected|total)\s+compensation\b/i,
-  /\bcompensation\s+(?:package|history|range)\b/i,
-  /\bremuneration\s+(?:package|expectation|range)\b/i,
-  /\b(?:salary|employee|pay)\s+(?:[a-z]+\s+){0,2}(?:compensation|remuneration)\b/i,
-  /\b(?:compensation|remuneration)\s+(?:[a-z]+\s+){0,2}(?:salary|employee|pay)\b/i,
-  /\b(?:candidate|applicant|employee|staff|admin|administrative|payroll|hr)\s+(?:[a-z]+\s+){0,2}(?:compensation|remuneration)\b/i,
-  /\b(?:compensation|remuneration)\s+(?:[a-z]+\s+){0,2}(?:candidate|applicant|employee|staff|admin|administrative|payroll|hr)\b/i,
-  /\b(?:compensation|remuneration)\s+(?:review|workflow|administration)\b/i,
-  /\b(?:review|workflow|administration)\s+(?:of|for|around|on)?\s*(?:compensation|remuneration)\b/i,
-  /\bmedical\s+(?:coverage|insurance|benefits|plan|history)\b/i,
-  /\b(?:health|employee)\s+(?:benefits|coverage|insurance|plan)\b/i,
-  /\b(?:annual|sick|paid|unpaid|parental|maternity|paternity|casual)\s+leave\b/i,
-  /\bleave\s+(?:entitlement|history|balance|policy|policies|allowance)\b/i,
-  /\bbenefits\s+(?:package|coverage|plan|plans|history|entitlement)\b/i
+/* A pasted document can carry a THIRD PARTY's personal identifiers — someone else's NRIC,
+   home address or date of birth.  Forwarding those to the model would leak data that is not
+   ours to share, so this group still blocks.  Keep it identical to assets/js/jd-reasoning.js:
+   the browser and the Worker are separate deployment targets that cannot share code, and the
+   same JD must be accepted or refused by both. */
+const PERSONAL_IDENTIFIER_PATTERNS = [
+  /\bnric\b/i,
+  /\bmy[- ]?kad\b/i,
+  /\b(?:ic|i\/c)\s*(?:no\.?|number)\b/i,
+  /\b\d{6}-\d{2}-\d{4}\b/,
+  /\bhome\s+address\b/i,
+  /\bdate\s+of\s+birth\b/i,
+  /\bpassport\s*(?:no\.?|number)\b/i,
+  /\bbank\s+account\s*(?:no\.?|number)\b/i,
+  /\bsignatures?\b/i
 ];
 const HTML_MARKUP_PATTERN = /<\s*\/?\s*[a-z][^>]*>|<!--[\s\S]*?-->|<!--|-->/i;
 
@@ -889,13 +891,13 @@ function containsPrivacyTerms(text, privacyTerms) {
   const haystack = String(text || "").toLowerCase();
   for (const rawTerm of privacyTerms) {
     const term = String(rawTerm || "").toLowerCase().trim();
-    if (!term || AMBIGUOUS_PRIVACY_TERMS[term]) continue;
+    if (!term || EMPLOYER_BOILERPLATE_TERMS[term]) continue;
     const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     if (new RegExp("(^|[^a-z0-9])" + escapedTerm + "(?=$|[^a-z0-9])", "i").test(haystack)) {
       return true;
     }
   }
-  return CONTEXTUAL_PRIVACY_PATTERNS.some((pattern) => pattern.test(haystack));
+  return PERSONAL_IDENTIFIER_PATTERNS.some((pattern) => pattern.test(haystack));
 }
 
 function isRequirementIdValid(id, category) {

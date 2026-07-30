@@ -1630,9 +1630,10 @@
 
   /* The Worker's jd-scoring mode accepts exactly these keys and rejects any body that
      carries messages or system — the system prompt is assembled server-side on purpose.
-     jdText stays the recruiter-safe requirement summary that JDReasoning.buildInput
-     already filtered; nothing here re-derives it from the raw pasted JD, and 12000
-     mirrors the Worker's own clip so an oversize payload never round-trips. */
+     jdText is whatever JDReasoning.buildInput's screen already approved (the JD's own
+     prose, or a withheld-notice when it carried personal identifiers); nothing here
+     re-derives or re-screens it, and 12000 mirrors the Worker's own clip so an oversize
+     payload never round-trips. */
   function buildJdScoringCloudPayload(input) {
     var safeInput = input || {};
     var evidenceIds = (Array.isArray(safeInput.evidenceRegistry) ? safeInput.evidenceRegistry : [])

@@ -16,7 +16,12 @@
 - Every new user-visible string: EN in `index.html` (with `data-i18n`) or the `T` table in `chatbot.js`, plus BM in `i18n.js` or the `T.ms` branch. BM follows Dewan Bahasa dan Pustaka register.
 - Amber is reserved for Retired/EOL badges; the match report uses teal/neutral.
 - The Worker never accepts client-supplied system prompts; prompts assemble server-side.
-- Privacy filtering in `jd-reasoning.js` (`getPrivacyTerms`, `containsPrivacyTerms`, `CONTEXTUAL_PRIVACY_PATTERNS`) is reused untouched — do not fork or bypass it.
+- Privacy filtering in `jd-reasoning.js` (`getPrivacyTerms`, `containsPrivacyTerms`) is
+  reused, never forked or bypassed. **Superseded in part by Task 3b:** the single
+  `CONTEXTUAL_PRIVACY_PATTERNS` list is now split into `EMPLOYER_BOILERPLATE_TERMS`
+  (skipped — pay/benefits/leave describe the employer's offer) and
+  `PERSONAL_IDENTIFIER_PATTERNS` (still blocking). Both groups must stay literally
+  identical in `assets/js/jd-reasoning.js` and `cloud/aimeer-worker.js`.
 - `cloud/aimeer-worker.js` edits are NOT live until hand-pasted into the Cloudflare dashboard; every task touching it must say so in its commit message.
 - Local preview must use port 8080 (`python -m http.server 8080`).
 - **The existing test suite must be green before any task is considered complete.** Run

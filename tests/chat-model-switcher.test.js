@@ -708,7 +708,7 @@ test('JD scoring runs automatically on the cloud without a click, keeping the de
   await flushAsync();
 
   elements['chat-jd-input'].value =
-    'Need ASP.NET Core MVC and Kubernetes ownership. Expected salary range RM12,000 monthly plus medical insurance.';
+    'Need ASP.NET Core MVC and Kubernetes ownership. Expected salary range RM12,000 monthly plus medical insurance. Reporting into the Head of Engineering.';
   elements['chat-jd-analyze'].dispatch('click');
   await flushAsync();
 
@@ -733,11 +733,18 @@ test('JD scoring runs automatically on the cloud without a click, keeping the de
   assert.equal(cloudCalls[0].mode, 'jd-scoring');
   assert.equal('messages' in cloudCalls[0], false, 'the Worker rejects client-supplied chat messages outright');
   assert.equal('system' in cloudCalls[0], false, 'the Worker assembles the system prompt itself');
-  assert.match(cloudCalls[0].jdText, /^Required Skills:/, 'jdText stays the recruiter-safe requirement summary');
-  assert.doesNotMatch(
+  /* jdText is the posting's own prose, employer pay and benefits boilerplate included — the
+     model needs the real wording to judge fit. Only a third party's personal identifiers are
+     withheld, which tests/jd-reasoning.test.js pins directly. */
+  assert.match(
     cloudCalls[0].jdText,
-    /salary|medical insurance|RM12,000/i,
-    'the existing payload filter must keep compensation and benefits text out of the request'
+    /Reporting into the Head of Engineering/,
+    'jdText should carry prose the extractor never turned into a requirement'
+  );
+  assert.match(
+    cloudCalls[0].jdText,
+    /Expected salary range RM12,000 monthly plus medical insurance/,
+    'employer pay and benefits boilerplate is not private data and must reach the model'
   );
 
   pendingScoring.resolve(makeJsonResponse({ reasoning: buildScoringModelOutput() }));
