@@ -303,12 +303,9 @@
       jdEvidenceUnverified: "Unverified",
       jdNoMatches: "No items in this section.",
       jdReasonTitle: "Recruiter reasoning",
-      jdReasonStatusLocal: "Recruiter reasoning ran on this device. Only the bounded normalized JD, deterministic result, and recruiter-safe evidence map were used.",
-      jdReasonStatusCloud: "Recruiter reasoning used secure cloud AI. Only the bounded normalized JD, deterministic result, and recruiter-safe evidence map were sent.",
-      jdReasonStatusWaiting: "On-device AIMeer is still getting ready. Recruiter reasoning will stay on this device once the local model is ready.",
-      jdReasonStatusUnavailable: "Recruiter reasoning is unavailable right now. The deterministic score above remains the authoritative result.",
-      jdReasonStatusFallback: "Deterministic fallback is active because recruiter reasoning could not be validated. The baseline score remains authoritative.",
-      jdReasonError: "AIMeer could not validate recruiter reasoning right now. The deterministic score above remains the authoritative result.",
+      jdReasonStatusCloud: "Recruiter reasoning used secure cloud AI, weighing the job description wording, the keyword-based baseline, and recruiter-safe evidence.",
+      jdReasonStatusUnavailable: "Recruiter reasoning is unavailable right now, so the keyword-based estimate above stands on its own.",
+      jdReasonStatusFallback: "AI reasoning could not be completed, so this report uses the keyword-based estimate above instead.",
       jdReasonRequirements: "Requirement-by-requirement reasoning",
       jdHandoffSummary: "AIMeer match report — {band} ({score}%).",
       jdHandoffStrengths: "Strengths: {terms}.",
@@ -324,8 +321,8 @@
       jdReasonVerificationLabel: "Verification question",
       jdReasonEvidenceLabel: "Evidence references",
       jdReasonCapabilitiesLabel: "Transferable capabilities",
-      jdReasonPrivacyLocal: "Reasoning stayed on this device.",
-      jdReasonPrivacyCloud: "Reasoning used secure cloud AI with bounded recruiter-safe input only.",
+      jdReasonPrivacyCloud: "The job description wording was sent to secure cloud AI for this analysis; personal identifiers are withheld rather than sent.",
+      jdReasonPrivacyUnavailable: "No job description content was sent for this analysis; recruiter reasoning did not run.",
       jdReasonNoRequirementDetails: "No requirement-level reasoning is available yet.",
       jdReasonMatchDirectProfessional: "Direct professional match",
       jdReasonMatchAdjacentProfessional: "Adjacent professional match",
@@ -410,12 +407,9 @@
       jdEvidenceUnverified: "Belum disahkan",
       jdNoMatches: "Tiada item dalam seksyen ini.",
       jdReasonTitle: "Penaakulan perekrut",
-      jdReasonStatusLocal: "Penaakulan perekrut dijalankan pada peranti ini. Hanya JD ternormal terhad, keputusan deterministik, dan peta bukti selamat perekrut digunakan.",
-      jdReasonStatusCloud: "Penaakulan perekrut menggunakan AI awan selamat. Hanya JD ternormal terhad, keputusan deterministik, dan peta bukti selamat perekrut dihantar.",
-      jdReasonStatusWaiting: "AIMeer setempat masih disediakan. Penaakulan perekrut akan kekal pada peranti ini sebaik sahaja model setempat siap.",
-      jdReasonStatusUnavailable: "Penaakulan perekrut tidak tersedia sekarang. Skor deterministik di atas kekal sebagai keputusan autoritatif.",
-      jdReasonStatusFallback: "Ringkasan deterministik digunakan kerana penaakulan perekrut tidak dapat disahkan. Skor asas kekal autoritatif.",
-      jdReasonError: "AIMeer tidak dapat mengesahkan penaakulan perekrut sekarang. Skor deterministik di atas kekal sebagai keputusan autoritatif.",
+      jdReasonStatusCloud: "Penaakulan perekrut menggunakan AI awan selamat, menimbang kandungan huraian jawatan, garis dasar berasaskan kata kunci, dan bukti selamat perekrut.",
+      jdReasonStatusUnavailable: "Penaakulan perekrut tidak tersedia sekarang, jadi anggaran berasaskan kata kunci di atas berdiri dengan sendirinya.",
+      jdReasonStatusFallback: "Penaakulan AI tidak dapat diselesaikan, jadi laporan ini menggunakan anggaran berasaskan kata kunci di atas.",
       jdReasonRequirements: "Penaakulan mengikut keperluan",
       jdHandoffSummary: "Laporan padanan AIMeer — {band} ({score}%).",
       jdHandoffStrengths: "Kekuatan: {terms}.",
@@ -431,8 +425,8 @@
       jdReasonVerificationLabel: "Soalan pengesahan",
       jdReasonEvidenceLabel: "Rujukan bukti",
       jdReasonCapabilitiesLabel: "Keupayaan boleh dipindahkan",
-      jdReasonPrivacyLocal: "Penaakulan kekal pada peranti ini.",
-      jdReasonPrivacyCloud: "Penaakulan menggunakan AI awan selamat dengan input selamat perekrut yang terhad sahaja.",
+      jdReasonPrivacyCloud: "Kandungan huraian jawatan dihantar kepada AI awan selamat untuk analisis ini; pengenalan diri peribadi ditahan, bukan dihantar.",
+      jdReasonPrivacyUnavailable: "Tiada kandungan huraian jawatan dihantar untuk analisis ini; penaakulan perekrut tidak dijalankan.",
       jdReasonNoRequirementDetails: "Butiran penaakulan mengikut keperluan belum tersedia.",
       jdReasonMatchDirectProfessional: "Padanan profesional langsung",
       jdReasonMatchAdjacentProfessional: "Padanan profesional bersebelahan",
@@ -595,10 +589,9 @@
     normalizedText: "",
     resultSource: "",
     scoringMode: "", /* "" | pending | ai | fallback — what produced jdState.result */
-    handoffOffered: false, /* one-shot: only surface the handoff card once per settled result */
-    reasoningMode: "",
+    reasoningMode: "unavailable", /* "cloud" | "unavailable" — never "", so renderJdReasoning never
+      has to guess a mode from ambient chat-tier state (see FINAL WHOLE-BRANCH REVIEW, I3) */
     reasoningBusy: false,
-    reasoningError: "",
     reasoningFallback: false,
     reasoningLanguage: "",
     reasoningRequestToken: 0,
@@ -703,10 +696,8 @@
     jdState.normalizedText = "";
     jdState.resultSource = "";
     jdState.scoringMode = "";
-    jdState.handoffOffered = false;
-    jdState.reasoningMode = "";
+    jdState.reasoningMode = "unavailable";
     jdState.reasoningBusy = false;
-    jdState.reasoningError = "";
     jdState.reasoningFallback = false;
     jdState.reasoningLanguage = "";
     if (recruiterUI) jdResult.innerHTML = "";
@@ -716,26 +707,17 @@
     return root.dataset.lang === "ms" ? "ms" : "en";
   }
 
-  function getJdReasoningMode() {
-    return computeJdReasoningMode({
-      hasResult: !!jdState.result,
-      hasNormalizedText: !!jdState.normalizedText,
-      aiState: aiState,
-      localOK: localOK,
-      preferredMode: preferredMode,
-      route: route,
-      cloudOk: cloudOk,
-      dlActive: dlActive,
-      hasEngine: !!engine
-    });
-  }
-
+  /* JD scoring is cloud-only (Task 3b): jdState.reasoningMode is only ever explicitly set
+     to "cloud" or "unavailable" by the request flow below, never derived from the general
+     chat tier's on-device/waiting state. There used to be a getJdReasoningMode() helper that
+     fell back to computeJdReasoningMode(aiState, route, ...) whenever reasoningMode was falsy
+     — that fallback could report "local" or "waiting" (borrowed from the general chat AI
+     tier) even though recruiter reasoning itself never runs on-device, so the UI could claim
+     "ran on this device" or "will stay on this device" for a request that in fact only ever
+     goes to the cloud Worker or nowhere at all. Removed; see FINAL WHOLE-BRANCH REVIEW, I3. */
   function reasoningStatusKey(mode) {
     if (jdState.reasoningFallback) return "jdReasonStatusFallback";
-    return mode === "local" ? "jdReasonStatusLocal"
-      : mode === "cloud" ? "jdReasonStatusCloud"
-        : mode === "waiting" ? "jdReasonStatusWaiting"
-          : "jdReasonStatusUnavailable";
+    return mode === "cloud" ? "jdReasonStatusCloud" : "jdReasonStatusUnavailable";
   }
 
   function setJdStatus(kind, options) {
@@ -953,21 +935,17 @@
           : "jdFitLimited";
   }
 
-  /* Scoring is automatic (Task 3) — there is no manual trigger left, so this only
-     renders where the reasoning came from (local/cloud/waiting/unavailable/fallback)
-     and its privacy note. */
+  /* Scoring is automatic (Task 3) and cloud-only (Task 3b) — there is no manual trigger
+     and no on-device path, so this only ever renders "cloud" (a request was sent) or
+     "unavailable" (nothing was sent), plus the fallback status when reasoning did not
+     settle. jdState.reasoningMode is always one of those two explicit values (never ""),
+     so this never has to guess a mode from ambient chat-tier state — see I3. */
   function renderJdReasoning(section) {
-    /* Once a request starts, keep its captured route visible even if the
-       general AIMeer route changes while the model is working. */
-    var mode = jdState.reasoningMode || getJdReasoningMode();
+    var mode = jdState.reasoningMode || "unavailable";
     var reasonSection = createJdNode("section", "chat-jd-section chat-jd-reasoning");
     reasonSection.appendChild(createJdNode("h6", "", t("jdReasonTitle")));
     reasonSection.appendChild(createJdNode("p", "chat-jd-hint", t(reasoningStatusKey(mode))));
-    reasonSection.appendChild(createJdNode("p", "chat-jd-meta", t(mode === "cloud" ? "jdReasonPrivacyCloud" : "jdReasonPrivacyLocal")));
-
-    if (jdState.reasoningError) {
-      reasonSection.appendChild(createJdNode("p", "chat-jd-status is-error", jdState.reasoningError));
-    }
+    reasonSection.appendChild(createJdNode("p", "chat-jd-meta", t(mode === "cloud" ? "jdReasonPrivacyCloud" : "jdReasonPrivacyUnavailable")));
 
     section.appendChild(reasonSection);
   }
@@ -1039,15 +1017,18 @@
 
     jdResult.appendChild(report);
 
-    /* 6. Disclaimer, unchanged, then the WhatsApp/mailto handoff — only once,
-       the first time scoring actually settles (ai or fallback), never mid-flight
-       and never again on an unrelated re-render (panel reopen, EN/BM toggle, AI
-       route switch). Without the one-shot guard, offerHandoff() would re-append
-       and re-scroll the chat log on every such re-render — see Task 4 review. */
+    /* 6. Disclaimer, unchanged, then the WhatsApp/mailto handoff whenever scoring has
+       settled (ai or fallback), never mid-flight. This renders INSIDE the JD result panel
+       (jdResult), not into the chat log: .chat-panel--jd-open .chat-log is display:none
+       while the JD panel is open, and scoring always settles while it is open, so a
+       chat-log card was being offered into a container the recruiter could not see (and
+       likely never would, since closing the panel to look for it is not an obvious move).
+       jdResult.innerHTML is rebuilt from scratch at the top of this function on every
+       call, so simply re-appending here on every settled render cannot duplicate or
+       re-scroll anything the way appending to the persistent chat log could — see I2. */
     jdResult.appendChild(createJdNode("p", "chat-jd-result-disclaimer", t("jdDisclaimer")));
-    if ((jdState.scoringMode === "ai" || isFallback) && !jdState.handoffOffered) {
-      jdState.handoffOffered = true;
-      offerHandoff();
+    if (jdState.scoringMode === "ai" || isFallback) {
+      jdResult.appendChild(buildHandoffCard("chat-jd-section chat-jd-handoff"));
     }
   }
 
@@ -1234,8 +1215,7 @@
          baseline visible and invalidate the in-flight response. */
       jdState.reasoningRequestToken = nextExplanationToken(jdState.reasoningRequestToken);
       jdState.reasoningBusy = false;
-      jdState.reasoningMode = "";
-      jdState.reasoningError = "";
+      jdState.reasoningMode = "unavailable";
       jdState.reasoningFallback = false;
       jdState.reasoningLanguage = "";
       jdState.result = jdState.deterministicResult;
@@ -1630,7 +1610,6 @@
       if (window.console && console.warn && reason) console.warn("JD scoring fallback:", reason);
       jdState.reasoningBusy = false;
       jdState.reasoningFallback = true;
-      jdState.reasoningError = t("jdReasonError");
       jdState.scoringMode = "fallback";
       jdState.result = deterministicResult;
       renderJdResult();
@@ -1662,7 +1641,6 @@
     }
 
     jdState.reasoningBusy = true;
-    jdState.reasoningError = "";
     jdState.reasoningMode = "cloud";
     jdState.reasoningFallback = false;
     jdState.scoringMode = "pending";
@@ -1696,7 +1674,6 @@
       }
       jdState.reasoningBusy = false;
       jdState.reasoningFallback = false;
-      jdState.reasoningError = "";
       jdState.scoringMode = "ai";
       jdState.result = window.JDReasoning.mergeResult(deterministicResult, reasoning, reasoningInput);
       renderJdResult();
@@ -1808,11 +1785,12 @@
     });
   }
 
-  function offerHandoff() {
-    var old = log.querySelector(".chat-handoff");
-    if (old) old.remove();
+  /* Shared by offerHandoff() (general chat, appended into the persistent chat log) and
+     renderJdResult() (JD match report, appended into the JD result panel — see I2). Takes
+     the container class name so each caller gets its own visual treatment. */
+  function buildHandoffCard(className) {
     var card = document.createElement("div");
-    card.className = "chat-msg chat-msg-bot chat-handoff";
+    card.className = className;
     var p = document.createElement("p");
     p.textContent = t("handoffPrompt");
     var row = document.createElement("div");
@@ -1831,6 +1809,13 @@
     row.appendChild(mail);
     card.appendChild(p);
     card.appendChild(row);
+    return card;
+  }
+
+  function offerHandoff() {
+    var old = log.querySelector(".chat-handoff");
+    if (old) old.remove();
+    var card = buildHandoffCard("chat-msg chat-msg-bot chat-handoff");
     log.appendChild(card);
     log.scrollTop = log.scrollHeight;
   }
@@ -1922,9 +1907,8 @@
         : (normalized && normalized.rawText ? normalized.rawText : text);
       jdState.resultSource = source || "paste";
       jdState.scoringMode = "pending";
-      jdState.reasoningMode = "";
+      jdState.reasoningMode = "unavailable";
       jdState.reasoningBusy = false;
-      jdState.reasoningError = "";
       jdState.reasoningFallback = false;
       renderJdResult();
       setJdStatus("scored", {

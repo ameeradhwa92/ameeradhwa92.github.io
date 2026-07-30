@@ -95,6 +95,15 @@ function countNodes(node, predicate) {
   return total;
 }
 
+/* The JD-scoring handoff card renders inside chat-jd-result (a direct child, alongside the
+   jd-report section and the disclaimer), not into the chat log — see I2 in the FINAL
+   WHOLE-BRANCH REVIEW: the chat log is display:none while the JD panel is open, and scoring
+   always settles while it is open, so a card appended to the log was never visible there. */
+function jdHandoffCards(elements) {
+  return (elements['chat-jd-result'].children || [])
+    .filter((child) => child.className && child.className.indexOf('chat-jd-handoff') !== -1);
+}
+
 function createChatContext(options = {}) {
   const elements = {};
   [
@@ -936,8 +945,11 @@ test('a settled AI-scored report leads with the fit band, shows the calibrated n
   assert.doesNotMatch(rendered, /90%/, 'the unclamped AI score must never render');
   assert.match(rendered, /Calibrated against published evidence/i, 'the calibrated note should render when the AI score was clamped');
 
-  const handoffCards = elements['chat-log'].children.filter((child) => child.className && child.className.indexOf('chat-handoff') !== -1);
-  assert.ok(handoffCards.length > 0, 'a settled AI-scored report should surface the WhatsApp/email handoff card');
+  /* The handoff card renders inside the JD result panel itself (chat-jd-result), not into
+     the chat log — the chat log is display:none while the JD panel is open (see I2), so a
+     card appended there would never be visible to the recruiter looking at the report. */
+  const handoffCards = jdHandoffCards(elements);
+  assert.ok(handoffCards.length > 0, 'a settled AI-scored report should surface the WhatsApp/email handoff card inside the JD result panel');
 
   const waButton = handoffCards[handoffCards.length - 1].children[1].children[0];
   waButton.dispatch('click');
@@ -986,21 +998,76 @@ test('reopening the JD panel or toggling the site language after scoring has set
   await flushAsync();
 
   function countHandoffCards() {
-    return elements['chat-log'].children.filter((child) => child.className && child.className.indexOf('chat-handoff') !== -1).length;
+    return jdHandoffCards(elements).length;
   }
 
-  assert.equal(countHandoffCards(), 1, 'a settled AI-scored report should surface exactly one handoff card');
+  assert.equal(countHandoffCards(), 1, 'a settled AI-scored report should surface exactly one handoff card inside the JD result panel');
 
-  /* Close, then reopen the JD panel: setRecruiterOpen(true) re-runs renderJdResult(). */
+  /* Close, then reopen the JD panel: setRecruiterOpen(true) re-runs renderJdResult(), which
+     clears and rebuilds chat-jd-result from scratch — so re-rendering can never duplicate
+     the card the way appending to the persistent chat log could. */
   elements['chat-chips'].dispatch('click', elements['chat-jd-toggle']);
   elements['chat-chips'].dispatch('click', elements['chat-jd-toggle']);
-  assert.equal(countHandoffCards(), 1, 'reopening the JD panel after scoring has settled must not re-offer or duplicate the handoff card');
+  assert.equal(countHandoffCards(), 1, 'reopening the JD panel after scoring has settled must still show exactly one handoff card, not zero or duplicated');
 
   /* Toggling the site-wide language re-renders the JD report to relocalize it. */
   setLanguage('ms');
-  assert.equal(countHandoffCards(), 1, 'toggling to Bahasa Melayu after scoring has settled must not re-offer or duplicate the handoff card');
+  assert.equal(countHandoffCards(), 1, 'toggling to Bahasa Melayu after scoring has settled must still show exactly one handoff card');
   setLanguage('en');
-  assert.equal(countHandoffCards(), 1, 'toggling back to English must not re-offer or duplicate the handoff card either');
+  assert.equal(countHandoffCards(), 1, 'toggling back to English must still show exactly one handoff card');
+});
+
+test('the settled handoff card renders inside the visible JD result panel, never the chat log the JD panel hides (I2)', async () => {
+  const deterministicResult = buildDeterministicResult();
+  const { context, elements } = createChatContext({
+    saveData: true,
+    fetchImpl(url) {
+      const target = String(url);
+      if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
+      if (target.includes('workers.dev')) return Promise.resolve(makeJsonResponse({ reasoning: buildScoringModelOutput() }));
+      return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
+    }
+  });
+  context.window.JDExtractor = {
+    extract() {
+      return Promise.resolve({ text: '', source: 'pdf', warnings: [] });
+    },
+    normalize(text) {
+      return { normalizedText: text, warnings: [] };
+    }
+  };
+  context.window.JDMatcher = {
+    scoreJobDescription() {
+      return clone(deterministicResult);
+    }
+  };
+  vm.runInNewContext(jdReasoning, context);
+
+  await loadChat(context);
+  await flushAsync();
+  elements['chat-launcher'].dispatch('click');
+  await flushAsync();
+  elements['chat-chips'].dispatch('click', elements['chat-jd-toggle']);
+  assert.equal(
+    elements['chat-panel'].classList.contains('chat-panel--jd-open'),
+    true,
+    'the JD panel must be open for this assertion to mean anything — .chat-panel--jd-open .chat-log is display:none in style.css, and scoring always settles while the panel is open'
+  );
+
+  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC and Kubernetes ownership.';
+  elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+
+  assert.equal(
+    elements['chat-log'].children.some((child) => child.className && child.className.indexOf('chat-handoff') !== -1),
+    false,
+    'the settled handoff card must not land in chat-log — that container is CSS-hidden for the whole time the JD panel (and therefore this settled result) is on screen'
+  );
+  assert.equal(
+    jdHandoffCards(elements).length,
+    1,
+    'the settled handoff card must land inside chat-jd-result, the container that is actually visible while the JD panel is open'
+  );
 });
 
 test('the combined gaps list marks each item as an explicit gap or merely unverified, and the fallback handoff prefix uses a short label instead of the full report-headline sentence', async () => {
@@ -1068,8 +1135,8 @@ test('the combined gaps list marks each item as an explicit gap or merely unveri
   assert.equal(gapBadge, 1, 'exactly one item should carry the is-gap badge class');
   assert.equal(unverifiedBadge, 1, 'exactly one item should carry the is-unverified badge class');
 
-  const handoffCards = elements['chat-log'].children.filter((child) => child.className && child.className.indexOf('chat-handoff') !== -1);
-  assert.ok(handoffCards.length > 0);
+  const handoffCards = jdHandoffCards(elements);
+  assert.ok(handoffCards.length > 0, 'a settled AI-scored report should surface the handoff card inside the JD result panel');
   let openedUrl = null;
   context.window.open = (url) => { openedUrl = url; };
   const waButton = handoffCards[handoffCards.length - 1].children[1].children[0];
@@ -1093,8 +1160,8 @@ test('a fallback (keyword-estimate) result prefills the handoff with a short lab
   await flushAsync();
   assert.equal(cloudCalls.length, 2, 'a network rejection should be retried exactly once before settling on the fallback');
 
-  const handoffCards = elements['chat-log'].children.filter((child) => child.className && child.className.indexOf('chat-handoff') !== -1);
-  assert.ok(handoffCards.length > 0, 'a settled fallback report should still surface the handoff card');
+  const handoffCards = jdHandoffCards(elements);
+  assert.ok(handoffCards.length > 0, 'a settled fallback report should still surface the handoff card inside the JD result panel');
   const waButton = handoffCards[handoffCards.length - 1].children[1].children[0];
   waButton.dispatch('click');
   await flushAsync();
@@ -1247,13 +1314,13 @@ test('two failed cloud scoring attempts fall back to the deterministic estimate 
   });
   assert.match(rendered, /72%/, 'the deterministic score must remain visible after scoring fails');
   assert.match(rendered, /Anggaran kata kunci/i, 'the report should show the keyword-estimate headline instead of a fit band when scoring falls back');
-  assert.match(rendered, /Ringkasan deterministik digunakan/i, 'the UI should show the localized fallback status');
+  assert.match(rendered, /Penaakulan AI tidak dapat diselesaikan/i, 'the UI should show the localized fallback status');
   assert.match(rendered, /awan selamat/i, 'the cloud scoring status should be localized in Bahasa Melayu');
   assert.doesNotMatch(rendered, /Penaakulan mengikut keperluan/i, 'no AI reasoning sections should render on the fallback path');
   assert.doesNotMatch(rendered, /Kekuatan yang disahkan/i, 'the fallback path has no AI sections, so no verified-strengths heading should render');
   assert.ok(
-    elements['chat-log'].children.some((child) => child.className && child.className.indexOf('chat-handoff') !== -1),
-    'a settled fallback report should still surface the WhatsApp/email handoff card'
+    jdHandoffCards(elements).length > 0,
+    'a settled fallback report should still surface the WhatsApp/email handoff card inside the JD result panel'
   );
 });
 
@@ -1321,7 +1388,7 @@ test('a transport failure is retried once, then settles on the deterministic est
   assert.equal(cloudCalls.length, 2, 'a network rejection should be retried exactly once');
   const rendered = collectText(elements['chat-jd-result']);
   assert.match(rendered, /72%/, 'the deterministic score must survive an offline cloud');
-  assert.match(rendered, /Deterministic fallback is active/i, 'the fallback status should render');
+  assert.match(rendered, /AI reasoning could not be completed/i, 'the fallback status should render');
   assert.equal(
     elements['chat-jd-status'].textContent,
     'Match report ready from pasted text.',
@@ -1530,13 +1597,27 @@ test('a language change invalidates an in-flight recruiter reasoning response', 
   await flushAsync();
 
   assert.equal(mergeCalls, 0, 'a response generated for the old language must not merge');
-  assert.match(collectText(elements['chat-jd-result']), /72%/);
-  assert.doesNotMatch(collectText(elements['chat-jd-result']), /stale language reasoning/i);
+  const renderedMs = collectText(elements['chat-jd-result']);
+  assert.match(renderedMs, /72%/);
+  assert.doesNotMatch(renderedMs, /stale language reasoning/i);
   assert.equal(
     elements['chat-jd-status'].textContent,
     'Laporan padanan sedia daripada teks tampalan.',
     'the status line must not stay stuck on the AI-analyzing message after the language change'
   );
+  /* I3: a mid-flight language toggle used to reset jdState.reasoningMode to "" and fall
+     back to computeJdReasoningMode(aiState, route, ...) at render time, which could report
+     "local"/"waiting" (borrowed from the general chat tier) even though recruiter reasoning
+     is cloud-only and nothing runs on-device here. The report settles into the keyword-only
+     fallback for this new language, so it must never claim reasoning ran, or will run, on
+     this device — in either language. */
+  assert.doesNotMatch(renderedMs, /peranti ini/i, 'the settled fallback after a mid-flight language toggle must never claim reasoning ran or will run on this device');
+  assert.match(renderedMs, /Penaakulan perekrut tidak tersedia sekarang/i, 'the localized "unavailable" status should render for the new language, not a claim tied to any device state');
+
+  setLanguage('en');
+  const renderedEn = collectText(elements['chat-jd-result']);
+  assert.doesNotMatch(renderedEn, /on this device/i, 'toggling back to English after that settled fallback must not claim on-device reasoning either');
+  assert.match(renderedEn, /Recruiter reasoning is unavailable right now/i, 'the English "unavailable" status should render after toggling back');
 });
 
 test('selecting eligible local AI presents Local while the active route is cloud', async () => {

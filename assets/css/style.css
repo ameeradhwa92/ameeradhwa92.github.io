@@ -823,6 +823,11 @@ body.modal-open { overflow: hidden; }
 
 .chat-handoff { border-color: var(--teal-deep); }
 .chat-handoff p { margin: 0; }
+/* Same handoff prompt + buttons, rendered inline in the JD match report (not the chat
+   log) so it is visible while the report itself is visible instead of sitting in a
+   sibling container the JD panel hides — see chat-jd-section for the shared card look. */
+.chat-jd-handoff { border-color: var(--teal-deep); }
+.chat-jd-handoff p { margin: 0; }
 .chat-handoff-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .chat-handoff-btns button {
   padding: 7px 14px; border-radius: 999px; cursor: pointer;
@@ -997,9 +1002,6 @@ body.modal-open { overflow: hidden; }
 }
 .chat-jd-badge.is-professional {
   color: var(--teal); background: rgba(23, 118, 110, 0.16); border: 1px solid rgba(23, 118, 110, 0.32);
-}
-.chat-jd-badge.is-academic {
-  color: var(--paper); background: rgba(139, 149, 154, 0.12); border: 1px solid var(--line);
 }
 .chat-jd-badge.is-user {
   color: var(--paper); background: rgba(62, 207, 187, 0.09); border: 1px solid rgba(62, 207, 187, 0.24);
