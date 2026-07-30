@@ -150,7 +150,7 @@ window.I18N_MS = {
   "chat.model.local.hint": "Peranti ini tidak serasi dengan AI pada peranti. AI awan selamat masih tersedia.",
   "chat.chip1": "Apakah pengalaman terkuat Ameer?",
   "chat.chip2": "Terangkan pengalaman awan &amp; Azure beliau",
-  "chat.jd.toggle": "Padankan huraian kerja →",
+  "chat.jd.toggle": "Padankan huraian jawatan →",
   "chat.jd.title": "Mod padanan perekrut",
   "chat.jd.body": "Tampal huraian jawatan atau baca PDF/DOCX setempat untuk anggaran keserasian yang deterministik.",
   "chat.jd.promo": "Tampal huraian jawatan atau muatkan PDF/DOCX setempat untuk anggaran keserasian yang deterministik.",

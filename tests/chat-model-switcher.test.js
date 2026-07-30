@@ -475,6 +475,23 @@ test('chat header exposes cloud and local model choices with accessible state', 
   );
 });
 
+test('chat chips are reduced to exactly three recruiter-focused presets with the JD toggle wiring intact', () => {
+  const chipsBlock = html.match(/<div class="chat-chips" id="chat-chips">([\s\S]*?)<\/div>/);
+
+  assert.ok(chipsBlock, 'the chat chips container should exist');
+
+  const buttons = chipsBlock[1].match(/<button[^>]*>/g) || [];
+  assert.equal(buttons.length, 3, 'exactly three preset chips should render');
+
+  assert.match(buttons[0], /data-i18n="chat\.chip1"/, 'the first chip should carry the chat.chip1 translation key');
+  assert.match(buttons[1], /data-i18n="chat\.chip2"/, 'the second chip should carry the chat.chip2 translation key');
+  assert.match(
+    buttons[2],
+    /id="chat-jd-toggle"[^>]*aria-expanded="false"[^>]*aria-controls="chat-jd-panel"[^>]*data-i18n="chat\.jd\.toggle"/,
+    'the third chip must retain the JD panel toggle id, aria-expanded and aria-controls wiring'
+  );
+});
+
 test('Bahasa Melayu provides distinct labels and compatibility help for the model choices', () => {
   const context = { window: {} };
   vm.runInNewContext(i18n, context);

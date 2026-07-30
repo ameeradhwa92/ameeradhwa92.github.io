@@ -1,4 +1,4 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -41,9 +41,9 @@ Assert-True (Test-Path $indexPath) "Missing index.html: $indexPath"
 Assert-True (Test-Path $i18nPath) "Missing i18n.js: $i18nPath"
 Assert-True (Test-Path $chatbotPath) "Missing chatbot.js: $chatbotPath"
 
-$index = Get-Content -Raw $indexPath
-$i18n = Get-Content -Raw $i18nPath
-$chatbot = Get-Content -Raw $chatbotPath
+$index = Get-Content -Raw -Encoding UTF8 $indexPath
+$i18n = Get-Content -Raw -Encoding UTF8 $i18nPath
+$chatbot = Get-Content -Raw -Encoding UTF8 $chatbotPath
 
 $stableIds = @(
   'chat-jd-toggle',
@@ -84,19 +84,18 @@ Assert-Match $chatbot 'createJdNode\("p",\s*"chat-jd-result-disclaimer",\s*t\("j
 Assert-Match $chatbot 'jdDisclaimer:\s*"This is an estimated compatibility score based only on the job description and Ameer''s published profile\.' 'chatbot.js must keep the exact English disclaimer text for dynamic result rendering.'
 
 $expectedChips = @(
-  'What does he do now?',
-  'Which projects are still live?',
-  'What''s his tech stack?',
-  'How do I contact him?'
+  'What''s Ameer''s strongest experience?',
+  'Walk me through his cloud &amp; Azure work',
+  'Match a job description →'
 )
 
 foreach ($chip in $expectedChips) {
-  Assert-Contains $index $chip 'Original AIMeer suggestion chip'
+  Assert-Contains $index $chip 'AIMeer suggestion chip'
 }
 
 Assert-Match $index '<button class="chat-jd-file-btn" id="chat-jd-file-trigger" type="button" aria-controls="chat-jd-file" data-i18n="chat\.jd\.fileAction">' 'Recruiter file chooser must be a focusable button that controls the hidden file input.'
 Assert-Match $chatbot 'jdFileTrigger\.addEventListener\("click",\s*function \(\)\s*\{\s*jdFile\.click\(\);\s*\}\);' 'chatbot.js must wire the visible recruiter file button to the hidden file input.'
 
-Assert-Match $index '<script src="assets/js/i18n\.js" defer></script>\s*<script src="assets/js/main\.js" defer></script>\s*<script src="assets/js/aimeer-device\.js" defer></script>\s*<script src="assets/js/jd-extractor\.js" defer></script>\s*<script src="assets/js/jd-matcher\.js" defer></script>\s*<script src="assets/js/chatbot\.js" defer></script>' 'JD extractor and matcher scripts must load before chatbot.js.'
+Assert-Match $index '<script src="assets/js/i18n\.js" defer></script>\s*<script src="assets/js/main\.js" defer></script>\s*<script src="assets/js/aimeer-device\.js" defer></script>\s*<script src="assets/js/jd-extractor\.js" defer></script>\s*<script src="assets/js/jd-matcher\.js" defer></script>\s*<script src="assets/js/jd-reasoning\.js" defer></script>\s*<script src="assets/js/chatbot\.js" defer></script>' 'JD extractor, matcher and reasoning scripts must load before chatbot.js.'
 
 Write-Host 'Recruiter UI verification passed.'
