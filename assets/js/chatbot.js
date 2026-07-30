@@ -227,6 +227,17 @@
     return "unavailable";
   }
 
+  /* Which pass's confidence belongs beside the displayed score. renderJdResult shows
+     result.finalScore once AI scoring merges, but used to print the deterministic
+     baseline.confidence.label unconditionally — so an AI score of 82% sat next to the keyword
+     pass's "Low", computed in jd-matcher.js from strongCount/total and never told what the model
+     concluded. Neither value was wrong; printing them adjacent implied they measured the same
+     thing. On the fallback path the keyword confidence is exactly right, so it stays. */
+  function resolveConfidenceLevel(scoringMode, result, baseline) {
+    if (scoringMode === "ai" && result && result.aiConfidence) return result.aiConfidence;
+    return baseline && baseline.confidence ? baseline.confidence.label || "" : "";
+  }
+
   if (!window.AIMeerRecruiter) window.AIMeerRecruiter = {};
   window.AIMeerRecruiter.buildExplanationPayload = buildJdExplanationPayload;
   window.AIMeerRecruiter.getExplanationMode = computeJdReasoningMode;
@@ -235,6 +246,7 @@
   window.AIMeerRecruiter.canApplyExplanationToken = canApplyExplanationToken;
   window.AIMeerRecruiter.nextAnalysisToken = nextAnalysisToken;
   window.AIMeerRecruiter.canApplyAnalysisToken = canApplyAnalysisToken;
+  window.AIMeerRecruiter.resolveConfidenceLevel = resolveConfidenceLevel;
   window.AIMeerRecruiter.jdExplanationLimits = {
     jdText: JD_EXPLANATION_JD_MAX,
     resultChars: JD_EXPLANATION_RESULT_MAX
@@ -1004,7 +1016,7 @@
     var scoreValue = typeof result.finalScore === "number" ? result.finalScore : baseline.score;
     report.appendChild(createJdNode("p", "jd-report-score",
       formatScore(scoreValue) + "% · " + t("jdResultConfidenceLabel") + ": " +
-      confidenceLabel(baseline.confidence && baseline.confidence.label)));
+      confidenceLabel(resolveConfidenceLevel(jdState.scoringMode, result, baseline))));
     if (result.adjusted) {
       report.appendChild(createJdNode("p", "jd-report-calibrated", t("jdCalibratedNote")));
     }

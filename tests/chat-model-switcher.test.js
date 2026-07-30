@@ -2035,3 +2035,28 @@ test('reduced motion removes chat model choice press scale', () => {
     'the global reduced-motion active override should include chat model choices'
   );
 });
+
+/* The score and its confidence must describe the same pass. On the AI path the label comes from
+   the model's own per-requirement confidence; on the fallback path the keyword ratio IS what the
+   displayed number means, so it stays. */
+test('recruiter report takes confidence from whichever pass produced the score', async () => {
+  const { context } = createChatContext({ saveData: false });
+  await loadChat(context);
+  const resolve = context.window.AIMeerRecruiter.resolveConfidenceLevel;
+
+  const aiResult = { finalScore: 82, aiConfidence: 'medium' };
+  const baseline = { score: 48, confidence: { label: 'low' } };
+
+  assert.equal(resolve('ai', aiResult, baseline), 'medium',
+    'a merged AI report should report the AI confidence');
+  assert.equal(resolve('fallback', { score: 48 }, baseline), 'low',
+    'the keyword estimate should keep the keyword confidence');
+  assert.equal(resolve('pending', { score: 48 }, baseline), 'low',
+    'before the AI settles there is no AI confidence to show');
+
+  /* A merged report whose requirements carried no usable confidence has no aiConfidence at all.
+     Falling back beats inventing one. */
+  assert.equal(resolve('ai', { finalScore: 82 }, baseline), 'low');
+  assert.equal(resolve('ai', { finalScore: 82, aiConfidence: '' }, baseline), 'low');
+  assert.equal(resolve('ai', null, null), '');
+});
