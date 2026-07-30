@@ -5,19 +5,78 @@
   var MAX_EXTRACTED_CHARS = 60000;
   var deps = { pdfjsLib: null, JSZip: null };
   var loadPromises = { pdfjsLib: null, JSZip: null };
+  /* Only the four canonical values on the right carry meaning downstream: jd-matcher.js harvests
+     generic requirement lines from "Required Skills"/"Preferred Skills"/"Years of Experience" and
+     skips "Responsibilities", "Company Context" and "Administrative" entirely. The left-hand keys
+     are just the wordings real postings use — narrative headings ("The role", "What you'll be
+     doing", "Bonus points", "How we work") are as common as the "Required Skills:" style this
+     table originally assumed, and a posting whose headings all miss collapses into one anonymous
+     section where every prose sentence becomes a phantom requirement. Add wordings freely; add a
+     new canonical value only alongside the matcher rule that consumes it. */
   var HEADING_ALIASES = {
     "required skills": "Required Skills",
     "required qualifications": "Required Skills",
+    "required": "Required Skills",
     "requirements": "Required Skills",
+    "requirement": "Required Skills",
     "must have": "Required Skills",
+    "must haves": "Required Skills",
+    "qualifications": "Required Skills",
+    "minimum qualifications": "Required Skills",
+    "basic qualifications": "Required Skills",
+    "what we are looking for": "Required Skills",
+    "what we're looking for": "Required Skills",
+    "who you are": "Required Skills",
+    "about you": "Required Skills",
+    "skills and experience": "Required Skills",
     "preferred skills": "Preferred Skills",
     "preferred qualifications": "Preferred Skills",
+    "preferred": "Preferred Skills",
     "nice to have": "Preferred Skills",
+    "nice to haves": "Preferred Skills",
+    "good to have": "Preferred Skills",
+    "bonus": "Preferred Skills",
+    "bonus points": "Preferred Skills",
+    "desirable": "Preferred Skills",
+    "advantageous": "Preferred Skills",
     "employer questions": "Administrative",
     "application questions": "Administrative",
     "your application will include the following questions": "Administrative",
     "responsibilities": "Responsibilities",
     "responsibility": "Responsibilities",
+    "key responsibilities": "Responsibilities",
+    "duties": "Responsibilities",
+    "the role": "Responsibilities",
+    "your role": "Responsibilities",
+    "about the role": "Responsibilities",
+    "what you will be doing": "Responsibilities",
+    "what you'll be doing": "Responsibilities",
+    "what you will do": "Responsibilities",
+    "what you'll do": "Responsibilities",
+    "day to day": "Responsibilities",
+    "how we work": "Company Context",
+    "about us": "Company Context",
+    "who we are": "Company Context",
+    "our team": "Company Context",
+    "our culture": "Company Context",
+    "what we offer": "Company Context",
+    "benefits": "Company Context",
+    "perks": "Company Context",
+    "why join us": "Company Context",
+    "hiring process": "Company Context",
+    "interview process": "Company Context",
+    "how to apply": "Company Context",
+    /* "Tech Stack" is deliberately its own value rather than "Required Skills": a stack list names
+       the technologies in play but usually disclaims that all of them are required ("You do not
+       need prior experience with every technology listed above"). The matcher does not harvest
+       generic lines from it, so only the technologies its alias table already knows are picked up
+       — which is the whole value of the section. Leaving it unmapped would be worse than wrong:
+       an unrecognized heading is swallowed by the preceding section, so a stack list that follows
+       "How we work" would inherit Company Context and be skipped entirely. */
+    "tech stack": "Tech Stack",
+    "technology stack": "Tech Stack",
+    "our stack": "Tech Stack",
+    "technologies": "Tech Stack",
     "years of experience": "Years of Experience",
     "experience": "Years of Experience"
   };
@@ -283,8 +342,20 @@
       .replace(/\n{3,}/g, "\n\n");
   }
 
+  /* Postings decorate headings in ways that carry no meaning: a trailing qualifier ("Tech stack
+     (high level)"), a leading numeral or bullet ("2. Requirements"), internal hyphens
+     ("Nice-to-haves"), or a trailing colon/dash. Strip all of it so HEADING_ALIASES can hold one
+     plain wording per heading instead of a row per decoration. Hyphens become spaces rather than
+     being deleted so "Nice-to-have" and "Nice to have" collapse to the same key. */
   function getHeadingKey(line) {
-    return String(line || "").toLowerCase().replace(/[:\-\u2013\u2014]+$/g, "").replace(/\s+/g, " ").trim();
+    return String(line || "")
+      .toLowerCase()
+      .replace(/^[\s\-*\u2022]*\d+[.)]?\s+/, "")
+      .replace(/\s*\([^()]*\)\s*$/, "")
+      .replace(/[:\-\u2013\u2014]+$/g, "")
+      .replace(/[\-\u2013\u2014]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
   function getHeadingStrength(heading) {

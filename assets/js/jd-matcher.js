@@ -681,7 +681,48 @@
   }
 
   function isAdministrativeSection(heading) {
-    return normalizeKey(heading) === "administrative";
+    var key = normalizeKey(heading);
+    /* "Company Context" collects the headings that describe the employer rather than the
+       candidate — "How we work", "About us", "Benefits", "Why join us". Nothing under them is a
+       requirement, so they are skipped on the same footing as the application-question blocks
+       "Administrative" was introduced for. */
+    return key === "administrative" || key === "company context";
+  }
+
+  /* Which sections may contribute a *generic* requirement — a line the alias table and the
+     duration pass both failed to recognize, kept on the strength of the heading above it alone.
+     Alias and duration matches are harvested from every section regardless; only this untyped
+     fallback is gated, because it is the one that cannot tell a requirement from a sentence.
+     Ungated, an ordinary prose posting yielded 84 phantom requirements ("Talks", "How We Work",
+     "This Is Probably Not The Right Fit."), which buried the real matches and pushed the payload
+     past the Worker's requirement ceiling. A posting whose headings are all unrecognized now
+     scores on its named technologies rather than on its sentences, and jd-extractor.js already
+     warns the visitor that no headings were found. */
+  function isRequirementBearingSection(heading) {
+    var key = normalizeKey(heading);
+    return key === "required skills" || key === "preferred skills" || key === "years of experience";
+  }
+
+  /* A stated requirement reads as a phrase ("Strong ORM experience", "Claude Code"); the prose
+     around it reads as a sentence about the employer or a fragment left over from splitting one.
+     Three signals separate them, all cheap and all conservative — a line only has to look like a
+     requirement, not parse as one:
+       - a lead-in ends with a colon ("You should have experience with tools such as:")
+       - a sentence about us/you, or a fragment continuing the previous line ("and review loops.")
+       - length: past ~18 words a line is describing something, not naming it
+     The word ceiling is deliberately generous. Real requirements run long ("Comfort working in
+     systems that use explicit result or error flows rather than exception-driven business
+     logic." is 16), and dropping a genuine requirement is the worse error: the report simply
+     never mentions it, with nothing on screen to say so. */
+  var PROSE_LEAD_PATTERN = /^(?:and|or|but|so|we|our|us|you'll|you will|you're|they|this is|that is|it is|there is|there are|if you|join|here)\b/i;
+  var PROSE_MAX_WORDS = 18;
+
+  function looksLikeProse(text) {
+    var value = String(text || "").trim();
+    if (!value) return true;
+    if (/:$/.test(value)) return true;
+    if (PROSE_LEAD_PATTERN.test(value)) return true;
+    return value.split(/\s+/).filter(Boolean).length > PROSE_MAX_WORDS;
   }
 
   function isAdministrativeLine(text) {
@@ -989,7 +1030,7 @@
             addRequirement(createAliasRequirement(aliases[aliasIndex].entry, source, section.strength, section.heading, aliases[aliasIndex]));
             foundSpecific = true;
           }
-          if (!foundSpecific && normalizeKey(section.heading) !== "responsibilities") {
+          if (!foundSpecific && isRequirementBearingSection(section.heading) && !looksLikeProse(source)) {
             addRequirement(createGenericRequirement(source, section.strength, section.heading, index));
           }
         }

@@ -121,6 +121,29 @@ model's JSON was truncated mid-object. The budget scales instead:
 `min(3400, 400 + 260 × min(requirements, 12))` for the reasoning call, 400 for the
 scoring call. The ceiling exists because the free tier allows 10,000 neurons a day.
 
+### Requirement budget
+
+The budget above saturates at **12 requirements** — past that the reply cannot grow, so
+each extra requirement makes truncation more likely rather than adding coverage. The
+browser therefore selects 12 in `JDReasoning.buildInput` (`REQUIREMENT_BUDGET`) rather
+than sending everything the keyword pass found. The Worker's
+`JD_REASONING_REQUIREMENT_MAX` (48) stays where it is: it is a rejection threshold that
+bounds an abusive payload, not a working budget, and the two numbers answer different
+questions.
+
+Selection is by priority — evidence-backed classifications first (they are what the
+report has something positive to say about), then `required` over `preferred`, then
+stated durations — with ties broken on the posting's own order so the same JD always
+produces the same payload. The selected requirements are re-sorted into document order
+before sending, so the report still reads top to bottom.
+
+This was not in the original design, and its absence was a live failure: an ordinary
+prose-heavy posting produced 91 requirements, which the Worker refused outright with
+`400 jd-deterministic-invalid` before the model ran. Two upstream fixes cut that to 38
+(see `jd-extractor.js`'s heading table and `jd-matcher.js`'s `isRequirementBearingSection`
+/ `looksLikeProse`), but 38 would still have been truncated mid-JSON. Both layers are
+needed: parse fewer phantom requirements, *and* never send more than the reply can hold.
+
 ### Model-output tolerance
 
 **Not in the approved design.** The original contract was all-or-nothing: any deviation

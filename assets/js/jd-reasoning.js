@@ -336,9 +336,55 @@
     return text;
   }
 
+  /* How many requirements the scoring call may carry. The Worker accepts up to
+     JD_REASONING_REQUIREMENT_MAX (48), but that is a rejection threshold, not a working budget:
+     its reply budget ceilings at JD_REASONING_MAX_TOKENS_CEILING (3400) while each requirement
+     needs roughly JD_REASONING_TOKENS_PER_REQUIREMENT (260) for its six prose fields, and
+     jdReasoningMaxTokens stops growing at JD_REASONING_REQUIREMENT_TOKEN_CAP (12) for exactly
+     that reason. Past that point the model's JSON is truncated mid-object, the whole response
+     fails validation, and the report falls back to the keyword estimate — the same visible
+     outcome as sending too many, reached a slower way. So select 12 here rather than letting a
+     long posting through to be cut off server-side. Keep this equal to the Worker's
+     JD_REASONING_REQUIREMENT_TOKEN_CAP; raising one without the other buys nothing. */
+  var REQUIREMENT_BUDGET = 12;
+
+  /* Which requirements earn a place when a posting states more than the budget allows. Evidence
+     first: a requirement the keyword pass already tied to published evidence is what the report
+     has something to say about, and dropping it would leave the model narrating only gaps.
+     Then how hard the posting asks for it, then stated durations, which are the one requirement
+     type that can gate a candidate outright. */
+  function requirementPriority(requirement) {
+    var score = 0;
+    if (requirement.classification === "strong") score += 40;
+    else if (requirement.classification === "partial") score += 30;
+    else if (requirement.classification === "gap") score += 20;
+    if (requirement.strength === "required") score += 12;
+    else if (requirement.strength === "neutral") score += 6;
+    if (requirement.yearsRequired !== null) score += 10;
+    if (requirement.evidenceRefs.length) score += 5;
+    return score;
+  }
+
+  /* Selects the highest-priority requirements, then restores the posting's own order so the
+     report still reads top-to-bottom. Ties break on document position, so the selection is
+     deterministic: the same JD must produce the same payload on every run. */
+  function selectRequirements(requirements, budget) {
+    if (requirements.length <= budget) return requirements;
+    return requirements
+      .map(function (requirement, position) {
+        return { requirement: requirement, position: position, priority: requirementPriority(requirement) };
+      })
+      .sort(function (left, right) {
+        return right.priority - left.priority || left.position - right.position;
+      })
+      .slice(0, budget)
+      .sort(function (left, right) { return left.position - right.position; })
+      .map(function (entry) { return entry.requirement; });
+  }
+
   function buildInput(normalizedJd, deterministicResult, profile, language) {
-    var requirements = (Array.isArray(deterministicResult && deterministicResult.requirements)
-      ? deterministicResult.requirements : []).map(compactRequirement);
+    var requirements = selectRequirements((Array.isArray(deterministicResult && deterministicResult.requirements)
+      ? deterministicResult.requirements : []).map(compactRequirement), REQUIREMENT_BUDGET);
     var privacyTerms = getPrivacyTerms(profile);
     var referencedIds = Object.create(null);
     for (var requirementIndex = 0; requirementIndex < requirements.length; requirementIndex += 1) {

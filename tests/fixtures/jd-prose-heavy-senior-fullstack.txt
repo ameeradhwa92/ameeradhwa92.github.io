@@ -1,0 +1,121 @@
+The role
+
+We're hiring a senior engineer to significantly increase delivery velocity across the platform.
+
+This is a senior individual contributor role with broad ownership across the stack. You'll work across:
+
+domain modelling
+
+backend implementation
+
+persistence
+
+UI development
+
+integration testing
+
+operational and architectural concerns
+
+We expect engineers here to engage with technical and product decisions, not just execute isolated tickets.
+
+You should be comfortable reading unfamiliar code, understanding why a pattern exists before changing it, and pushing back constructively when something does not look right.
+
+What you'll be doing
+
+Owning features end-to-end. From domain modelling and business logic through to UI implementation and testing.
+
+Working within an opinionated codebase. Important conventions are enforced through automated tooling and tests rather than tribal knowledge.
+
+Building secure multi-tenant SaaS systems. Tenant isolation and access boundaries are foundational concerns throughout the stack.
+
+Modelling complex business workflows. Approvals, leave accruals, employee lifecycle events, compliance rules, auditability, and regional operational differences.
+
+Maintaining high UI standards. Administrative and configuration experiences receive the same level of care as user-facing functionality.
+
+Using AI thoughtfully in product design and engineering workflows. We evaluate where AI genuinely improves outcomes and where it creates unnecessary complexity or risk.
+
+Required
+
+7+ years of professional software engineering experience building backend or full-stack products in a statically typed language such as C#, Java, Kotlin, Go, or TypeScript on Node.
+
+Strong code-reading and debugging skills in mature codebases.
+
+Solid domain modelling instincts including aggregates, invariants, boundaries, and transactional consistency.
+
+Experience working in layered or CQRS-style systems with middleware or pipeline-based cross-cutting concerns.
+
+Strong ORM experience and awareness of correctness and performance pitfalls.
+
+Experience building or operating multi-tenant SaaS systems.
+
+Security-first instincts around authorisation, tenant isolation, and fail-closed behaviour.
+
+Strong testing discipline, particularly integration testing against real infrastructure and databases.
+
+Experience with at least one server-side-rendered UI framework or architecture.
+
+Comfort working in systems that use explicit result or error flows rather than exception-driven business logic.
+
+Ability to review technical designs critically and communicate disagreement clearly and constructively.
+
+Hands-on with AI coding agents is required
+
+We use AI coding agents heavily as part of the engineering workflow. This is not experimental tooling for us. It is part of day-to-day development.
+
+You should have meaningful production experience with tools such as:
+
+Claude Code
+
+OpenAI Codex / Codex CLI
+
+Cursor agent mode
+
+or equivalent workflows
+
+We expect you to be able to:
+
+Break work into tasks agents can execute reliably.
+
+Recognise when an agent is producing plausible but incorrect output.
+
+Review AI-generated code critically rather than trusting passing tests blindly.
+
+Work effectively with plan docs, structured prompts, and review loops.
+
+Configure and customise your own agent workflows and tooling.
+
+If you've only used AI assistants casually, this is probably not the right fit.
+
+Bonus points
+
+Experience with HRMS, payroll, finance, healthcare, or other regulated-data systems.
+
+Experience integrating LLMs into production software with proper safeguards and observability.
+
+Workflow or approvals engine experience.
+
+Familiarity with SEA regulatory environments.
+
+Public technical writing, talks, or open-source contributions.
+
+Advanced or customised AI-agent workflows or tooling.
+
+ How we work
+
+Design before implementation. Substantial changes start with a design document and tracked discussion before code is written.
+
+Automated enforcement over process reminders. If a rule matters, we prefer enforcing it in tooling or tests rather than relying on review comments.
+
+Direct and respectful communication. We optimise for good technical outcomes and expect engineers to challenge ideas constructively when needed.
+
+Security-sensitive by default. Missing or ambiguous security context should fail safely rather than silently broadening access.
+
+Written communication matters. We're remote and async-friendly, so clear written reasoning is an important engineering skill.
+
+AI evaluation is part of product thinking. Every feature gets evaluated for whether AI meaningfully improves it. Often the correct answer is "no".
+
+Tech stack (high level)
+
+C# and .NET on the backend, server-side-rendered Blazor on the frontend, PostgreSQL for persistence, Redis for caching, KeyCloak for identity, OpenTelemetry for observability, Quartz for scheduled work, and AI API integrations for AI-assisted functionality.
+
+You do not need prior experience with every technology listed above. You do need to be capable of becoming productive in unfamiliar areas quickly.

@@ -155,6 +155,18 @@ for six revisions while `jd-reasoning`, identical but without the JD prose, neve
 An 8B model cannot hold a whole job description *and* a ten-field-per-requirement
 contract. Don't recombine them.
 
+**A JD reaches the model only if three layers agree on how many requirements it has.**
+`jd-extractor.js`'s `HEADING_ALIASES` decides which sections exist; `jd-matcher.js` harvests
+generic (non-alias) lines only from requirement-bearing sections and only when
+`looksLikeProse` says the line names something rather than describes it; `jd-reasoning.js`
+then selects `REQUIREMENT_BUDGET` (12) of whatever survived. Break the first and an ordinary
+prose posting collapses into one anonymous section where every sentence becomes a phantom
+requirement — that produced 91 requirements, a `400 jd-deterministic-invalid` from the
+Worker, and a report permanently stuck on the keyword estimate. Break the last and the
+payload passes the Worker's check but truncates mid-JSON, which fails the same way slower.
+Adding a heading wording is safe; adding a new *canonical* heading value means also teaching
+`isRequirementBearingSection`/`isAdministrativeSection` what to do with it.
+
 Two rules that are easy to break when editing the JD validators:
 
 - `assets/js/jd-reasoning.js` re-validates everything the Worker relays. The two files run
