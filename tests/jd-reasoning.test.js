@@ -131,6 +131,14 @@ function manualScoreByFactor(requirements, categories, factorResolver) {
   return activeWeight ? Math.round(manualClampScore((weightedScore / activeWeight) * 100)) : 0;
 }
 
+function manualComputeFitBand(score) {
+  const value = manualClampScore(score);
+  if (value >= 75) return 'strong';
+  if (value >= 60) return 'good';
+  if (value >= 40) return 'partial';
+  return 'limited';
+}
+
 function manualReasoningAudit(result, reasoning, input) {
   const requirements = Array.isArray(input && input.requirements) ? input.requirements : [];
   const categories = result && typeof result.categories === 'object' ? result.categories : {};
@@ -141,21 +149,30 @@ function manualReasoningAudit(result, reasoning, input) {
     categories,
     (requirement) => manualEffectiveFactorForRequirement(requirement, reasoningByRequirementId.get(requirement.id))
   );
-  const requiredGapCeiling = manualScoreByFactor(requirements, categories, (requirement) => {
-    const reasoningItem = reasoningByRequirementId.get(requirement.id);
-    if (reasoningItem && reasoningItem.matchLevel === 'explicit-gap' && requirement.strength === 'required') return 0;
-    return 1;
-  });
   const deterministicScore = manualClampScore(result && (result.deterministicScore !== undefined ? result.deterministicScore : result.score));
+  // Independent re-derivation of the Task 1 clamp band: finalScore must stay inside
+  // [deterministicScore - 10, deterministicScore + 35], bounded to 0-100.
+  const aiScore = manualClampScore(reasoning && reasoning.overall ? reasoning.overall.score : deterministicScore);
+  const bandMin = Math.max(0, deterministicScore - 10);
+  const bandMax = Math.min(100, deterministicScore + 35);
+  const finalScore = Math.round(Math.min(bandMax, Math.max(bandMin, aiScore)));
   return {
     verifiedScore,
     transferableScore,
-    requiredGapCeiling,
-    compositeScore: Math.round(Math.min(transferableScore, deterministicScore + 15, requiredGapCeiling))
+    aiScore: Math.round(aiScore),
+    finalScore,
+    adjusted: Math.round(aiScore) !== finalScore,
+    fitBand: manualComputeFitBand(finalScore)
   };
 }
 
-function reasoningForFixture(input, overrides) {
+const DEFAULT_OVERALL = {
+  score: 62,
+  fitBand: 'good',
+  narrative: 'AI-led recruiter-facing summary grounded only in the published deterministic match result and evidence registry.'
+};
+
+function reasoningForFixture(input, overrides, overallOverride) {
   const byTerm = new Map(input.requirements.map((item) => [item.term, item]));
   const directProfessionalLevels = new Set(['direct-professional', 'adjacent-professional', 'transferable-professional']);
   const entries = input.requirements.map((item) => {
@@ -196,7 +213,8 @@ function reasoningForFixture(input, overrides) {
 
   return {
     narrative: 'Bounded recruiter reasoning grounded only in the published deterministic match result.',
-    requirements: entries
+    requirements: entries,
+    overall: Object.assign({}, DEFAULT_OVERALL, overallOverride || {})
   };
 }
 
@@ -528,7 +546,7 @@ test('JDReasoning.validateModelOutput rejects HTML-bearing model strings', () =>
   }
 });
 
-test('JDReasoning.validateModelOutput rejects unknown requirement ids, duplicate ids, unknown evidence refs, unsupported capabilities, invalid match levels, overlong fields, and model numeric scores', () => {
+test('JDReasoning.validateModelOutput rejects unknown requirement ids, duplicate ids, unknown evidence refs, unsupported capabilities, invalid match levels, overlong fields, and smuggled per-requirement score fields', () => {
   const { harness, profile, normalized, result } = analyze(`Required Skills:
 - Kubernetes
 - Azure
@@ -594,9 +612,16 @@ Preferred Skills:
       pattern: /length|long/i
     },
     {
-      label: 'model numeric scores',
+      label: 'model numeric scores at the reasoning root',
       mutate(payload) {
         payload.transferableScore = 99;
+      },
+      pattern: /score/i
+    },
+    {
+      label: 'smuggled per-requirement score fields',
+      mutate(payload) {
+        payload.requirements[0].score = 99;
       },
       pattern: /score/i
     }
@@ -609,9 +634,16 @@ Preferred Skills:
     assert.equal(validation.ok, false, `${invalidCase.label} should reject the model output`);
     assert.match(validation.error, invalidCase.pattern, `${invalidCase.label} should explain the failure`);
   }
+
+  // The scoring contract inverted in Task 1: the model is now REQUIRED to report a
+  // top-level overall.score (validated 0-100 above), but it must still never be able to
+  // report a score on an individual requirement or anywhere outside `overall`.
+  const validBaseline = harness.JDReasoning.validateModelOutput(JSON.stringify(valid), input);
+  assert.equal(validBaseline.ok, true, 'a legitimate overall.score must still be accepted');
+  assert.equal(validBaseline.reasoning.overall.score, valid.overall.score, 'the accepted overall.score should survive validation unchanged (aside from clamping)');
 });
 
-test('JDReasoning.mergeResult preserves the deterministic score and applies the 15-point composite cap', () => {
+test('JDReasoning.mergeResult preserves the deterministic score and clamps the AI score into the [det-10, det+35] band', () => {
   const { harness, profile, normalized, result } = analyze(`Required Skills:
 - Kubernetes
 - Azure
@@ -623,6 +655,8 @@ Preferred Skills:
   assert.ok(harness.JDReasoning, 'JDReasoning should be loaded');
 
   const input = harness.JDReasoning.buildInput(normalized, result, profile, 'en');
+  // deterministicScore for this fixture is 30, so the clamp band is [max(0, 30-10), min(100, 30+35)] = [20, 65].
+  // A model score of 90 sits above the band ceiling, so it must be clamped down to 65 (not accepted as-is).
   const validation = harness.JDReasoning.validateModelOutput(JSON.stringify(reasoningForFixture(input, {
     Kubernetes: {
       matchLevel: 'adjacent-professional',
@@ -631,7 +665,7 @@ Preferred Skills:
       limitation: 'Published Azure delivery is adjacent to Kubernetes operations, but Kubernetes itself is still unproven.',
       verificationQuestion: 'Which Kubernetes clusters or workloads has he operated in production?'
     }
-  })), input);
+  }, { score: 90, fitBand: 'strong', narrative: 'Strong overall fit driven by adjacent cloud delivery experience.' })), input);
   assert.equal(validation.ok, true, 'the reasoning fixture should validate before merge');
 
   const merged = harness.JDReasoning.mergeResult(result, validation.reasoning, input);
@@ -640,8 +674,11 @@ Preferred Skills:
   assert.equal(merged.deterministicScore, 30, 'deterministic score should remain unchanged');
   assert.equal(merged.verifiedScore, 30, 'verified score should reflect only direct deterministic evidence');
   assert.equal(merged.transferableScore, 83, 'transferable score should apply the adjacent-professional factor');
-  assert.equal(merged.compositeScore, 45, 'composite score should respect the deterministic +15 ceiling');
-  assert.equal(merged.requiredGapCeiling, 100, 'no explicit required gap should leave the ceiling fully open');
+  assert.equal(merged.aiScore, 90, 'aiScore should carry the raw model-reported score, unclamped');
+  assert.equal(merged.finalScore, 65, 'finalScore should clamp to the deterministic+35 band ceiling (30 + 35)');
+  assert.equal(merged.adjusted, true, 'adjusted should flag that clamping changed the reported AI score');
+  assert.equal(merged.fitBand, 'good', 'fitBand must derive from the clamped finalScore (65), not the raw aiScore or the model-reported fitBand');
+  assert.equal(merged.compositeScore, merged.finalScore, 'compositeScore should mirror finalScore for legacy consumers (chatbot.js renderer)');
   assert.equal(kubernetes.matchLevel, 'adjacent-professional', 'validated reasoning should remain attached to the requirement');
   assert.deepEqual(
     Array.from(kubernetes.evidenceRefs),
@@ -814,13 +851,15 @@ test('JDReasoning task 6 fixtures preserve deterministic scores and keep every s
     assert.equal(after.score, before.score, `${fixture.name}: the top-level score should remain the authoritative deterministic score`);
     assert.equal(after.verifiedScore, expectedAudit.verifiedScore, `${fixture.name}: verified score should match the independent audit`);
     assert.equal(after.transferableScore, expectedAudit.transferableScore, `${fixture.name}: transferable score should match the independent audit`);
-    assert.equal(after.requiredGapCeiling, expectedAudit.requiredGapCeiling, `${fixture.name}: required-gap ceiling should match the independent audit`);
-    assert.equal(
-      after.compositeScore,
-      Math.min(after.transferableScore, before.score + 15, after.requiredGapCeiling),
-      `${fixture.name}: composite score should respect the bounded merge formula`
+    assert.equal(after.aiScore, expectedAudit.aiScore, `${fixture.name}: aiScore should carry the model's reported overall.score`);
+    assert.equal(after.finalScore, expectedAudit.finalScore, `${fixture.name}: finalScore should match the independent clamp-band audit`);
+    assert.ok(
+      after.finalScore >= Math.max(0, before.score - 10) && after.finalScore <= Math.min(100, before.score + 35),
+      `${fixture.name}: finalScore must never leave the [deterministicScore-10, deterministicScore+35] sanity band`
     );
-    assert.equal(after.compositeScore, expectedAudit.compositeScore, `${fixture.name}: composite score should match the independent audit`);
+    assert.equal(after.adjusted, expectedAudit.adjusted, `${fixture.name}: adjusted should reflect whether the clamp changed the reported AI score`);
+    assert.equal(after.fitBand, expectedAudit.fitBand, `${fixture.name}: fitBand should be derived from the clamped finalScore`);
+    assert.equal(after.compositeScore, after.finalScore, `${fixture.name}: composite score should mirror finalScore for legacy consumers`);
 
     for (const entry of liftedEntries) {
       assert.ok(entry.evidenceRefs.length > 0, `${fixture.name}: every score lift must cite evidence refs`);
