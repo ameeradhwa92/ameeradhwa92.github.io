@@ -2096,3 +2096,25 @@ test('the progress bar animation is disabled under reduced motion', () => {
   assert.ok(blocks.some((rule) => /\.chat-jd-progress-bar[^{]*\{[^}]*animation:\s*none/.test(rule)),
     'a reduced-motion block must set animation: none on .chat-jd-progress-bar');
 });
+
+/* The chat read as dated because nothing moved at the moments a conversation has beats: addMsg
+   appended a bubble and set scrollTop directly, so bubbles appeared instantly and the log jumped.
+   A restrained ease-out was chosen over an iMessage-style overshoot — next to the site's editorial
+   typography a bounce reads as toy-like. */
+test('chat bubbles animate in from their own corner', () => {
+  assert.match(css, /@keyframes chat-msg-in\s*\{[\s\S]*?scale\(0\.96\)/,
+    'chat-msg-in should scale up from 0.96');
+  assert.match(css, /\.chat-msg\b[^{]*\{[^}]*animation:\s*chat-msg-in/,
+    '.chat-msg should use the entrance animation');
+  assert.match(css, /\.chat-msg-bot\b[^{]*\{[^}]*transform-origin:\s*bottom left/,
+    'bot bubbles should grow from the bottom-left');
+  assert.match(css, /\.chat-msg-user\b[^{]*\{[^}]*transform-origin:\s*bottom right/,
+    'user bubbles should grow from the bottom-right');
+});
+
+/* Done in CSS so the existing log.scrollTop = log.scrollHeight calls ease instead of jumping —
+   no JS change, and no reduced-motion branch in JS either. */
+test('the chat log scrolls smoothly', () => {
+  assert.match(css, /\.chat-log\b[^{]*\{[^}]*scroll-behavior:\s*smooth/,
+    '.chat-log should scroll smoothly');
+});
