@@ -1482,6 +1482,55 @@ test('the requirement count and the list to judge are stated in the user message
     'the live model was enumerating the job description bullets instead of the supplied list');
 });
 
+/* jd-scoring returned nothing but invented ids on every live request while jd-reasoning — same
+   schema, same model, no JD prose — returned all of them correctly. Reading the job description
+   last, the model enumerated the job description. Order is the fix, so order is what this pins. */
+test('jd-scoring reads the JD first and the requirement ids last', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const response = await callWorker(request, {
+    profile,
+    aiResponse: buildValidScoringResponse(request, profile)
+  });
+
+  assert.equal(response.status, 200);
+  const user = response.aiCalls[0].payload.messages.find((message) => message.role === 'user').content;
+  const ids = request.deterministicInput.requirements.map((requirement) => requirement.id);
+
+  assert.equal(
+    user.indexOf('===JD-END===') < user.indexOf('Reasoning input JSON:'),
+    true,
+    'the JD is background and must come before the requirement list, not after it'
+  );
+  for (const id of ids) {
+    assert.equal(user.includes('- ' + id), true, `the directive must spell out ${id} verbatim`);
+  }
+  assert.equal(
+    user.lastIndexOf('- ' + ids[ids.length - 1]) > user.indexOf('===JD-END==='),
+    true,
+    'the id list must be the last thing the model reads'
+  );
+  assert.match(user, /inventing none/, 'naming the count alone was not enough — the ids must be copyable');
+  assert.match(user, /Do not enumerate the job description's own bullet list/);
+});
+
+test('the JD prose still appears exactly once, inside the delimiters', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const response = await callWorker(request, {
+    profile,
+    aiResponse: buildValidScoringResponse(request, profile)
+  });
+
+  const user = response.aiCalls[0].payload.messages.find((message) => message.role === 'user').content;
+  assert.equal(user.split(request.jdText).length - 1, 1, 'reordering must not duplicate the JD prose');
+  assert.equal(
+    user.split('===JD-START===')[1].split('===JD-END===')[0].includes(request.jdText),
+    true,
+    'the prose must stay inside the treat-as-data delimiters'
+  );
+});
+
 /* An evidence-based level citing nothing is the model claiming evidence it never named. That used
    to reject the whole response — one uncited requirement took every other requirement with it,
    which is what kept this tier dark in production. The requirement is now demoted to `unverified`
