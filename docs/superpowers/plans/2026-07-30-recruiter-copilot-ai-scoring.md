@@ -375,6 +375,113 @@ git commit -m "feat: automatic cloud-first AI JD scoring with deterministic fall
 
 ---
 
+### Task 3b: Send full JD prose to the model; split the privacy screen by concern
+
+**Decision:** the user explicitly chose (2026-07-30) to send fuller JD prose to the cloud
+model rather than requirement-only lines, accepting a deliberate narrowing of the privacy
+screen. Rationale, verified against the code: `containsPrivacyTerms` is called in exactly
+ONE place in the browser (`assets/js/jd-reasoning.js:295`, inside
+`buildRequirementOnlyJdText`) and one place in the Worker (`cloud/aimeer-worker.js:714`).
+Its only job in both is filtering/rejecting the **inbound JD text**. Ameer's own profile
+data is protected structurally, by the evidence registry being an explicit allowlist
+(`compactEvidenceRecord`, referenced ids only) — NOT by this screen. So relaxing the screen
+for employer boilerplate does not expose Ameer's data.
+
+Why the current behavior is a bug, not caution: the patterns match ordinary JD language —
+`/\b(?:annual|sick|paid|unpaid|parental|maternity|paternity|casual)\s+leave\b/`,
+`/\bmedical\s+(?:coverage|insurance|benefits|plan|history)\b/`,
+`/\b(?:expected|expecting|monthly|basic)\s+(?:[a-z]+\s+){0,2}salary\b/`. Nearly every real
+Malaysian JD hits at least one, so sending full prose under the current screen would 400 on
+most JDs and fall back to the keyword estimate every time.
+
+**Files:**
+- Modify: `assets/js/jd-reasoning.js` (`CONTEXTUAL_PRIVACY_PATTERNS` ~line 23, `containsPrivacyTerms` ~144, `buildRequirementOnlyJdText` ~282, `buildInput` ~329-352)
+- Modify: `cloud/aimeer-worker.js` (`DEFAULT_PRIVACY_EXCLUSIONS` ~151, `AMBIGUOUS_PRIVACY_TERMS` ~162, `CONTEXTUAL_PRIVACY_PATTERNS` ~168, screening at ~707-714)
+- Modify: `assets/js/chatbot.js` (the `jdText` field of the `jd-scoring` body, ~1644)
+- Modify: `tests/jd-reasoning.test.js`, `tests/jd-worker-contract.test.js`
+- Modify: `docs/superpowers/specs/2026-07-30-recruiter-copilot-ai-scoring-design.md` (privacy paragraph)
+
+**Interfaces:**
+- Consumes: Task 3's `jd-scoring` request path.
+- Produces: two named pattern groups replacing the single list —
+  `PERSONAL_IDENTIFIER_PATTERNS` (still blocking) and the employer-boilerplate patterns
+  (no longer blocking). `buildInput` returns `jdText` = full normalized JD, clipped.
+
+- [ ] **Step 1: Split the pattern list by concern**
+
+In BOTH `assets/js/jd-reasoning.js` and `cloud/aimeer-worker.js`, replace the single
+`CONTEXTUAL_PRIVACY_PATTERNS` with two named groups. Keep the two files' rules identical —
+they are separate deployment targets that cannot share code, so consistency is by review.
+
+**Still blocking (`PERSONAL_IDENTIFIER_PATTERNS`)** — these protect a third party whose
+personal data may appear in a pasted document, which is a real risk that survives this change:
+
+```js
+var PERSONAL_IDENTIFIER_PATTERNS = [
+  /\bnric\b/i,
+  /\bi\/c\s*(?:no|number)\b/i,
+  /\b\d{6}-\d{2}-\d{4}\b/,
+  /\bhome\s+address\b/i,
+  /\bdate\s+of\s+birth\b/i,
+  /\bpassport\s*(?:no|number)\b/i,
+  /\bbank\s+account\s*(?:no|number)\b/i,
+  /\bsignature[sd]?\b/i
+];
+```
+
+**No longer blocking** — delete these employer-boilerplate patterns outright: every
+`salary`, `compensation`, `remuneration`, `medical`, `health`/`employee benefits`, and
+`leave` pattern. They describe the employer's offer, not Ameer's private data.
+
+`containsPrivacyTerms` keeps its signature but tests only
+`PERSONAL_IDENTIFIER_PATTERNS`. In the Worker, drop `"salary"`, `"benefits"`, `"leave"`,
+and `"medical"` from `DEFAULT_PRIVACY_EXCLUSIONS` and from `AMBIGUOUS_PRIVACY_TERMS`,
+leaving the genuine identifiers (`nric`, `home address`, `date of birth`, `signatures`,
+`confidential contract language`). Bare-substring matching on `"salary"` would otherwise
+reject any JD that merely mentions pay.
+
+- [ ] **Step 2: Send the full JD prose**
+
+In `buildInput` (`assets/js/jd-reasoning.js` ~352), replace
+`jdText: buildRequirementOnlyJdText(requirements, privacyTerms)` with the full normalized
+JD text, clipped to the existing 12000 limit, still passed through
+`containsPrivacyTerms`-based rejection for personal identifiers. Then
+`buildRequirementOnlyJdText` has no remaining caller — **delete it** rather than leaving
+dead code. Confirm by grep before deleting; if another caller exists, stop and report.
+
+The structured `requirements` array still goes in the payload — the model now gets both the
+real prose and the extracted structure, which is the point of the change.
+
+- [ ] **Step 3: Tests**
+
+- Rewrite any test asserting that compensation/benefits/leave language is stripped or
+  rejected, so it asserts the opposite: a JD containing "expected salary", "medical
+  insurance", and "annual leave" is accepted and its prose reaches the payload.
+- Keep/strengthen the personal-identifier tests: a JD containing an NRIC-shaped number, a
+  home address, or a date of birth must still be rejected (browser) / 400 (Worker).
+- Add a test that the payload's `jdText` now contains JD prose that is NOT one of the
+  extracted requirement lines — this is what pins the behavior change.
+- Assert the browser and Worker agree: the same JD accepted by one is accepted by the other.
+
+Run: `node --test "tests/*.test.js"` → 0 failing.
+
+- [ ] **Step 4: Update the spec**
+
+In `docs/superpowers/specs/2026-07-30-recruiter-copilot-ai-scoring-design.md`, the privacy
+paragraph currently says existing privacy exclusions "apply unchanged". Replace that with
+the split-by-concern rule and the reasoning above, so the spec matches what ships.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add assets/js/jd-reasoning.js cloud/aimeer-worker.js assets/js/chatbot.js tests/ docs/
+git commit -m "feat: send full JD prose to model; scope privacy screen to personal identifiers"
+```
+
+Worker changes are NOT live until hand-pasted into the Cloudflare dashboard.
+
+---
+
 ### Task 4: Match report UI
 
 **Files:**
