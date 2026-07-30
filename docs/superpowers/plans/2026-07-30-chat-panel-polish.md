@@ -46,7 +46,7 @@ Append to `tests/jd-reasoning.test.js`:
    confidence that both validators check; this aggregates it so the headline describes the same
    judgement the score came from. */
 test('mergeResult aggregates per-requirement confidence into result.aiConfidence', () => {
-  const harness = loadReasoningHarness();
+  const harness = loadHarness();
 
   function mergeWithConfidences(confidences) {
     const input = {
@@ -101,7 +101,7 @@ test('mergeResult aggregates per-requirement confidence into result.aiConfidence
 /* A model-supplied confidence is untrusted input. An object-literal weight map would let
    Object.prototype members through as valid levels — the same trap CONFIDENCE_LEVELS documents. */
 test('mergeResult ignores prototype-member confidence values', () => {
-  const harness = loadReasoningHarness();
+  const harness = loadHarness();
   const input = {
     requirements: [{
       id: 'req-core-technologies-term-0',
@@ -138,17 +138,9 @@ test('mergeResult ignores prototype-member confidence values', () => {
 });
 ```
 
-If `tests/jd-reasoning.test.js` has no `loadReasoningHarness` helper, add this above the new tests:
-
-```js
-function loadReasoningHarness() {
-  const context = { console, setTimeout, clearTimeout };
-  context.globalThis = context;
-  context.window = context;
-  vm.runInNewContext(fs.readFileSync(path.join(repoRoot, 'assets', 'js', 'jd-reasoning.js'), 'utf8'), context);
-  return { JDReasoning: context.JDReasoning };
-}
-```
+Reuse the `loadHarness()` helper already defined at `tests/jd-reasoning.test.js:42` — it returns
+`{ JDExtractor, JDMatcher, JDReasoning }`. Do **not** add a second loader; a near-duplicate helper
+in the same file is exactly the kind of drift the review rubric flags.
 
 - [ ] **Step 2: Run test to verify it fails**
 
