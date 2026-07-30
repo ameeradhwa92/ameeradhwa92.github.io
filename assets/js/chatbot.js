@@ -661,6 +661,13 @@
     bubble.classList.add("thinking");
     var dots = document.createElement("span");
     dots.className = "chat-typing";
+    /* role="img" is required here: a bare <span> maps to ARIA role "generic", and ARIA 1.2
+       PROHIBITS aria-label on generic elements — browsers silently expose no accessible name for
+       it (or its <i> children), so #chat-log's aria-live="polite" region would announce nothing
+       while a reply is in flight. role="img" is name-required, so aria-label is legal here and
+       is included in the ancestor text-alternative computation, keeping the wait state audible.
+       Do not remove this role as "redundant" decoration. */
+    dots.setAttribute("role", "img");
     dots.setAttribute("aria-label", t("thinking"));
     for (var index = 0; index < 3; index += 1) {
       dots.appendChild(document.createElement("i"));
@@ -1324,6 +1331,10 @@
       markJdScoringSettled();
     }
     input.placeholder = t("placeholder");
+    /* setThinkingDots snapshots t("thinking") into the dots group's aria-label when it builds it;
+       a reply in flight during an EN/BM switch would otherwise keep announcing the old language. */
+    var typing = log.querySelector(".chat-typing");
+    if (typing) typing.setAttribute("aria-label", t("thinking"));
     refreshStatus();
     applyAiBox();
     if (jdPromoCopy) jdPromoCopy.textContent = t("jdPromo");

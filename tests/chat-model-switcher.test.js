@@ -2078,6 +2078,104 @@ test('the recruiter progress bar is visible exactly while the matcher is working
   }
 });
 
+/* The two tests above only exercise the pure helpers. Neither asserts they are actually wired
+   into the real render path — deleting the renderJdProgress() call in renderJdStatus, or
+   reverting the confidence line back to the unconditional baseline label, would leave both
+   helper-level tests green while the visible behaviour regressed. This test drives the real
+   click-through flow (extractor/matcher/JDReasoning wired up, a deferred cloud fetch) so it fails
+   if either call site is removed. */
+test('the recruiter progress bar call site shows it during AI scoring and hides it once settled, and the merged AI confidence call site overrides the keyword estimate', async () => {
+  const deterministicResult = buildDeterministicResult({
+    confidence: { label: 'low', reasons: ['Published evidence covers core requirements.'] }
+  });
+  const pendingScoring = deferred();
+  const { context, elements } = createChatContext({
+    saveData: true,
+    fetchImpl(url) {
+      const target = String(url);
+      if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
+      if (target.includes('workers.dev')) return pendingScoring.promise;
+      return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
+    }
+  });
+  context.window.JDExtractor = {
+    extract() {
+      return Promise.resolve({ text: '', source: 'pdf', warnings: [] });
+    },
+    normalize(text) {
+      return { normalizedText: text, warnings: [] };
+    }
+  };
+  context.window.JDMatcher = {
+    scoreJobDescription() {
+      return clone(deterministicResult);
+    }
+  };
+  vm.runInNewContext(jdReasoning, context);
+
+  await loadChat(context);
+  await flushAsync();
+
+  /* Idle, before the panel is even used: not an in-flight phase, so the call site must hide it. */
+  assert.equal(elements['chat-jd-progress'].hidden, true,
+    'the progress bar must be hidden while the matcher is idle');
+
+  elements['chat-launcher'].dispatch('click');
+  await flushAsync();
+
+  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC and Kubernetes ownership.';
+  elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+
+  assert.equal(elements['chat-jd-progress'].hidden, false,
+    'the progress bar must be visible while AI scoring is in flight — call-site coverage for isJdProgressVisible');
+  const whileScoring = collectText(elements['chat-jd-result']);
+  assert.match(whileScoring, /Confidence: Low/,
+    'before the AI result merges, the report should still show the keyword-pass confidence');
+
+  /* Both requirements report "medium" so aggregateAiConfidence's mean lands at exactly 0.5 —
+     comfortably inside the "medium" band and unambiguously different from the deterministic
+     baseline's "low", so the assertion below can only pass if the AI value actually replaced it. */
+  const scoringOutput = buildScoringModelOutput({
+    requirements: [
+      {
+        requirementId: 'req-aspnet-core',
+        recruiterIntent: 'Own production-grade web delivery on the current stack.',
+        expectedOutcome: 'Sustain and extend the current ASP.NET Core platform.',
+        matchLevel: 'direct-professional',
+        evidenceRefs: ['ev-retailaim-plus'],
+        transferableCapabilities: [],
+        limitation: 'Published evidence confirms the current stack but not every future module.',
+        recruiterFraming: 'Direct published production evidence is already available.',
+        verificationQuestion: 'Which high-scale production modules did he own directly?',
+        confidence: 'medium'
+      },
+      {
+        requirementId: 'req-kubernetes',
+        recruiterIntent: 'Support containerized deployment and operations.',
+        expectedOutcome: 'Ramp into Kubernetes-backed delivery with adjacent cloud ownership.',
+        matchLevel: 'adjacent-professional',
+        evidenceRefs: ['ev-azure-devops'],
+        transferableCapabilities: ['Azure DevOps', 'Release automation'],
+        limitation: 'Published work does not yet confirm a production Kubernetes rollout.',
+        recruiterFraming: 'Adjacent cloud delivery shortens the ramp, but screening should confirm direct cluster experience.',
+        verificationQuestion: 'What hands-on Kubernetes rollout, if any, has he completed directly?',
+        confidence: 'medium'
+      }
+    ]
+  });
+  pendingScoring.resolve(makeJsonResponse({ reasoning: scoringOutput }));
+  await flushAsync();
+
+  assert.equal(elements['chat-jd-progress'].hidden, true,
+    'the progress bar must hide once AI scoring settles — call-site coverage for isJdProgressVisible');
+  const afterScoring = collectText(elements['chat-jd-result']);
+  assert.match(afterScoring, /Confidence: Medium/,
+    'the merged AI confidence must override the keyword-pass confidence — call-site coverage for resolveConfidenceLevel');
+  assert.doesNotMatch(afterScoring, /Confidence: Low/,
+    'the stale keyword-pass confidence must not remain once the AI result has merged');
+});
+
 /* The retry is a second full round trip that previously only reached console.warn. Leaving it
    unlabelled is what made a slow run look like a dead one. */
 test('the retry phase has copy in both languages', () => {

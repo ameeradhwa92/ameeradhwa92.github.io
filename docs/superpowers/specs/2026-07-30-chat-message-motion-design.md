@@ -35,9 +35,12 @@ from its own corner the way it does in iMessage.
 A bouncing overshoot was considered and rejected: next to the site's editorial
 typography it reads as toy-like.
 
-This is safe to apply to every `.chat-msg` because messages are only ever added
-one at a time — greeting, AI status changes, and conversation turns. There is no
-bulk history restore that would fire dozens of entrances at once.
+This is safe to apply to every `.chat-msg`. The first open of a session appends
+up to three bubbles in one task — the greeting, optionally the on-device-ready
+notice, then the JD promo — which animate together and read as the log fading
+in rather than as separate entrances. Every other append — AI status changes,
+conversation turns — really is one bubble at a time. There is no bulk history
+restore that would fire dozens of entrances at once.
 
 ### Typing indicator
 
