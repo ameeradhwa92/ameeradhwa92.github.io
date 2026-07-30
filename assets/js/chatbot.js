@@ -332,6 +332,7 @@
       jdReasonRequirements: "Requirement-by-requirement reasoning",
       jdHandoffSummary: "AIMeer match report — {band} ({score}%).",
       jdHandoffStrengths: "Strengths: {terms}.",
+      jdHandoffFallbackLabel: "Keyword estimate",
       jdReasonNarrativeTitle: "Recruiter narrative",
       jdReasonVerifiedStrengths: "Verified strengths",
       jdReasonTransferableAdvantages: "Transferable advantages",
@@ -461,6 +462,7 @@
       jdReasonRequirements: "Penaakulan mengikut keperluan",
       jdHandoffSummary: "Laporan padanan AIMeer — {band} ({score}%).",
       jdHandoffStrengths: "Kekuatan: {terms}.",
+      jdHandoffFallbackLabel: "Anggaran kata kunci",
       jdReasonNarrativeTitle: "Naratif perekrut",
       jdReasonVerifiedStrengths: "Kekuatan yang disahkan",
       jdReasonTransferableAdvantages: "Kelebihan boleh dipindahkan",
@@ -639,6 +641,7 @@
     normalizedText: "",
     resultSource: "",
     scoringMode: "", /* "" | pending | ai | fallback — what produced jdState.result */
+    handoffOffered: false, /* one-shot: only surface the handoff card once per settled result */
     reasoningMode: "",
     reasoningBusy: false,
     reasoningError: "",
@@ -746,6 +749,7 @@
     jdState.normalizedText = "";
     jdState.resultSource = "";
     jdState.scoringMode = "";
+    jdState.handoffOffered = false;
     jdState.reasoningMode = "";
     jdState.reasoningBusy = false;
     jdState.reasoningError = "";
@@ -913,13 +917,30 @@
     return section;
   }
 
+  /* Shallow-copies each item and tags it with a gapKind so the combined "Priority
+     gaps" list (explicitGaps + unverifiedRequirements) can still show a recruiter
+     which of the two materially different claims an item is — "no evidence he's
+     done X" vs. "X wasn't verified in the published profile" — without mutating
+     the original result.sections arrays. */
+  function tagGapKind(items, gapKind) {
+    return (items || []).map(function (item) {
+      var copy = {};
+      for (var key in item) {
+        if (Object.prototype.hasOwnProperty.call(item, key)) copy[key] = item[key];
+      }
+      copy.gapKind = gapKind;
+      return copy;
+    });
+  }
+
   /* Renders one recruiter-report list (Strong / Transferable / Gaps): each item
-     shows its term, the canonical evidence claim(s) resolved from evidenceRecords,
-     and a one-line recruiter framing (or, for gaps, the limitation). All model-
-     supplied text goes through createJdNode/appendEvidenceList, which only ever
-     assign .textContent — never innerHTML. */
+     shows its term (with a gap/unverified badge when the item carries a gapKind),
+     the canonical evidence claim(s) resolved from evidenceRecords, and a one-line
+     recruiter framing (or, for gaps, the limitation). All model-supplied text goes
+     through createJdNode/appendEvidenceList, which only ever assign .textContent —
+     never innerHTML. */
   function renderReasoningSection(titleKey, items, valueKey) {
-    var section = createJdNode("section", "chat-jd-section jd-report-list");
+    var section = createJdNode("section", "chat-jd-section");
     section.appendChild(createJdNode("h6", "", t(titleKey)));
     if (!items.length) {
       section.appendChild(createJdNode("p", "chat-jd-empty", t("jdNoMatches")));
@@ -928,7 +949,11 @@
     var list = createJdNode("ul", "chat-jd-match-list");
     items.forEach(function (item) {
       var li = createJdNode("li", "chat-jd-match-item");
-      li.appendChild(createJdNode("div", "chat-jd-term", (item && item.term) || ""));
+      var head = createJdNode("div", "chat-jd-match-head");
+      head.appendChild(createJdNode("div", "chat-jd-term", (item && item.term) || ""));
+      if (item && item.gapKind === "gap") head.appendChild(createJdBadge(t("jdEvidenceGap"), "is-gap"));
+      else if (item && item.gapKind === "unverified") head.appendChild(createJdBadge(t("jdEvidenceUnverified"), "is-unverified"));
+      li.appendChild(head);
       var evidenceClaims = Array.isArray(item && item.evidenceRecords)
         ? item.evidenceRecords.map(function (entry) { return entry && entry.claim; }).filter(Boolean)
         : [];
@@ -1043,7 +1068,11 @@
     if (result.sections && typeof result.sections === "object") {
       var verifiedStrengths = result.sections.verifiedStrengths || [];
       var transferableAdvantages = result.sections.transferableAdvantages || [];
-      var gaps = [].concat(result.sections.explicitGaps || [], result.sections.unverifiedRequirements || []);
+      /* Merged into one list per the plan, but each item keeps a badge marking
+         whether it's a confirmed gap or merely unverified — those are materially
+         different claims to put in front of a recruiter. */
+      var gaps = tagGapKind(result.sections.explicitGaps, "gap")
+        .concat(tagGapKind(result.sections.unverifiedRequirements, "unverified"));
       report.appendChild(renderReasoningSection("jdReasonVerifiedStrengths", verifiedStrengths, "recruiterFraming"));
       report.appendChild(renderReasoningSection("jdReasonTransferableAdvantages", transferableAdvantages, "recruiterFraming"));
       report.appendChild(renderReasoningSection("jdReasonPriorityGaps", gaps, "limitation"));
@@ -1056,10 +1085,14 @@
 
     jdResult.appendChild(report);
 
-    /* 6. Disclaimer, unchanged, then the WhatsApp/mailto handoff — only once
-       scoring has actually settled (ai or fallback), never mid-flight. */
+    /* 6. Disclaimer, unchanged, then the WhatsApp/mailto handoff — only once,
+       the first time scoring actually settles (ai or fallback), never mid-flight
+       and never again on an unrelated re-render (panel reopen, EN/BM toggle, AI
+       route switch). Without the one-shot guard, offerHandoff() would re-append
+       and re-scroll the chat log on every such re-render — see Task 4 review. */
     jdResult.appendChild(createJdNode("p", "chat-jd-result-disclaimer", t("jdDisclaimer")));
-    if (jdState.scoringMode === "ai" || isFallback) {
+    if ((jdState.scoringMode === "ai" || isFallback) && !jdState.handoffOffered) {
+      jdState.handoffOffered = true;
       offerHandoff();
     }
   }
@@ -1728,7 +1761,9 @@
     var result = jdState.result;
     var baseline = jdState.deterministicResult || result;
     var scoreValue = typeof result.finalScore === "number" ? result.finalScore : baseline.score;
-    var bandLabel = jdState.scoringMode === "fallback" ? t("jdFallbackLabel") : t(fitBandKey(result.fitBand));
+    /* jdFallbackLabel is a full sentence made for the report headline; the handoff
+       line needs a short label so it doesn't run two sentences together. */
+    var bandLabel = jdState.scoringMode === "fallback" ? t("jdHandoffFallbackLabel") : t(fitBandKey(result.fitBand));
     var strengths = (result.sections && Array.isArray(result.sections.verifiedStrengths))
       ? result.sections.verifiedStrengths
       : [];

@@ -932,6 +932,162 @@ test('a settled AI-scored report leads with the fit band, shows the calibrated n
   assert.match(decoded, /Strengths: ASP\.NET Core MVC, Azure DevOps, SQL Server\./, 'the handoff prefill should list up to three verified strengths');
 });
 
+test('reopening the JD panel or toggling the site language after scoring has settled does not re-offer or duplicate the WhatsApp/email handoff card', async () => {
+  const deterministicResult = buildDeterministicResult();
+  const { context, elements, setLanguage } = createChatContext({
+    saveData: true,
+    fetchImpl(url) {
+      const target = String(url);
+      if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
+      if (target.includes('workers.dev')) return Promise.resolve(makeJsonResponse({ reasoning: buildScoringModelOutput() }));
+      return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
+    }
+  });
+  context.window.JDExtractor = {
+    extract() {
+      return Promise.resolve({ text: '', source: 'pdf', warnings: [] });
+    },
+    normalize(text) {
+      return { normalizedText: text, warnings: [] };
+    }
+  };
+  context.window.JDMatcher = {
+    scoreJobDescription() {
+      return clone(deterministicResult);
+    }
+  };
+  vm.runInNewContext(jdReasoning, context);
+
+  await loadChat(context);
+  await flushAsync();
+  elements['chat-launcher'].dispatch('click');
+  await flushAsync();
+  elements['chat-chips'].dispatch('click', elements['chat-jd-toggle']);
+
+  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC and Kubernetes ownership.';
+  elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+
+  function countHandoffCards() {
+    return elements['chat-log'].children.filter((child) => child.className && child.className.indexOf('chat-handoff') !== -1).length;
+  }
+
+  assert.equal(countHandoffCards(), 1, 'a settled AI-scored report should surface exactly one handoff card');
+
+  /* Close, then reopen the JD panel: setRecruiterOpen(true) re-runs renderJdResult(). */
+  elements['chat-chips'].dispatch('click', elements['chat-jd-toggle']);
+  elements['chat-chips'].dispatch('click', elements['chat-jd-toggle']);
+  assert.equal(countHandoffCards(), 1, 'reopening the JD panel after scoring has settled must not re-offer or duplicate the handoff card');
+
+  /* Toggling the site-wide language re-renders the JD report to relocalize it. */
+  setLanguage('ms');
+  assert.equal(countHandoffCards(), 1, 'toggling to Bahasa Melayu after scoring has settled must not re-offer or duplicate the handoff card');
+  setLanguage('en');
+  assert.equal(countHandoffCards(), 1, 'toggling back to English must not re-offer or duplicate the handoff card either');
+});
+
+test('the combined gaps list marks each item as an explicit gap or merely unverified, and the fallback handoff prefix uses a short label instead of the full report-headline sentence', async () => {
+  const deterministicResult = buildDeterministicResult();
+  const { context, elements } = createChatContext({
+    saveData: true,
+    fetchImpl(url) {
+      const target = String(url);
+      if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
+      if (target.includes('workers.dev')) return Promise.resolve(makeJsonResponse({ reasoning: buildScoringModelOutput() }));
+      return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
+    }
+  });
+  context.window.JDExtractor = {
+    extract() {
+      return Promise.resolve({ text: '', source: 'pdf', warnings: [] });
+    },
+    normalize(text) {
+      return { normalizedText: text, warnings: [] };
+    }
+  };
+  context.window.JDMatcher = {
+    scoreJobDescription() {
+      return clone(deterministicResult);
+    }
+  };
+  context.window.JDReasoning = {
+    buildInput(normalized, result, profile, language) {
+      return { language, jdText: normalized.normalizedText, requirements: result.requirements || [], evidenceRegistry: profile.recruiterEvidence || [] };
+    },
+    validateModelOutput() {
+      return { ok: true, reasoning: {} };
+    },
+    mergeResult(result) {
+      return buildMergedResult(result, {
+        fitBand: 'partial',
+        finalScore: 45,
+        sections: {
+          verifiedStrengths: [],
+          transferableAdvantages: [],
+          explicitGaps: [{ term: 'Salesforce Marketing Cloud', limitation: 'No published implementation evidence is available.' }],
+          unverifiedRequirements: [{ term: 'Public speaking at conferences', limitation: 'Published profile does not verify this requirement.' }],
+          interviewQuestions: []
+        }
+      });
+    }
+  };
+
+  await loadChat(context);
+  await flushAsync();
+  elements['chat-launcher'].dispatch('click');
+  await flushAsync();
+  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC ownership.';
+  elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+
+  const rendered = collectText(elements['chat-jd-result']);
+  assert.match(rendered, /Salesforce Marketing Cloud/i, 'the explicit-gap item should render');
+  assert.match(rendered, /Published evidence gap/i, 'an explicit gap should carry the "published evidence gap" badge');
+  assert.match(rendered, /Public speaking at conferences/i, 'the unverified item should render');
+  assert.match(rendered, /Unverified/i, 'a merely-unverified requirement should carry the "unverified" badge, not the gap badge');
+
+  const gapBadge = countNodes(elements['chat-jd-result'], (node) => node.className && node.className.indexOf('is-gap') !== -1);
+  const unverifiedBadge = countNodes(elements['chat-jd-result'], (node) => node.className && node.className.indexOf('is-unverified') !== -1);
+  assert.equal(gapBadge, 1, 'exactly one item should carry the is-gap badge class');
+  assert.equal(unverifiedBadge, 1, 'exactly one item should carry the is-unverified badge class');
+
+  const handoffCards = elements['chat-log'].children.filter((child) => child.className && child.className.indexOf('chat-handoff') !== -1);
+  assert.ok(handoffCards.length > 0);
+  let openedUrl = null;
+  context.window.open = (url) => { openedUrl = url; };
+  const waButton = handoffCards[handoffCards.length - 1].children[1].children[0];
+  waButton.dispatch('click');
+  await flushAsync();
+  const decoded = decodeURIComponent(openedUrl.split('text=')[1]);
+  assert.match(decoded, /AIMeer match report — Partial fit \(45%\)\./, 'the handoff prefill should use the fit band for a settled AI result');
+});
+
+test('a fallback (keyword-estimate) result prefills the handoff with a short label, not the full report-headline sentence', async () => {
+  const { context, elements, cloudCalls } = createScoringFailureContext(
+    () => Promise.reject(new TypeError('Failed to fetch'))
+  );
+  let openedUrl = null;
+  context.window.open = (url) => { openedUrl = url; };
+
+  await loadChat(context);
+  await flushAsync();
+  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC ownership.';
+  elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+  assert.equal(cloudCalls.length, 2, 'a network rejection should be retried exactly once before settling on the fallback');
+
+  const handoffCards = elements['chat-log'].children.filter((child) => child.className && child.className.indexOf('chat-handoff') !== -1);
+  assert.ok(handoffCards.length > 0, 'a settled fallback report should still surface the handoff card');
+  const waButton = handoffCards[handoffCards.length - 1].children[1].children[0];
+  waButton.dispatch('click');
+  await flushAsync();
+
+  assert.ok(openedUrl, 'clicking WhatsApp should open a prefilled chat URL');
+  const decoded = decodeURIComponent(openedUrl.split('text=')[1]);
+  assert.match(decoded, /AIMeer match report — Keyword estimate \(72%\)\./, 'the fallback handoff prefix should use the short label, not the full report-headline sentence');
+  assert.doesNotMatch(decoded, /full AI analysis unavailable right now/i, 'the fallback handoff prefix must not run the full report-headline sentence into the summary');
+});
+
 test('in-flight AI scoring keeps its secure-cloud status after the visitor switches to on-device AI', async () => {
   const pendingScoring = deferred();
   const deterministicResult = buildDeterministicResult();

@@ -954,6 +954,9 @@ body.modal-open { overflow: hidden; }
 .chat-jd-match-item {
   display: grid; gap: 4px;
 }
+.chat-jd-match-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+}
 .chat-jd-section h6 {
   color: var(--paper); font-weight: 600; font-size: 0.82rem; line-height: 1.45;
   margin-bottom: 8px;
