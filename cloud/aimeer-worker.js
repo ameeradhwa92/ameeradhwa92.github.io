@@ -306,7 +306,9 @@ const JD_REASONING_PROMPT =
    since the browser and this Worker are separate deployment targets that validate
    independently. */
 const JD_SCORING_ROOT_EXTRA_KEYS = ["overall"];
-const JD_SCORING_OVERALL_KEYS = ["score", "fitBand", "narrative"];
+/* No JD_SCORING_OVERALL_KEYS allowlist any more: jd-scoring tolerates extra keys inside overall
+   (see validateJdScoringModelOutput), and the three fields that are read — score, fitBand,
+   narrative — are named directly in the rebuild there. */
 const JD_SCORING_FIT_BANDS = ["strong", "good", "partial", "limited"];
 
 const JD_SCORING_PROMPT =
@@ -1094,14 +1096,23 @@ function buildJdReasoningMessage(reasoningInput, scoreNote) {
   };
 }
 
-function validateJdReasoningModelOutput(rawOutput, input, extraRootKeys) {
+/* allowModelScoreKeys separates the two modes' contracts. jd-reasoning forbids model-supplied
+   scores outright: the deterministic score is client-authoritative there, so a `score` key
+   anywhere in that output means the model has gone off-contract and the response is refused.
+   jd-scoring is the inverse — the model IS the scoring authority, and the live model puts a
+   root-level `score` alongside its `overall` on every single request. Refusing that discarded
+   an entire valid report over where the model chose to put a number it was explicitly asked to
+   produce. Tolerating it costs nothing, because the score that gets used comes only from
+   `overall.score` via the field-by-field rebuild, and the browser then clamps it into the
+   deterministic sanity band regardless. */
+function validateJdReasoningModelOutput(rawOutput, input, extraRootKeys, allowModelScoreKeys) {
   const parsed = parseModelJson(rawOutput);
   if (parsed === null) return { ok: false, error: "json-invalid" };
   if (!isPlainObject(parsed)) return { ok: false, error: "root-invalid" };
   const rootKeys = extraRootKeys && extraRootKeys.length
     ? JD_REASONING_ROOT_KEYS.concat(extraRootKeys)
     : JD_REASONING_ROOT_KEYS;
-  const rootKeyError = rejectScoreKeys(parsed, rootKeys, "reasoning root");
+  const rootKeyError = allowModelScoreKeys ? "" : rejectScoreKeys(parsed, rootKeys, "reasoning root");
   if (rootKeyError) return { ok: false, error: rootKeyError };
   const narrativeError = validateReasoningTextField(parsed.narrative, "narrative");
   if (narrativeError) return { ok: false, error: narrativeError };
@@ -1126,7 +1137,9 @@ function validateJdReasoningModelOutput(rawOutput, input, extraRootKeys) {
   const requirements = [];
   for (const item of parsed.requirements) {
     if (!isPlainObject(item)) return { ok: false, error: "requirement-object-invalid" };
-    const keyError = rejectScoreKeys(item, JD_REASONING_REQUIREMENT_KEYS, "reasoning requirement");
+    const keyError = allowModelScoreKeys
+      ? ""
+      : rejectScoreKeys(item, JD_REASONING_REQUIREMENT_KEYS, "reasoning requirement");
     if (keyError) return { ok: false, error: keyError };
 
     const requirementId = clipText(item.requirementId, 96);
@@ -1170,10 +1183,22 @@ function validateJdReasoningModelOutput(rawOutput, input, extraRootKeys) {
       if (!evidenceIndex[ref]) return { ok: false, error: "evidence-invalid" };
       evidenceRecords.push(evidenceIndex[ref]);
     }
-    if (JD_REASONING_EVIDENCE_BASED_LEVELS[matchLevel] && !evidenceRefs.length) {
-      return { ok: false, error: "evidence-required" };
-    }
-    if (!areEvidenceTypesCompatible(matchLevel, evidenceRecords)) {
+    /* An evidence-based level citing nothing is the model claiming published evidence it never
+       named. Rejecting the whole response over one such requirement took every other requirement
+       down with it — the all-or-nothing failure that kept this tier dark in production. Demote
+       just that requirement to `unverified`, which is exactly what it is: no published evidence
+       was cited for it.
+       The invariant does not move — no requirement may claim professional or academic evidence
+       without naming registry evidence — it is now enforced per requirement instead of per
+       report. Demotion can only ever weaken a claim, never strengthen one, so this cannot become
+       a route to overstating Ameer's experience.
+       Provenance MISMATCH still refuses outright below: citing academic evidence as professional
+       delivery is a misuse of the registry rather than an omission, and picking a level on the
+       model's behalf there would mean guessing at what it meant to claim. */
+    const effectiveMatchLevel = JD_REASONING_EVIDENCE_BASED_LEVELS[matchLevel] && !evidenceRefs.length
+      ? "unverified"
+      : matchLevel;
+    if (!areEvidenceTypesCompatible(effectiveMatchLevel, evidenceRecords)) {
       return { ok: false, error: "evidence-provenance-invalid" };
     }
 
@@ -1194,7 +1219,7 @@ function validateJdReasoningModelOutput(rawOutput, input, extraRootKeys) {
       requirementId,
       recruiterIntent: clipText(item.recruiterIntent, JD_REASONING_TEXT_LIMITS.recruiterIntent),
       expectedOutcome: clipText(item.expectedOutcome, JD_REASONING_TEXT_LIMITS.expectedOutcome),
-      matchLevel,
+      matchLevel: effectiveMatchLevel,
       evidenceRefs,
       transferableCapabilities,
       limitation: clipText(item.limitation, JD_REASONING_TEXT_LIMITS.limitation),
@@ -1221,13 +1246,15 @@ function validateJdReasoningModelOutput(rawOutput, input, extraRootKeys) {
    fitBand in strong|good|partial|limited, non-empty narrative bounded by
    JD_REASONING_TEXT_LIMITS.narrative, and no extra keys inside overall. */
 function validateJdScoringModelOutput(rawOutput, input) {
-  const base = validateJdReasoningModelOutput(rawOutput, input, JD_SCORING_ROOT_EXTRA_KEYS);
+  const base = validateJdReasoningModelOutput(rawOutput, input, JD_SCORING_ROOT_EXTRA_KEYS, true);
   if (!base.ok) return base;
 
   const overall = base.parsed.overall;
   if (!isPlainObject(overall)) return { ok: false, error: "overall-missing" };
-  const overallKeyError = rejectScoreKeys(overall, JD_SCORING_OVERALL_KEYS, "overall");
-  if (overallKeyError) return { ok: false, error: overallKeyError };
+  /* No score-key guard inside overall either, for the same reason the root one is lifted for this
+     mode: `overall.score` is exactly what jd-scoring asks the model to produce, so a stray
+     `weightedScore` beside it is shape drift rather than a contract violation. Only score, fitBand
+     and narrative are read out of overall below, so nothing else survives into the response. */
   if (typeof overall.score !== "number" || !Number.isFinite(overall.score) ||
     overall.score < 0 || overall.score > 100) {
     return { ok: false, error: "overall-score-invalid" };

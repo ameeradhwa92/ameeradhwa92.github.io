@@ -846,9 +846,6 @@ test('jd-scoring rejects malformed overall blocks from the model', async () => {
     ['overall.score above 100', { ...base.overall, score: 101 }],
     ['unknown fitBand', { ...base.overall, fitBand: 'excellent' }],
     ['empty narrative', { ...base.overall, narrative: '' }],
-    /* A non-score extra key inside overall is now tolerated and dropped by the rebuild (see
-       "an unknown non-score key is ignored"); a score-named one still has to reject. */
-    ['a score-named extra key in overall', { ...base.overall, weightedScore: 88 }],
     ['missing overall entirely', undefined]
   ];
 
@@ -1019,7 +1016,6 @@ test('a rejected model output names which validation rule it broke', async () =>
 
   const cases = [
     ['not JSON at all', 'I cannot produce JSON for this request.', 'json-invalid:len=39:leads-prose:no-obj'],
-    ['a score-named root key', JSON.stringify({ ...base, totalScore: 90 }), 'score-field-invalid:reasoning root:totalScore'],
     ['a missing overall block', JSON.stringify({ narrative: base.narrative, requirements: base.requirements }), 'overall-missing'],
     ['an unknown fitBand', JSON.stringify({ ...base, overall: { ...base.overall, fitBand: 'excellent' } }), 'overall-fitband-invalid:excellent'],
     ['an unknown matchLevel', withFirstRequirement({ matchLevel: 'pretty-good' }), 'match-level-invalid:pretty-good'],
@@ -1063,9 +1059,10 @@ test('the failure reason travels on jd-reasoning too, and carries no free model 
    rejected enum value. safeKeyLabel is what bounds both — without it a model could push arbitrary
    prose or markup into the response body through a crafted key. */
 test('a reported key name is stripped and clipped', async () => {
-  const request = buildValidScoringRequest({ language: 'en' });
+  /* jd-reasoning, because that is the mode where score-named keys still reject. */
+  const request = buildValidRequest({ language: 'en' });
   const profile = loadProfile();
-  const base = JSON.parse(buildValidScoringResponse(request, profile));
+  const base = JSON.parse(buildValidReasoningResponse(request, profile));
   const hostileKey = '<img src=x onerror=alert(1)> score ' + 'z'.repeat(200);
 
   const response = await callWorker(request, {
@@ -1106,42 +1103,55 @@ test('an unknown non-score key is ignored rather than discarding the answer', as
 });
 
 /* jd-reasoning's whole contract is that the deterministic score is client-authoritative, so a
-   model-invented score field is a contract violation rather than harmless noise — that
-   distinction is the reason unknown keys are tolerated but score-named ones are not. */
-test('a score-named key is still rejected wherever it appears', async () => {
+   model-invented score field there is a contract violation rather than harmless noise — that
+   distinction is why unknown keys are tolerated in that mode but score-named ones are not. */
+test('a model-supplied score is still rejected in jd-reasoning', async () => {
   const profile = loadProfile();
-  const reasoningRequest = buildValidRequest({ language: 'en' });
-  const reasoningBase = JSON.parse(buildValidReasoningResponse(reasoningRequest, profile));
+  const request = buildValidRequest({ language: 'en' });
+  const base = JSON.parse(buildValidReasoningResponse(request, profile));
 
-  const atRoot = await callWorker(reasoningRequest, {
+  const atRoot = await callWorker(request, {
     profile,
-    aiResponse: JSON.stringify({ ...reasoningBase, score: 91 })
+    aiResponse: JSON.stringify({ ...base, score: 91 })
   });
   assert.equal(atRoot.status, 502, 'jd-reasoning must not accept a model-supplied score');
   assert.equal(atRoot.json.reason, 'score-field-invalid:reasoning root:score');
 
-  const inRequirement = await callWorker(reasoningRequest, {
+  const inRequirement = await callWorker(request, {
     profile,
     aiResponse: JSON.stringify({
-      ...reasoningBase,
-      requirements: reasoningBase.requirements.map((requirement, index) =>
+      ...base,
+      requirements: base.requirements.map((requirement, index) =>
         index === 0 ? { ...requirement, matchScore: 80 } : requirement)
     })
   });
   assert.equal(inRequirement.status, 502);
   assert.equal(inRequirement.json.reason, 'score-field-invalid:reasoning requirement:matchScore');
+});
 
-  const scoringRequest = buildValidScoringRequest({ language: 'en' });
-  const scoringBase = JSON.parse(buildValidScoringResponse(scoringRequest, profile));
-  const inOverall = await callWorker(scoringRequest, {
+/* The inverse contract: jd-scoring ASKS the model for a score, and the live model puts one at the
+   root beside its overall block on every request. Refusing that discarded a whole valid report
+   over where the model chose to put a number it was told to produce. Only overall.score is read,
+   so the stray one cannot influence anything. */
+test('jd-scoring tolerates model score fields and reads only overall.score', async () => {
+  const profile = loadProfile();
+  const request = buildValidScoringRequest({ language: 'en' });
+  const base = JSON.parse(buildValidScoringResponse(request, profile));
+
+  const response = await callWorker(request, {
     profile,
     aiResponse: JSON.stringify({
-      ...scoringBase,
-      overall: { ...scoringBase.overall, confidenceScore: 0.9 }
+      ...base,
+      score: 91,
+      overall: { ...base.overall, score: 68, weightedScore: 88 }
     })
   });
-  assert.equal(inOverall.status, 502, 'overall.score is allowlisted, but an unasked-for score field is not');
-  assert.equal(inOverall.json.reason, 'score-field-invalid:overall:confidenceScore');
+
+  assert.equal(response.status, 200, 'a root score must not discard a valid scoring report');
+  const parsed = JSON.parse(response.json.reasoning);
+  assert.equal(parsed.overall.score, 68, 'the score must come from overall.score, not the stray root key');
+  assert.equal('score' in parsed, false, 'the stray root score must not reach the browser');
+  assert.equal('weightedScore' in parsed.overall, false, 'only score, fitBand and narrative survive the rebuild');
 });
 
 /* Vocabulary misses were costing whole reports. Mapping them is safe for confidence, which is the
@@ -1197,15 +1207,18 @@ test('match levels that say nothing about provenance are still rejected', async 
   }
 });
 
-/* A resolved match level still has to earn its evidence — the synonym map is a vocabulary
-   convenience, never a route around the provenance rules. */
-test('a resolved match level still faces the evidence provenance checks', async () => {
+/* An evidence-based level citing nothing is the model claiming evidence it never named. That used
+   to reject the whole response — one uncited requirement took every other requirement with it,
+   which is what kept this tier dark in production. The requirement is now demoted to `unverified`
+   instead: the invariant (no claim of published evidence without naming registry evidence) holds
+   per requirement, and demotion can only weaken a claim, never strengthen one. */
+test('an uncited evidence-based level is demoted to unverified, not rejected', async () => {
   const request = buildValidScoringRequest({ language: 'en' });
-  request.evidenceIds = Array.from(new Set([...request.evidenceIds, 'academic.intelligent-systems']));
   const profile = loadProfile();
   const base = JSON.parse(buildValidScoringResponse(request, profile));
+  const targetId = base.requirements[0].requirementId;
 
-  const noEvidence = await callWorker(request, {
+  const response = await callWorker(request, {
     profile,
     aiResponse: JSON.stringify({
       ...base,
@@ -1213,8 +1226,31 @@ test('a resolved match level still faces the evidence provenance checks', async 
         index === 0 ? { ...requirement, matchLevel: 'direct', evidenceRefs: [] } : requirement)
     })
   });
-  assert.equal(noEvidence.status, 502, 'a synonym must not let an evidence-based level skip its evidence');
-  assert.equal(noEvidence.json.reason, 'evidence-required');
+
+  assert.equal(response.status, 200, 'one uncited requirement must not destroy the whole report');
+  const parsed = JSON.parse(response.json.reasoning);
+  assert.equal(parsed.requirements.length, request.deterministicInput.requirements.length,
+    'every other requirement must survive');
+  const demoted = parsed.requirements.find((requirement) => requirement.requirementId === targetId);
+  assert.equal(demoted.matchLevel, 'unverified', 'an uncited claim must land on unverified');
+  assert.deepEqual(demoted.evidenceRefs, [], 'a demoted requirement cites nothing');
+  assert.equal(
+    parsed.requirements.some((requirement) =>
+      ['direct-professional', 'adjacent-professional', 'transferable-professional', 'academic-foundation']
+        .includes(requirement.matchLevel) && requirement.evidenceRefs.length === 0),
+    false,
+    'no requirement may claim published evidence without naming any'
+  );
+});
+
+/* Provenance MISMATCH still refuses outright: citing academic evidence as professional delivery is
+   a misuse of the registry rather than an omission, and there is no level to demote to without
+   guessing what the model meant to claim. The synonym map is no route around this. */
+test('a resolved match level still faces the evidence provenance check', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  request.evidenceIds = Array.from(new Set([...request.evidenceIds, 'academic.intelligent-systems']));
+  const profile = loadProfile();
+  const base = JSON.parse(buildValidScoringResponse(request, profile));
 
   const wrongProvenance = await callWorker(request, {
     profile,
