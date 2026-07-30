@@ -669,20 +669,31 @@ test('jd-reasoning returns reasoning-invalid when the model response is not stri
   assert.equal(response.aiCalls.length, 1, 'schema validation failures should still come from a single AI response');
 });
 
-test('jd-reasoning still rejects a model response carrying an extra overall root key', async () => {
+/* DELIBERATE CONTRACT CHANGE. This test used to require a 502 for an `overall` block in
+   jd-reasoning output. Unknown non-score keys are now ignored instead of rejected, because
+   rejecting them was throwing away otherwise-valid live responses over echoed input keys.
+   The guarantee that mattered is unchanged and is what this test now pins: jd-reasoning's
+   contract is that the deterministic score is client-authoritative, and a model-supplied
+   `overall` (score included) must never reach the browser. That is enforced structurally rather
+   than by the key check — the relayed response is rebuilt field by field from validated values,
+   and jd-reasoning's rebuild has no `overall` in it, so there is no route for one to survive. */
+test('jd-reasoning drops a model-supplied overall block instead of relaying it', async () => {
   const request = buildValidRequest({ language: 'en' });
   const profile = loadProfile();
   const reasoning = JSON.parse(buildValidReasoningResponse(request, profile));
-  reasoning.overall = { score: 70, fitBand: 'good', narrative: 'Should not be accepted by jd-reasoning.' };
+  reasoning.overall = { score: 70, fitBand: 'good', narrative: 'Must never reach the browser.' };
 
   const response = await callWorker(request, {
     profile,
     aiResponse: JSON.stringify(reasoning)
   });
 
-  assert.equal(response.status, 502, 'jd-reasoning must not accept a model-supplied overall block');
-  assert.equal(response.json.error, 'reasoning-invalid');
-  assert.equal(response.aiCalls.length, 1, 'the extra root key should be rejected after a single AI response is validated');
+  assert.equal(response.status, 200, 'an echoed extra key should no longer discard a valid answer');
+  const parsed = JSON.parse(response.json.reasoning);
+  assert.equal('overall' in parsed, false, 'jd-reasoning must never relay a model-supplied overall block');
+  assert.doesNotMatch(response.json.reasoning, /"score"|fitBand|Must never reach the browser/,
+    'no part of the model-supplied score block may survive the rebuild');
+  assert.equal(response.aiCalls.length, 1);
 });
 
 test('jd-reasoning accepts all-gap deterministic requests with empty evidence ids', async () => {
@@ -835,7 +846,9 @@ test('jd-scoring rejects malformed overall blocks from the model', async () => {
     ['overall.score above 100', { ...base.overall, score: 101 }],
     ['unknown fitBand', { ...base.overall, fitBand: 'excellent' }],
     ['empty narrative', { ...base.overall, narrative: '' }],
-    ['extra key in overall', { ...base.overall, confidence: 'high' }],
+    /* A non-score extra key inside overall is now tolerated and dropped by the rebuild (see
+       "an unknown non-score key is ignored"); a score-named one still has to reject. */
+    ['a score-named extra key in overall', { ...base.overall, weightedScore: 88 }],
     ['missing overall entirely', undefined]
   ];
 
@@ -908,7 +921,7 @@ test('salvage widens what can be read, never what can be accepted', async () => 
   });
 
   assert.equal(response.status, 502, 'a salvaged object still faces the full schema');
-  assert.equal(response.json.reason, 'overall-fitband-invalid');
+  assert.equal(response.json.reason, 'overall-fitband-invalid:excellent');
 });
 
 /* The bare json-invalid code could not distinguish "ran out of tokens mid-object" from
@@ -962,16 +975,16 @@ test('capitalized enum values are folded to their canonical form', async () => {
   }
 });
 
-test('an unknown enum value is still rejected regardless of case', async () => {
+test('an unmappable enum value is still rejected regardless of case', async () => {
   const request = buildValidScoringRequest({ language: 'en' });
   const profile = loadProfile();
   const base = JSON.parse(buildValidScoringResponse(request, profile));
-  base.requirements[0] = { ...base.requirements[0], confidence: 'VERY HIGH' };
+  base.requirements[0] = { ...base.requirements[0], confidence: 'SOMEWHAT' };
 
   const response = await callWorker(request, { profile, aiResponse: JSON.stringify(base) });
 
   assert.equal(response.status, 502);
-  assert.equal(response.json.reason, 'confidence-invalid');
+  assert.equal(response.json.reason, 'confidence-invalid:SOMEWHAT');
 });
 
 /* The same object-vs-string trap reached plain chat: a visitor only had to ask AIMeer to reply
@@ -1006,10 +1019,10 @@ test('a rejected model output names which validation rule it broke', async () =>
 
   const cases = [
     ['not JSON at all', 'I cannot produce JSON for this request.', 'json-invalid:len=39:leads-prose:no-obj'],
-    ['an unknown root key', JSON.stringify({ ...base, mood: 'confident' }), 'unknown-key-invalid:reasoning root:mood'],
+    ['a score-named root key', JSON.stringify({ ...base, totalScore: 90 }), 'score-field-invalid:reasoning root:totalScore'],
     ['a missing overall block', JSON.stringify({ narrative: base.narrative, requirements: base.requirements }), 'overall-missing'],
-    ['an unknown fitBand', JSON.stringify({ ...base, overall: { ...base.overall, fitBand: 'excellent' } }), 'overall-fitband-invalid'],
-    ['an unknown matchLevel', withFirstRequirement({ matchLevel: 'pretty-good' }), 'match-level-invalid'],
+    ['an unknown fitBand', JSON.stringify({ ...base, overall: { ...base.overall, fitBand: 'excellent' } }), 'overall-fitband-invalid:excellent'],
+    ['an unknown matchLevel', withFirstRequirement({ matchLevel: 'pretty-good' }), 'match-level-invalid:pretty-good'],
     ['an evidence id outside the registry', withFirstRequirement({ matchLevel: 'direct-professional', evidenceRefs: ['ev-invented-by-the-model'] }), 'evidence-invalid'],
     ['a capability outside the vocabulary', withFirstRequirement({ transferableCapabilities: ['Time travel'] }), 'capability-invalid'],
     ['the wrong requirement count', JSON.stringify({ ...base, requirements: base.requirements.slice(1) }), 'requirements-invalid']
@@ -1046,14 +1059,14 @@ test('the failure reason travels on jd-reasoning too, and carries no free model 
   assert.doesNotMatch(response.json.reason, /poem|Sorry|Kubernetes/i, 'the reason must be a fixed code, never an echo of the model output');
 });
 
-/* The one reason string that embeds model-supplied text is the unknown-key name. safeKeyLabel
-   is what bounds it — without that, a model could push arbitrary prose (or markup) into the
-   response body through a crafted key. */
-test('an unknown-key reason strips and clips the model-supplied key name', async () => {
+/* The reason strings embed model-supplied text in two places: the offending key name and the
+   rejected enum value. safeKeyLabel is what bounds both — without it a model could push arbitrary
+   prose or markup into the response body through a crafted key. */
+test('a reported key name is stripped and clipped', async () => {
   const request = buildValidScoringRequest({ language: 'en' });
   const profile = loadProfile();
   const base = JSON.parse(buildValidScoringResponse(request, profile));
-  const hostileKey = '<img src=x onerror=alert(1)> ' + 'z'.repeat(200);
+  const hostileKey = '<img src=x onerror=alert(1)> score ' + 'z'.repeat(200);
 
   const response = await callWorker(request, {
     profile,
@@ -1061,10 +1074,182 @@ test('an unknown-key reason strips and clips the model-supplied key name', async
   });
 
   assert.equal(response.status, 502);
-  assert.match(response.json.reason, /^unknown-key-invalid:reasoning root:/);
+  assert.match(response.json.reason, /^score-field-invalid:reasoning root:/);
   const reportedKey = response.json.reason.split(':')[2];
   assert.equal(reportedKey.length <= 40, true, 'the reported key name must stay clipped');
   assert.match(reportedKey, /^[A-Za-z0-9_.-]*$/, 'the reported key name must carry no markup or whitespace');
+});
+
+/* The live jd-scoring model reliably echoes the deterministic input's shape and adds a root
+   `gaps` key. Rejecting the whole answer over that threw away a good narrative, requirements and
+   overall — and since the response is rebuilt field by field, the stray key never had any route
+   to the browser anyway. */
+test('an unknown non-score key is ignored rather than discarding the answer', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const base = JSON.parse(buildValidScoringResponse(request, profile));
+
+  const response = await callWorker(request, {
+    profile,
+    aiResponse: JSON.stringify({
+      ...base,
+      gaps: [{ term: 'Terraform', label: 'echoed from the deterministic input' }],
+      requirements: base.requirements.map((requirement) => ({ ...requirement, notes: 'chatty extra' }))
+    })
+  });
+
+  assert.equal(response.status, 200, 'an echoed input key must not discard a valid answer');
+  const parsed = JSON.parse(response.json.reasoning);
+  assert.equal('gaps' in parsed, false, 'the stray root key must not reach the browser');
+  assert.equal('notes' in parsed.requirements[0], false, 'the stray requirement key must not reach the browser');
+  assert.equal(parsed.requirements.length, request.deterministicInput.requirements.length);
+});
+
+/* jd-reasoning's whole contract is that the deterministic score is client-authoritative, so a
+   model-invented score field is a contract violation rather than harmless noise — that
+   distinction is the reason unknown keys are tolerated but score-named ones are not. */
+test('a score-named key is still rejected wherever it appears', async () => {
+  const profile = loadProfile();
+  const reasoningRequest = buildValidRequest({ language: 'en' });
+  const reasoningBase = JSON.parse(buildValidReasoningResponse(reasoningRequest, profile));
+
+  const atRoot = await callWorker(reasoningRequest, {
+    profile,
+    aiResponse: JSON.stringify({ ...reasoningBase, score: 91 })
+  });
+  assert.equal(atRoot.status, 502, 'jd-reasoning must not accept a model-supplied score');
+  assert.equal(atRoot.json.reason, 'score-field-invalid:reasoning root:score');
+
+  const inRequirement = await callWorker(reasoningRequest, {
+    profile,
+    aiResponse: JSON.stringify({
+      ...reasoningBase,
+      requirements: reasoningBase.requirements.map((requirement, index) =>
+        index === 0 ? { ...requirement, matchScore: 80 } : requirement)
+    })
+  });
+  assert.equal(inRequirement.status, 502);
+  assert.equal(inRequirement.json.reason, 'score-field-invalid:reasoning requirement:matchScore');
+
+  const scoringRequest = buildValidScoringRequest({ language: 'en' });
+  const scoringBase = JSON.parse(buildValidScoringResponse(scoringRequest, profile));
+  const inOverall = await callWorker(scoringRequest, {
+    profile,
+    aiResponse: JSON.stringify({
+      ...scoringBase,
+      overall: { ...scoringBase.overall, confidenceScore: 0.9 }
+    })
+  });
+  assert.equal(inOverall.status, 502, 'overall.score is allowlisted, but an unasked-for score field is not');
+  assert.equal(inOverall.json.reason, 'score-field-invalid:overall:confidenceScore');
+});
+
+/* Vocabulary misses were costing whole reports. Mapping them is safe for confidence, which is the
+   model's own certainty — but matchLevel encodes provenance, so only unambiguous forms of the
+   canonical names map, and nothing maps upward. */
+test('unambiguous enum synonyms and numeric confidence resolve to canonical values', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const base = JSON.parse(buildValidScoringResponse(request, profile));
+  const loose = {
+    ...base,
+    requirements: base.requirements.map((requirement) => ({
+      ...requirement,
+      matchLevel: requirement.matchLevel === 'explicit-gap' ? 'gap' : requirement.matchLevel,
+      confidence: 0.9
+    }))
+  };
+
+  const response = await callWorker(request, { profile, aiResponse: JSON.stringify(loose) });
+
+  assert.equal(response.status, 200, 'a resolvable synonym must not discard the answer');
+  const parsed = JSON.parse(response.json.reasoning);
+  for (const requirement of parsed.requirements) {
+    assert.equal(['low', 'medium', 'high'].includes(requirement.confidence), true);
+    assert.equal(requirement.confidence, 'high', '0.9 should resolve to high');
+    assert.equal(
+      ['direct-professional', 'adjacent-professional', 'transferable-professional', 'academic-foundation',
+        'learning-bridge', 'explicit-gap', 'unverified'].includes(requirement.matchLevel),
+      true
+    );
+  }
+});
+
+/* The guard on the synonym map: a label that says how good a match is, while saying nothing about
+   where the evidence came from, must not be guessed into a provenance claim. */
+test('match levels that say nothing about provenance are still rejected', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const base = JSON.parse(buildValidScoringResponse(request, profile));
+
+  for (const [value, expected] of [['strong', 'match-level-invalid:strong'], ['partial', 'match-level-invalid:partial']]) {
+    const response = await callWorker(request, {
+      profile,
+      aiResponse: JSON.stringify({
+        ...base,
+        requirements: base.requirements.map((requirement, index) =>
+          index === 0 ? { ...requirement, matchLevel: value } : requirement)
+      })
+    });
+
+    assert.equal(response.status, 502, `${value} must not be guessed into a provenance claim`);
+    assert.equal(response.json.reason, expected, 'the reason must name the value so the vocabulary can be revisited');
+  }
+});
+
+/* A resolved match level still has to earn its evidence — the synonym map is a vocabulary
+   convenience, never a route around the provenance rules. */
+test('a resolved match level still faces the evidence provenance checks', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  request.evidenceIds = Array.from(new Set([...request.evidenceIds, 'academic.intelligent-systems']));
+  const profile = loadProfile();
+  const base = JSON.parse(buildValidScoringResponse(request, profile));
+
+  const noEvidence = await callWorker(request, {
+    profile,
+    aiResponse: JSON.stringify({
+      ...base,
+      requirements: base.requirements.map((requirement, index) =>
+        index === 0 ? { ...requirement, matchLevel: 'direct', evidenceRefs: [] } : requirement)
+    })
+  });
+  assert.equal(noEvidence.status, 502, 'a synonym must not let an evidence-based level skip its evidence');
+  assert.equal(noEvidence.json.reason, 'evidence-required');
+
+  const wrongProvenance = await callWorker(request, {
+    profile,
+    aiResponse: JSON.stringify({
+      ...base,
+      requirements: base.requirements.map((requirement, index) =>
+        index === 0
+          ? { ...requirement, matchLevel: 'adjacent', evidenceRefs: ['academic.intelligent-systems'] }
+          : requirement)
+    })
+  });
+  assert.equal(wrongProvenance.status, 502, 'a synonym must not let academic evidence pass as professional');
+  assert.equal(wrongProvenance.json.reason, 'evidence-provenance-invalid');
+});
+
+test('both JD prompts spell out the allowed vocabulary from the enum constants', async () => {
+  const profile = loadProfile();
+
+  for (const build of [buildValidScoringRequest, buildValidRequest]) {
+    const request = build({ language: 'en' });
+    const response = await callWorker(request, {
+      profile,
+      aiResponse: request.mode === 'jd-scoring'
+        ? buildValidScoringResponse(request, profile)
+        : buildValidReasoningResponse(request, profile)
+    });
+    assert.equal(response.status, 200);
+    const system = response.aiCalls[0].payload.messages.find((message) => message.role === 'system').content;
+    for (const level of ['direct-professional', 'adjacent-professional', 'transferable-professional',
+      'academic-foundation', 'learning-bridge', 'explicit-gap', 'unverified']) {
+      assert.equal(system.includes(level), true, `${request.mode} must name matchLevel ${level}`);
+    }
+    assert.match(system, /confidence must be exactly one of: low, medium, high/);
+    assert.match(system, /do not copy keys from the deterministic input/i);
+  }
 });
 
 test('jd-scoring passes an injected jdText through as delimited data instead of sanitizing it away', async () => {
