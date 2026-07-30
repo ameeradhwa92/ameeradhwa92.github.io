@@ -238,6 +238,14 @@
     return baseline && baseline.confidence ? baseline.confidence.label || "" : "";
   }
 
+  /* Array + indexOf rather than an object-literal lookup, matching the convention in
+     jd-reasoning.js: a plain-object map would report "constructor" and "toString" as in-flight. */
+  var JD_PROGRESS_STATUS_KINDS = ["reading", "scoring", "aiScoring", "aiRetrying"];
+
+  function isJdProgressVisible(statusKind) {
+    return JD_PROGRESS_STATUS_KINDS.indexOf(String(statusKind || "")) !== -1;
+  }
+
   if (!window.AIMeerRecruiter) window.AIMeerRecruiter = {};
   window.AIMeerRecruiter.buildExplanationPayload = buildJdExplanationPayload;
   window.AIMeerRecruiter.getExplanationMode = computeJdReasoningMode;
@@ -247,6 +255,7 @@
   window.AIMeerRecruiter.nextAnalysisToken = nextAnalysisToken;
   window.AIMeerRecruiter.canApplyAnalysisToken = canApplyAnalysisToken;
   window.AIMeerRecruiter.resolveConfidenceLevel = resolveConfidenceLevel;
+  window.AIMeerRecruiter.isJdProgressVisible = isJdProgressVisible;
   window.AIMeerRecruiter.jdExplanationLimits = {
     jdText: JD_EXPLANATION_JD_MAX,
     resultChars: JD_EXPLANATION_RESULT_MAX
@@ -300,6 +309,7 @@
       jdStatusReading: "Reading the local document…",
       jdStatusScoring: "Preparing the match locally…",
       jdAiStatusScoring: "AIMeer is analyzing the match with AI…",
+      jdAiStatusRetrying: "The first AI attempt did not come back cleanly — AIMeer is trying once more…",
       jdStatusLoaded: "Local document ready: {source}.",
       jdStatusLoadedWithWarnings: "Local document ready: {source}. Warnings: {warnings}",
       jdStatusPasted: "Using the pasted job description text.",
@@ -404,6 +414,7 @@
       jdStatusReading: "Sedang membaca dokumen setempat…",
       jdStatusScoring: "Sedang menyediakan padanan secara setempat…",
       jdAiStatusScoring: "AIMeer sedang menganalisis padanan dengan AI…",
+      jdAiStatusRetrying: "Percubaan AI pertama tidak menjadi — AIMeer sedang mencuba sekali lagi…",
       jdStatusLoaded: "Dokumen setempat sedia digunakan: {source}.",
       jdStatusLoadedWithWarnings: "Dokumen setempat sedia digunakan: {source}. Amaran: {warnings}",
       jdStatusPasted: "Menggunakan teks huraian jawatan yang ditampal.",
@@ -588,6 +599,7 @@
   var jdClear = document.getElementById("chat-jd-clear");
   var jdDisclaimer = document.getElementById("chat-jd-disclaimer");
   var jdStatus = document.getElementById("chat-jd-status");
+  var jdProgress = document.getElementById("chat-jd-progress");
   var jdResult = document.getElementById("chat-jd-result");
   var recruiterUI = !!(jdToggle && jdPanel && jdInput && jdFile && jdFileTrigger && jdFileName &&
     jdAnalyze && jdClear && jdDisclaimer && jdStatus && jdResult);
@@ -766,6 +778,9 @@
     else if (jdState.statusKind === "aiScoring") {
       message = t("jdAiStatusScoring");
       if (jdState.statusWarnings.length) message += " " + jdState.statusWarnings.join(" ");
+    } else if (jdState.statusKind === "aiRetrying") {
+      message = t("jdAiStatusRetrying");
+      if (jdState.statusWarnings.length) message += " " + jdState.statusWarnings.join(" ");
     } else if (jdState.statusKind === "loaded") {
       message = formatT(
         jdState.statusWarnings.length ? "jdStatusLoadedWithWarnings" : "jdStatusLoaded",
@@ -784,12 +799,26 @@
     jdStatus.className = "chat-jd-status" +
       (jdState.statusLevel === "error" ? " is-error" : jdState.statusLevel === "success" ? " is-success" : "");
     jdStatus.textContent = message;
+    renderJdProgress();
+  }
+
+  /* Driven from statusKind so the bar cannot disagree with the message above it. */
+  function renderJdProgress() {
+    if (!jdProgress) return;
+    jdProgress.hidden = !isJdProgressVisible(jdState.statusKind);
   }
 
   /* The status line's source and extractor warnings belong to the deterministic pass;
      automatic AI scoring only swaps the headline while its request is in flight. */
   function markJdScoringInFlight() {
     setJdStatus("aiScoring", {
+      source: jdState.statusSource,
+      warnings: jdState.statusWarnings.slice()
+    });
+  }
+
+  function markJdScoringRetrying() {
+    setJdStatus("aiRetrying", {
       source: jdState.statusSource,
       warnings: jdState.statusWarnings.slice()
     });
@@ -1707,6 +1736,7 @@
            refused, including one it refused on privacy grounds. */
         if (/^cloud-4\d\d(?::|$)/.test(String(firstError && firstError.message))) throw firstError;
         if (window.console && console.warn) console.warn("JD scoring retry after:", firstError);
+        markJdScoringRetrying();
         return requestScoringAttempt();
       });
     }).then(function (reasoning) {

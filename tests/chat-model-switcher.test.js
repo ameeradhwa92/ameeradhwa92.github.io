@@ -112,7 +112,7 @@ function createChatContext(options = {}) {
     'chat-model-local', 'chat-model-tooltip', 'chat-callout', 'chat-jd-toggle',
     'chat-jd-panel', 'chat-jd-input', 'chat-jd-file', 'chat-jd-file-trigger',
     'chat-jd-file-name', 'chat-jd-analyze', 'chat-jd-clear', 'chat-jd-disclaimer',
-    'chat-jd-status', 'chat-jd-result'
+    'chat-jd-status', 'chat-jd-progress', 'chat-jd-result'
   ].forEach((id) => { elements[id] = createElement(); elements[id].id = id; });
   const statusText = createElement();
   const aiPitch = createElement();
@@ -2059,4 +2059,40 @@ test('recruiter report takes confidence from whichever pass produced the score',
   assert.equal(resolve('ai', { finalScore: 82 }, baseline), 'low');
   assert.equal(resolve('ai', { finalScore: 82, aiConfidence: '' }, baseline), 'low');
   assert.equal(resolve('ai', null, null), '');
+});
+
+/* Analyze match starts a cloud round trip that can run ten seconds or more — two model calls
+   server-side plus one silent retry. A line of text alone made a slow analysis indistinguishable
+   from a hang. The bar is derived from statusKind rather than tracked separately, so there is no
+   second piece of state to fall out of sync. */
+test('the recruiter progress bar is visible exactly while the matcher is working', async () => {
+  const { context } = createChatContext({ saveData: false });
+  await loadChat(context);
+  const visible = context.window.AIMeerRecruiter.isJdProgressVisible;
+
+  for (const working of ['reading', 'scoring', 'aiScoring', 'aiRetrying']) {
+    assert.equal(visible(working), true, `${working} is an in-flight phase`);
+  }
+  for (const settled of ['idle', 'loaded', 'pasted', 'scored', 'error', '', undefined]) {
+    assert.equal(visible(settled), false, `${settled} is not an in-flight phase`);
+  }
+});
+
+/* The retry is a second full round trip that previously only reached console.warn. Leaving it
+   unlabelled is what made a slow run look like a dead one. */
+test('the retry phase has copy in both languages', () => {
+  /* Counting definitions rather than slicing the T table by indentation: a missing MS key leaves
+     English on screen silently, and one definition means exactly that happened. The `: "` suffix
+     keeps the t("jdAiStatusRetrying") call site out of the count. */
+  const definitions = chatbot.match(/jdAiStatusRetrying:\s*"/g) || [];
+  assert.equal(definitions.length, 2,
+    'jdAiStatusRetrying needs an entry in both the en and ms branches of T');
+});
+
+/* Project rule: prefers-reduced-motion must disable animation everywhere. */
+test('the progress bar animation is disabled under reduced motion', () => {
+  const block = /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\n\}/g;
+  const blocks = css.match(block) || [];
+  assert.ok(blocks.some((rule) => /\.chat-jd-progress-bar[^{]*\{[^}]*animation:\s*none/.test(rule)),
+    'a reduced-motion block must set animation: none on .chat-jd-progress-bar');
 });

@@ -936,6 +936,24 @@ body.modal-open { overflow: hidden; }
 }
 .chat-jd-status.is-error { color: var(--paper); }
 .chat-jd-status.is-success { color: var(--teal); }
+/* Indeterminate on purpose. The Worker is a single POST with no progress channel, so any
+   percentage would be invented — and it would stall at 100% exactly when the model is slowest,
+   which is when a fabricated number misleads most. See docs/superpowers/specs/
+   2026-07-30-recruiter-jd-progress-and-confidence-design.md. */
+.chat-jd-progress {
+  height: 3px; border-radius: 999px; overflow: hidden;
+  background: rgba(var(--teal-rgb), 0.15);
+}
+.chat-jd-progress[hidden] { display: none; }
+.chat-jd-progress-bar {
+  display: block; width: 40%; height: 100%; border-radius: inherit;
+  background: linear-gradient(90deg, rgba(var(--teal-rgb), 0.2), var(--teal), rgba(var(--teal-rgb), 0.2));
+  animation: jd-progress-slide 1.4s ease-in-out infinite;
+}
+@keyframes jd-progress-slide {
+  0% { transform: translateX(-105%); }
+  100% { transform: translateX(255%); }
+}
 .chat-jd-result-wrap {
   display: grid; gap: 8px;
 }
@@ -1102,4 +1120,5 @@ body.modal-open { overflow: hidden; }
   .chat-model-choice, .chat-model-tooltip, .chat-jd-file-btn, .chat-jd-action, .chat-jd-promo-action { transition: none; }
   .chat-jd-promo-action:active { transform: none; }
   .chat-jd-requirement-summary { scroll-behavior: auto; }
+  .chat-jd-progress-bar { animation: none; width: 100%; opacity: 0.55; }
 }
