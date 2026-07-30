@@ -1021,7 +1021,8 @@ test('a rejected model output names which validation rule it broke', async () =>
     ['an unknown matchLevel', withFirstRequirement({ matchLevel: 'pretty-good' }), 'match-level-invalid:pretty-good'],
     ['an evidence id outside the registry', withFirstRequirement({ matchLevel: 'direct-professional', evidenceRefs: ['ev-invented-by-the-model'] }), 'evidence-invalid'],
     ['a capability outside the vocabulary', withFirstRequirement({ transferableCapabilities: ['Time travel'] }), 'capability-invalid'],
-    ['the wrong requirement count', JSON.stringify({ ...base, requirements: base.requirements.slice(1) }), 'requirements-invalid']
+    ['the wrong requirement count', JSON.stringify({ ...base, requirements: base.requirements.slice(1) }),
+      `requirements-invalid:got=${base.requirements.length - 1},want=${base.requirements.length}`]
   ];
 
   const seenReasons = new Set();
@@ -1205,6 +1206,111 @@ test('match levels that say nothing about provenance are still rejected', async 
     assert.equal(response.status, 502, `${value} must not be guessed into a provenance claim`);
     assert.equal(response.json.reason, expected, 'the reason must name the value so the vocabulary can be revisited');
   }
+});
+
+/* These two relaxations must match assets/js/jd-reasoning.js validateTextField exactly — the two
+   validators see the same payload in separate deployment targets, so a rule that is stricter on
+   either side rejects what the other already accepted. */
+test('a blank per-requirement field is accepted and an overlong one is clipped', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const base = JSON.parse(buildValidScoringResponse(request, profile));
+
+  const response = await callWorker(request, {
+    profile,
+    aiResponse: JSON.stringify({
+      ...base,
+      requirements: base.requirements.map((requirement, index) => index === 0
+        ? { ...requirement, limitation: '', recruiterIntent: 'x'.repeat(700) }
+        : requirement)
+    })
+  });
+
+  assert.equal(response.status, 200, 'a blank or verbose field must not discard the report');
+  const first = JSON.parse(response.json.reasoning).requirements[0];
+  assert.equal(first.limitation, '');
+  assert.equal(first.recruiterIntent.length, 320, 'an overlong field must still arrive clipped');
+});
+
+test('an empty narrative is still rejected, and markup still is too', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const base = JSON.parse(buildValidScoringResponse(request, profile));
+
+  const blank = await callWorker(request, { profile, aiResponse: JSON.stringify({ ...base, narrative: '  ' }) });
+  assert.equal(blank.status, 502, 'an empty narrative means there is no report to show');
+  assert.equal(blank.json.reason, 'narrative-invalid');
+
+  const markup = await callWorker(request, {
+    profile,
+    aiResponse: JSON.stringify({
+      ...base,
+      requirements: base.requirements.map((requirement, index) => index === 0
+        ? { ...requirement, limitation: '<img src=x onerror=alert(1)>' }
+        : requirement)
+    })
+  });
+  assert.equal(markup.status, 502, 'model text must never reach the browser as markup');
+  assert.equal(markup.json.reason, 'limitation-invalid');
+});
+
+/* The model sometimes repeats a requirement or invents an id. Those entries are dropped rather
+   than fatal, but full coverage is still required — the browser's validator wants one entry per
+   deterministic requirement, so a partial set would only fail one step later. */
+test('duplicate and unknown requirement ids are dropped, and the count is reported', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const base = JSON.parse(buildValidScoringResponse(request, profile));
+
+  const withNoise = await callWorker(request, {
+    profile,
+    aiResponse: JSON.stringify({
+      ...base,
+      requirements: [
+        ...base.requirements,
+        { ...base.requirements[0] },
+        { ...base.requirements[0], requirementId: 'req-core-technologies-invented' }
+      ]
+    })
+  });
+  assert.equal(withNoise.status, 200, 'a repeated or invented id must not discard the report');
+  const parsed = JSON.parse(withNoise.json.reasoning);
+  assert.equal(parsed.requirements.length, request.deterministicInput.requirements.length);
+  assert.equal(
+    new Set(parsed.requirements.map((requirement) => requirement.requirementId)).size,
+    request.deterministicInput.requirements.length,
+    'each requirement must appear exactly once'
+  );
+
+  const short = await callWorker(request, {
+    profile,
+    aiResponse: JSON.stringify({ ...base, requirements: base.requirements.slice(2) })
+  });
+  assert.equal(short.status, 502, 'partial coverage is still refused');
+  assert.equal(
+    short.json.reason,
+    `requirements-invalid:got=${base.requirements.length - 2},want=${base.requirements.length}`,
+    'the reason must report both counts'
+  );
+});
+
+test('the requirement count and the list to judge are stated in the user message', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const response = await callWorker(request, {
+    profile,
+    aiResponse: buildValidScoringResponse(request, profile)
+  });
+
+  assert.equal(response.status, 200);
+  const user = response.aiCalls[0].payload.messages.find((message) => message.role === 'user').content;
+  assert.match(
+    user,
+    new RegExp(`Return exactly ${request.deterministicInput.requirements.length} objects in requirements`),
+    'the count belongs next to the data it describes'
+  );
+  assert.match(user, /Judge that list, not any other list of skills you can see/,
+    'the live model was enumerating the job description bullets instead of the supplied list');
 });
 
 /* An evidence-based level citing nothing is the model claiming evidence it never named. That used

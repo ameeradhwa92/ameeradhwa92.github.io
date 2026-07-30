@@ -393,14 +393,22 @@
     return "";
   }
 
+  /* Only the narrative must carry text — it is the report's headline. A per-requirement field can
+     legitimately be blank: a requirement with direct published evidence has no limitation to
+     state, and one with no gap needs no verification question. Length no longer rejects either,
+     because every value here is clipped to its limit when the reasoning is rebuilt below, so
+     checking the length as well only meant a verbose model lost the whole report over a field
+     that was about to be trimmed. Type and markup still reject.
+     These rules must stay identical to the Worker's validateReasoningTextField — the two
+     validators run on the same payload in separate deployment targets, and a rule this side
+     applies more strictly would reject responses the Worker had already accepted. */
+  var REQUIRED_TEXT_FIELDS = { narrative: true };
+
   function validateTextField(value, key) {
-    var maxChars = FIELD_LIMITS[key] || 320;
     if (typeof value !== "string") return key + " must be a string.";
     if (HTML_MARKUP_PATTERN.test(value)) return key + " must not contain HTML or markup.";
-    var clipped = clipText(value, maxChars);
-    if (!clipped) return key + " must be present.";
-    if (String(value).replace(/\s+/g, " ").trim().length > maxChars) {
-      return key + " exceeds the allowed length.";
+    if (REQUIRED_TEXT_FIELDS[key] && !clipText(value, FIELD_LIMITS[key] || 320)) {
+      return key + " must be present.";
     }
     return "";
   }

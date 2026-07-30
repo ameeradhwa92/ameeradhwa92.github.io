@@ -655,13 +655,6 @@ Preferred Skills:
       pattern: /match level/i
     },
     {
-      label: 'overlong fields',
-      mutate(payload) {
-        payload.requirements[0].recruiterIntent = 'x'.repeat(700);
-      },
-      pattern: /length|long/i
-    },
-    {
       label: 'model numeric scores at the reasoning root',
       mutate(payload) {
         payload.transferableScore = 99;
@@ -691,6 +684,58 @@ Preferred Skills:
   const validBaseline = harness.JDReasoning.validateModelOutput(JSON.stringify(valid), input);
   assert.equal(validBaseline.ok, true, 'a legitimate overall.score must still be accepted');
   assert.equal(validBaseline.reasoning.overall.score, valid.overall.score, 'the accepted overall.score should survive validation unchanged (aside from clamping)');
+});
+
+/* DELIBERATE CHANGE: an overlong field used to reject the whole response. It is clipped instead.
+   Every one of these values is clipped to its limit on the way into the reasoning object, so
+   rejecting as well meant a verbose model lost an entire report over text that was about to be
+   trimmed. The protection that mattered — bounded text reaching the report — is unchanged, and is
+   what this test now pins. The Worker applies the identical rule. */
+test('JDReasoning.validateModelOutput clips an overlong field instead of rejecting the response', () => {
+  const { harness, profile, normalized, result } = analyze(`Required Skills:
+- Kubernetes
+- Azure
+- Azure DevOps
+- Bicep
+Preferred Skills:
+- CI/CD
+`);
+  const input = harness.JDReasoning.buildInput(normalized, result, profile, 'en');
+  const payload = reasoningForFixture(input, {});
+  payload.requirements[0].recruiterIntent = 'x'.repeat(700);
+
+  const validation = harness.JDReasoning.validateModelOutput(JSON.stringify(payload), input);
+
+  assert.equal(validation.ok, true, 'an overlong field must not discard the whole report');
+  assert.equal(validation.reasoning.requirements[0].recruiterIntent.length, 320,
+    'the field must still arrive clipped to its limit');
+});
+
+/* A blank per-requirement field is legitimate — a requirement with direct published evidence has
+   no limitation to state — and rejecting it was the live `limitation-invalid` failure. The
+   narrative is the exception: an empty one means the model produced no headline at all. */
+test('JDReasoning.validateModelOutput accepts a blank per-requirement field but not a blank narrative', () => {
+  const { harness, profile, normalized, result } = analyze(`Required Skills:
+- Kubernetes
+- Azure
+- Azure DevOps
+- Bicep
+Preferred Skills:
+- CI/CD
+`);
+  const input = harness.JDReasoning.buildInput(normalized, result, profile, 'en');
+
+  const blankLimitation = reasoningForFixture(input, {});
+  blankLimitation.requirements[0].limitation = '';
+  const accepted = harness.JDReasoning.validateModelOutput(JSON.stringify(blankLimitation), input);
+  assert.equal(accepted.ok, true, 'a blank limitation must not discard the report');
+  assert.equal(accepted.reasoning.requirements[0].limitation, '');
+
+  const blankNarrative = reasoningForFixture(input, {});
+  blankNarrative.narrative = '   ';
+  const rejected = harness.JDReasoning.validateModelOutput(JSON.stringify(blankNarrative), input);
+  assert.equal(rejected.ok, false, 'an empty narrative means there is no report to show');
+  assert.match(rejected.error, /narrative/i);
 });
 
 test('JDReasoning.mergeResult preserves the deterministic score and clamps the AI score into the [det-10, det+35] band', () => {

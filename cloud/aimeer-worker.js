@@ -319,6 +319,8 @@ const JD_SCORING_PROMPT =
   "Use matchLevel adjacent-professional or transferable-professional for such cases and cite the evidence that demonstrates the adjacent skill. " +
   "Never invent evidence: every non-gap matchLevel must cite valid evidenceRefs from the supplied registry. " +
   "Mark true gaps plainly as explicit-gap with a verificationQuestion; honesty keeps this report credible. " +
+  "The requirements array must contain exactly one object per supplied requirement id — judge the supplied " +
+  "requirement list, never the job description's own bullet list. " +
   "Also produce an overall object: score (0-100 integer reflecting realistic role fit), " +
   "fitBand (strong if score>=75, good if >=60, partial if >=40, else limited), " +
   "and narrative (one recruiter-facing paragraph, max 600 characters, leading with strengths, honest about gaps). " +
@@ -1085,13 +1087,21 @@ const JD_REASONING_SCORE_NOTE = "\nDeterministic score is client-authoritative a
    — silently defeating the point of this mode. */
 const JD_SCORING_SCORE_NOTE = "\nThe deterministic score below is a local keyword baseline for context only, not a value to reuse. Judge the fit yourself from the job description and evidence, and report your own overall.score.";
 
+/* The requirement count goes in the USER message, not just the system prompt: the live jd-scoring
+   model was returning one object per bullet of the job description rather than one per supplied
+   requirement, and the count is the one instruction that has to survive next to the data it
+   describes. Coverage must be exact, so naming the number is worth the handful of tokens. */
 function buildJdReasoningMessage(reasoningInput, scoreNote) {
+  const requirementCount = Array.isArray(reasoningInput.requirements) ? reasoningInput.requirements.length : 0;
   return {
     role: "user",
     content:
       (reasoningInput.language === "ms" ? "Pulangkan strict JSON sahaja." : "Return strict JSON only.") +
       "\n\nRequested language: " + reasoningInput.language +
       (scoreNote !== undefined ? scoreNote : JD_REASONING_SCORE_NOTE) +
+      "\nReturn exactly " + requirementCount + " objects in requirements — one for each entry of the " +
+      "requirements list below, reusing its requirementId values exactly. Judge that list, not any " +
+      "other list of skills you can see." +
       "\n\nReasoning input JSON:\n" + JSON.stringify(reasoningInput)
   };
 }
@@ -1116,8 +1126,8 @@ function validateJdReasoningModelOutput(rawOutput, input, extraRootKeys, allowMo
   if (rootKeyError) return { ok: false, error: rootKeyError };
   const narrativeError = validateReasoningTextField(parsed.narrative, "narrative");
   if (narrativeError) return { ok: false, error: narrativeError };
-  if (!Array.isArray(parsed.requirements) || parsed.requirements.length !== input.requirements.length) {
-    return { ok: false, error: "requirements-invalid" };
+  if (!Array.isArray(parsed.requirements)) {
+    return { ok: false, error: "requirements-invalid:not-array" };
   }
 
   const requirementIndex = Object.create(null);
@@ -1142,10 +1152,12 @@ function validateJdReasoningModelOutput(rawOutput, input, extraRootKeys, allowMo
       : rejectScoreKeys(item, JD_REASONING_REQUIREMENT_KEYS, "reasoning requirement");
     if (keyError) return { ok: false, error: keyError };
 
+    /* A stray or repeated id is skipped rather than fatal. The model sometimes returns an id it
+       invented, or the same requirement twice; discarding those entries costs nothing, while
+       rejecting the response cost every other requirement in it. Full coverage is still required —
+       the count check after this loop is what enforces it, and it now reports both numbers. */
     const requirementId = clipText(item.requirementId, 96);
-    if (!requirementIndex[requirementId] || seenRequirementIds[requirementId]) {
-      return { ok: false, error: "requirement-id-invalid" };
-    }
+    if (!requirementIndex[requirementId] || seenRequirementIds[requirementId]) continue;
     seenRequirementIds[requirementId] = true;
 
     /* The rejected value is part of the reason: "match-level-invalid" alone gave no way to tell
@@ -1227,6 +1239,18 @@ function validateJdReasoningModelOutput(rawOutput, input, extraRootKeys, allowMo
       verificationQuestion: clipText(item.verificationQuestion, JD_REASONING_TEXT_LIMITS.verificationQuestion),
       confidence
     });
+  }
+
+  /* Coverage is still all-or-nothing, and deliberately so: the browser's own validator requires
+     one reasoning entry per deterministic requirement, so a partial set would only be rejected one
+     step later. The counts are in the reason because "requirements-invalid" alone did not say
+     whether the model returned too few (it enumerated the job description's own bullets instead of
+     the supplied list) or too many. */
+  if (requirements.length !== input.requirements.length) {
+    return {
+      ok: false,
+      error: "requirements-invalid:got=" + requirements.length + ",want=" + input.requirements.length
+    };
   }
 
   return {
@@ -1432,11 +1456,22 @@ function rejectScoreKeys(target, allowedKeys, contextLabel) {
   return "";
 }
 
+/* Only the narrative has to carry text: it is the report's headline, and an empty one means the
+   model produced nothing to say. A per-requirement field can legitimately be blank — a
+   requirement with direct published evidence has no limitation to state, and one with no gap
+   needs no verification question — and rejecting the whole response over a blank one was live
+   failure `limitation-invalid`. */
+const JD_REASONING_REQUIRED_TEXT_FIELDS = { narrative: true };
+
+/* Length no longer rejects. Every one of these values is clipped to its limit when the response
+   is rebuilt, so checking the length as well only meant a verbose model lost the entire report
+   over a field that was about to be trimmed anyway. Type and markup still reject: model text must
+   never reach the browser as markup, and the browser's own validator applies the identical rules
+   to what this Worker relays. Keep the two in step — see assets/js/jd-reasoning.js
+   validateTextField. */
 function validateReasoningTextField(value, key) {
-  const maxChars = JD_REASONING_TEXT_LIMITS[key] || 320;
   if (typeof value !== "string") return key + "-invalid";
   if (HTML_MARKUP_PATTERN.test(value)) return key + "-invalid";
-  const normalized = normalizeText(value);
-  if (!normalized || normalized.length > maxChars) return key + "-invalid";
+  if (JD_REASONING_REQUIRED_TEXT_FIELDS[key] && !normalizeText(value)) return key + "-invalid";
   return "";
 }
