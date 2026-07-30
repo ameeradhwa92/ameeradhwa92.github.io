@@ -382,9 +382,13 @@ test('JDReasoning.buildInput forwards employer offer prose and withholds persona
     '18 days annual leave plus public holidays',
     'Parental leave and flexible hours',
     'Employee benefits package includes gym membership',
-    /* Employers really do ask for salary history in Malaysian application-question sections,
-       so it stays forwarded even though its siblings below are treated as records. */
+    /* Employers use both of these to describe or ask about their own offer, so they stay
+       forwarded even though their record-style siblings below are blocked. Withholding a real
+       posting's whole prose over the employer's own words is the over-blocking this screen
+       exists to avoid. */
     'State your salary history in the application form',
+    'Leave entitlement: 18 days annual leave plus public holidays',
+    'Leave entitlement grows with tenure',
     /* Ordinary technical prose: the singular "signature" must not withhold a whole posting. */
     'Build digital signature APIs and DocuSign integration'
   ];
@@ -416,8 +420,7 @@ test('JDReasoning.buildInput forwards employer offer prose and withholds persona
     'Medical history must be declared',
     'Compensation history from your previous employer',
     'Benefits history on file',
-    'Leave balance carried forward',
-    'Leave entitlement used to date'
+    'Leave balance carried forward'
   ];
   for (const line of withheld) {
     const { harness, profile, normalized, result } = analyze(`Required Skills:\n- Kubernetes\n${line}\n`);

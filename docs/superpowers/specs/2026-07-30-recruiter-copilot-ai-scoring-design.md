@@ -130,10 +130,23 @@ The single privacy list is split into two groups by what they actually protect:
   skips them via `EMPLOYER_BOILERPLATE_TERMS`.
 - **Personal identifiers — still block** (`PERSONAL_IDENTIFIER_PATTERNS`): NRIC/MyKad,
   IC / passport / bank-account numbers, the `NNNNNN-NN-NNNN` NRIC shape, home address,
-  date of birth, signatures. A pasted document can carry a *third party's* data, and
-  forwarding that is a real leak. When the prose trips this group the browser withholds
-  it entirely and sends a short notice in its place, so scoring degrades to the
-  structured requirements rather than leaking.
+  date of birth. Plus **record-style phrasings** that name one person's own data:
+  `medical`/`compensation`/`benefits history` and `leave balance` — the tool accepts
+  arbitrary pasted text and PDF/DOCX, so a mis-pasted employee record or CV must not be
+  forwarded. `signatures` blocks through the `privacyExclusions` term list rather than a
+  pattern, so ordinary technical prose about a digital *signature* API still passes.
+  A pasted document can carry a *third party's* data, and forwarding that is a real leak.
+  When the prose trips this group the browser withholds it entirely and sends a short
+  notice in its place, so scoring degrades to the structured requirements rather than
+  leaking.
+- **Deliberately NOT blocking, and pinned by forwarded-case tests:** `salary history` and
+  `leave entitlement`. Employers use both to describe or ask about their own offer
+  ("Leave entitlement: 18 days", "state your salary history"); withholding a real
+  posting's whole prose over the employer's own words is the same over-blocking this
+  split exists to remove. Also not blocking: third-party emails and phone numbers (a JD
+  routinely publishes the recruiter's, which is deliberately published business contact
+  data) and a bare 12-digit number (Malaysian company registration numbers are 12 digits
+  and appear in JD footers).
 
 Ameer's own data is never in scope for this screen — the evidence registry allowlist is
 what protects it.

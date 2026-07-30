@@ -183,13 +183,15 @@ const PERSONAL_IDENTIFIER_PATTERNS = [
   /\bdate\s+of\s+birth\b/i,
   /\bpassport\s*(?:no\.?|number)\b/i,
   /\bbank\s+account\s*(?:no\.?|number)\b/i,
-  /* Record-style phrasings name a PERSON's history, not an employer's offer, and this tool
-     accepts arbitrary pasted text and PDF/DOCX — a mis-pasted employee record or CV must not
-     forward them. "salary history" is deliberately absent: Malaysian application-question
-     sections really do ask for it, and withholding a whole posting over an employer's
-     question is the worse trade. */
+  /* Record-style history and balance phrasings name a PERSON's own data, and this tool accepts
+     arbitrary pasted text and PDF/DOCX — a mis-pasted employee record or CV must not forward
+     them. "salary history" and "leave entitlement" are deliberately absent: employers use both
+     to describe or ask about their own offer ("Leave entitlement: 18 days", "state your salary
+     history"), and withholding a real posting's whole prose over an employer's own words is the
+     worse trade — the same over-blocking this list exists to avoid. Keep them out unless the
+     phrasing genuinely names one person's figure. */
   /\b(?:medical|compensation|benefits)\s+history\b/i,
-  /\bleave\s+(?:balance|entitlement)\b/i
+  /\bleave\s+balance\b/i
   /* No bare "signature" pattern: privacyExclusions already blocks the plural through the term
      loop in containsPrivacyTerms, exactly as it did before this list existed. Matching the
      singular too would withhold ordinary technical prose ("digital signature APIs", DocuSign

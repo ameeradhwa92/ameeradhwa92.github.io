@@ -436,6 +436,8 @@ test('jd-reasoning Worker accepts employer offer boilerplate and still rejects p
     'Parental leave and flexible hours',
     'Employee benefits package includes gym membership',
     'State your salary history in the application form',
+    'Leave entitlement: 18 days annual leave plus public holidays',
+    'Leave entitlement grows with tenure',
     'Build digital signature APIs and DocuSign integration'
   ];
   const rejectedContexts = [
@@ -452,8 +454,7 @@ test('jd-reasoning Worker accepts employer offer boilerplate and still rejects p
     'Medical history must be declared',
     'Compensation history from your previous employer',
     'Benefits history on file',
-    'Leave balance carried forward',
-    'Leave entitlement used to date'
+    'Leave balance carried forward'
   ];
 
   for (const context of acceptedContexts) {
@@ -496,6 +497,7 @@ Preferred Skills:
     { label: 'employer offer boilerplate', safe: true, probe: /competitive salary, medical insurance and 18 days annual leave/i, line: 'We offer a competitive salary, medical insurance and 18 days annual leave.' },
     { label: 'compensation review duties', safe: true, probe: /payroll compensation review workflow/i, line: 'You will own the payroll compensation review workflow.' },
     { label: 'salary history question', safe: true, probe: /salary history/i, line: 'State your salary history in the application form.' },
+    { label: 'leave entitlement offer line', safe: true, probe: /leave entitlement/i, line: 'Leave entitlement: 18 days annual leave plus public holidays.' },
     { label: 'digital signature API work', safe: true, probe: /digital signature apis/i, line: 'Build digital signature APIs and DocuSign integration.' },
     { label: 'medical history', safe: false, probe: /medical history/i, line: 'Medical history must be declared.' },
     { label: 'leave balance', safe: false, probe: /leave balance/i, line: 'Leave balance carried forward.' },
