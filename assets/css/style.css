@@ -829,7 +829,23 @@ body.modal-open { overflow: hidden; }
   border: 1px solid rgba(23, 118, 110, 0.4); border-bottom-right-radius: 4px; color: var(--paper);
   transform-origin: bottom right;
 }
-.chat-msg.thinking { color: var(--muted); animation: pulse 1.4s infinite; }
+.chat-msg.thinking { color: var(--muted); }
+.chat-typing { display: inline-flex; align-items: center; gap: 4px; padding: 2px 0; }
+.chat-typing i {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--muted);
+  animation: chat-typing-bounce 1.2s ease-in-out infinite;
+}
+.chat-typing i:nth-child(2) { animation-delay: 0.15s; }
+.chat-typing i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes chat-typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.45; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+.chat-msg-settle { animation: chat-msg-settle 180ms ease-out both; }
+@keyframes chat-msg-settle {
+  from { opacity: 0.4; }
+  to   { opacity: 1; }
+}
 
 .chat-handoff { border-color: var(--teal-deep); }
 .chat-handoff p { margin: 0; }
@@ -1124,7 +1140,7 @@ body.modal-open { overflow: hidden; }
   .chat-panel, .chat-callout { transition: none; transform: none; }
   .chat-launcher { transition: none; }
   .chat-launcher-ring, .chat-launcher::after,
-  .chat-msg.thinking, .chat-status-ai .dot, .chat-status-cloud .dot,
+  .chat-status-ai .dot, .chat-status-cloud .dot,
   .chat-status-loading .dot { animation: none; }
   .chat-launcher::before { transition: none; }
   .chat-model-choice, .chat-model-tooltip, .chat-jd-file-btn, .chat-jd-action, .chat-jd-promo-action { transition: none; }
@@ -1133,4 +1149,6 @@ body.modal-open { overflow: hidden; }
   .chat-jd-progress-bar { animation: none; width: 100%; opacity: 0.55; }
   .chat-msg { animation: none; }
   .chat-log { scroll-behavior: auto; }
+  .chat-typing i { animation: none; opacity: 1; }
+  .chat-msg-settle { animation: none; }
 }

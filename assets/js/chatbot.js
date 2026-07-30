@@ -653,6 +653,48 @@
     return el;
   }
 
+  /* Three dots instead of the literal "Thinking…" string. The string is not dropped — it becomes
+     the group's aria-label, so the wait state stays audible to screen readers while sighted users
+     see dots. See docs/superpowers/specs/2026-07-30-chat-message-motion-design.md. */
+  function setThinkingDots(bubble) {
+    bubble.textContent = "";
+    bubble.classList.add("thinking");
+    var dots = document.createElement("span");
+    dots.className = "chat-typing";
+    dots.setAttribute("aria-label", t("thinking"));
+    for (var index = 0; index < 3; index += 1) {
+      dots.appendChild(document.createElement("i"));
+    }
+    bubble.appendChild(dots);
+    return bubble;
+  }
+
+  /* The reply lands in the element the dots occupied, so the bubble itself is continuous — it does
+     not exit and re-enter. Only the content changes, faded so the swap is not a hard cut.
+     The fade fires ONLY on the dots-to-text transition. The streaming path calls this once per
+     token and finishReply calls it again at the end; animating every time would strobe. */
+  function settleBubbleContent(bubble, text) {
+    var wasThinking = bubble.classList.contains("thinking");
+    bubble.classList.remove("thinking");
+    bubble.textContent = text;
+    if (!wasThinking) return;
+    bubble.classList.remove("chat-msg-settle");
+    /* Reading offsetWidth restarts the animation; without it the class is removed and re-added in
+       the same frame and the browser never sees a change. */
+    void bubble.offsetWidth;
+    bubble.classList.add("chat-msg-settle");
+  }
+
+  /* Token streaming writes to the log many times a second. With scroll-behavior: smooth every one
+     of those would retarget an in-flight scroll animation, which lags behind the text instead of
+     following it. Streaming jumps; message boundaries ease. */
+  function scrollLogToEndNow() {
+    var previous = log.style.scrollBehavior;
+    log.style.scrollBehavior = "auto";
+    log.scrollTop = log.scrollHeight;
+    log.style.scrollBehavior = previous;
+  }
+
   function addJdPromo() {
     if (!recruiterUI || jdPromoAdded) return;
     jdPromoAdded = true;
@@ -1573,9 +1615,8 @@
       var delta = chunk.choices && chunk.choices[0] && chunk.choices[0].delta;
       if (delta && delta.content) {
         reply += delta.content;
-        bubble.textContent = reply;
-        bubble.classList.remove("thinking");
-        log.scrollTop = log.scrollHeight;
+        settleBubbleContent(bubble, reply);
+        scrollLogToEndNow();
       }
     }
     history.push({ role: "assistant", content: reply });
@@ -1897,8 +1938,7 @@
 
   /* ---------------- send ---------------- */
   function finishReply(bubble, reply, unanswered, question) {
-    bubble.classList.remove("thinking");
-    bubble.textContent = reply;
+    settleBubbleContent(bubble, reply);
     transcript.push({ role: "assistant", content: reply });
     if (transcript.length > 24) transcript = transcript.slice(-24);
     if (unanswered) {
@@ -1917,8 +1957,7 @@
     transcript.push({ role: "user", content: text });
     input.value = "";
     busy = true;
-    var bubble = addMsg("bot", t("thinking"));
-    bubble.classList.add("thinking");
+    var bubble = setThinkingDots(addMsg("bot", ""));
 
     if (aiState === "ready" && engine) {
       askLLM(text, bubble).then(function (reply) {

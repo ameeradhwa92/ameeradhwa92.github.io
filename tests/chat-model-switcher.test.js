@@ -39,7 +39,7 @@ function createElement(tagName = 'div') {
     setAttribute(name, value) { this.attributes.set(name, String(value)); },
     getAttribute(name) { return this.attributes.get(name) || null; },
     addEventListener(type, listener) { listeners.set(type, listener); },
-    dispatch(type, target = this) { const listener = listeners.get(type); if (listener) listener({ key: type, target }); },
+    dispatch(type, target = this) { const listener = listeners.get(type); if (listener) listener({ key: type, target, preventDefault() {} }); },
     closest(selector) { return selector === 'button' ? this : null; },
     querySelector() { return null; },
     appendChild(child) { child.parentNode = this; this.children.push(child); return child; },
@@ -2117,4 +2117,42 @@ test('chat bubbles animate in from their own corner', () => {
 test('the chat log scrolls smoothly', () => {
   assert.match(css, /\.chat-log\b[^{]*\{[^}]*scroll-behavior:\s*smooth/,
     '.chat-log should scroll smoothly');
+});
+
+/* The wait state was the literal string "Thinking…". Dots replace it visually, but the string is
+   NOT deleted — it moves to aria-label, so the wait state is still announced. Dropping it would
+   make waiting silent to assistive technology: a regression dressed as a visual upgrade. */
+test('the waiting bubble shows three dots and still announces itself', async () => {
+  const { context, elements } = createChatContext({ saveData: false });
+  await loadChat(context);
+  elements['chat-launcher'].dispatch('click');
+
+  elements['chat-input'].value = 'What did he build at Abbott?';
+  elements['chat-form'].dispatch('submit');
+
+  const bubbles = elements['chat-log'].children;
+  const waiting = bubbles[bubbles.length - 1];
+  assert.equal(waiting.classList.contains('thinking'), true, 'the last bubble should be the waiting one');
+
+  const dots = waiting.children.find((child) => child.className === 'chat-typing');
+  assert.ok(dots, 'the waiting bubble should contain a .chat-typing group');
+  assert.equal(dots.children.length, 3, 'three dots');
+  assert.equal(dots.getAttribute('aria-label'), 'Thinking…',
+    'the dots must carry the thinking string for screen readers');
+  assert.equal(waiting.textContent, '', 'the literal Thinking… text should be gone');
+});
+
+test('the typing dots are styled and staggered', () => {
+  assert.match(css, /@keyframes chat-typing-bounce/, 'the dots need a bounce keyframe');
+  assert.match(css, /\.chat-typing i\b[^{]*\{[^}]*animation:\s*chat-typing-bounce/,
+    'each dot should run the bounce');
+  assert.match(css, /\.chat-typing i:nth-child\(2\)[^{]*\{[^}]*animation-delay/,
+    'the second dot should be offset');
+  assert.match(css, /\.chat-typing i:nth-child\(3\)[^{]*\{[^}]*animation-delay/,
+    'the third dot should be offset');
+
+  /* The old whole-bubble pulse is removed: the dots carry the motion now, and pulsing the
+     container as well would double it. */
+  assert.equal(/\.chat-msg\.thinking\b[^{]*\{[^}]*animation:\s*pulse/.test(css), false,
+    'the whole-bubble pulse should be gone');
 });
