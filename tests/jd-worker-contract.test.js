@@ -360,6 +360,57 @@ Application Questions:
   );
   assert.equal(response.status, 200, 'the payload should remain valid at the Worker contract boundary');
   assert.equal(response.aiCalls.length, 1, 'valid payloads should still reach Workers AI');
+
+  /* Sending prose only pays off if the line structure survives BOTH clips. The browser keeps
+     it (tests/jd-reasoning.test.js pins that); this asserts the Worker does not flatten it
+     back out of the delimited JD block it hands the scoring model. */
+  const scoringRequest = { ...request, mode: 'jd-scoring' };
+  const scoringResponse = await callWorker(scoringRequest, {
+    profile,
+    aiResponse: buildValidScoringResponse(scoringRequest, profile)
+  });
+  assert.equal(scoringResponse.status, 200, 'the same payload should be valid for jd-scoring');
+  const jdBlock = scoringResponse.aiCalls[0].payload.messages[1].content.split('===JD-START===\n')[1];
+  assert.ok(jdBlock, 'the JD prose should be handed over inside the data delimiters');
+  assert.match(jdBlock, /^Required Skills:$/m, 'the model should see headings on their own line');
+  assert.match(jdBlock, /^- Kubernetes$/m, 'the model should see bullets on their own line');
+  assert.match(jdBlock, /^Employer Questions:$/m, 'later headings should keep their own line too');
+});
+
+/* When the prose is withheld the payload still has to be a valid request: the Worker rejects a
+   blank jdText, so the notice must clear every screen and let scoring proceed from the
+   structured requirements. If it ever tripped a screen, identifier-bearing documents would
+   silently always fall back to the keyword estimate. */
+test('a withheld-prose payload is still accepted and still scores from the structured requirements', async () => {
+  const profile = loadProfile();
+  const request = buildValidRequest({
+    language: 'en',
+    text: `Required Skills:
+- Kubernetes
+- Azure
+- Azure DevOps
+- Bicep
+Preferred Skills:
+- CI/CD
+Please attach your NRIC copy.`
+  });
+
+  assert.match(request.jdText, /withheld/i, 'the browser should have withheld this document\'s prose');
+  assert.doesNotMatch(request.jdText, /nric/i, 'the identifier must not be in the payload');
+  assert.equal(
+    JSON.stringify(request.deterministicInput).toLowerCase().includes('nric'),
+    false,
+    'the extractor drops identifier-bearing lines, so the requirements are clean too'
+  );
+
+  const response = await callWorker(request, {
+    profile,
+    aiResponse: buildValidReasoningResponse(request, profile)
+  });
+
+  assert.equal(response.status, 200, 'the withheld-notice payload must still be a valid request');
+  assert.equal(response.aiCalls.length, 1, 'scoring should proceed from the structured requirements');
+  assert.ok(request.deterministicInput.requirements.length > 0, 'there should be requirements left to score');
 });
 
 test('jd-reasoning Worker accepts employer offer boilerplate and still rejects personal identifiers', async () => {
@@ -383,8 +434,9 @@ test('jd-reasoning Worker accepts employer offer boilerplate and still rejects p
     'Health benefits and dental',
     '18 days annual leave plus public holidays',
     'Parental leave and flexible hours',
-    'Leave entitlement grows with tenure',
-    'Employee benefits package includes gym membership'
+    'Employee benefits package includes gym membership',
+    'State your salary history in the application form',
+    'Build digital signature APIs and DocuSign integration'
   ];
   const rejectedContexts = [
     'NRIC verification required',
@@ -396,7 +448,12 @@ test('jd-reasoning Worker accepts employer offer boilerplate and still rejects p
     'Passport number required for travel',
     'Bank account number for payroll setup',
     'Signatures required on the appointment letter',
-    'See the confidential contract language attached'
+    'See the confidential contract language attached',
+    'Medical history must be declared',
+    'Compensation history from your previous employer',
+    'Benefits history on file',
+    'Leave balance carried forward',
+    'Leave entitlement used to date'
   ];
 
   for (const context of acceptedContexts) {
@@ -438,6 +495,10 @@ Preferred Skills:
   const cases = [
     { label: 'employer offer boilerplate', safe: true, probe: /competitive salary, medical insurance and 18 days annual leave/i, line: 'We offer a competitive salary, medical insurance and 18 days annual leave.' },
     { label: 'compensation review duties', safe: true, probe: /payroll compensation review workflow/i, line: 'You will own the payroll compensation review workflow.' },
+    { label: 'salary history question', safe: true, probe: /salary history/i, line: 'State your salary history in the application form.' },
+    { label: 'digital signature API work', safe: true, probe: /digital signature apis/i, line: 'Build digital signature APIs and DocuSign integration.' },
+    { label: 'medical history', safe: false, probe: /medical history/i, line: 'Medical history must be declared.' },
+    { label: 'leave balance', safe: false, probe: /leave balance/i, line: 'Leave balance carried forward.' },
     { label: 'NRIC word', safe: false, probe: /nric/i, line: 'Please attach your NRIC copy.' },
     { label: 'NRIC-shaped number', safe: false, probe: /920101-14-5523/, line: 'Candidate 920101-14-5523 already applied.' },
     { label: 'MyKad', safe: false, probe: /mykad/i, line: 'Bring your MyKad to the interview.' },

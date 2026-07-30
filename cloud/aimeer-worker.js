@@ -183,7 +183,17 @@ const PERSONAL_IDENTIFIER_PATTERNS = [
   /\bdate\s+of\s+birth\b/i,
   /\bpassport\s*(?:no\.?|number)\b/i,
   /\bbank\s+account\s*(?:no\.?|number)\b/i,
-  /\bsignatures?\b/i
+  /* Record-style phrasings name a PERSON's history, not an employer's offer, and this tool
+     accepts arbitrary pasted text and PDF/DOCX — a mis-pasted employee record or CV must not
+     forward them. "salary history" is deliberately absent: Malaysian application-question
+     sections really do ask for it, and withholding a whole posting over an employer's
+     question is the worse trade. */
+  /\b(?:medical|compensation|benefits)\s+history\b/i,
+  /\bleave\s+(?:balance|entitlement)\b/i
+  /* No bare "signature" pattern: privacyExclusions already blocks the plural through the term
+     loop in containsPrivacyTerms, exactly as it did before this list existed. Matching the
+     singular too would withhold ordinary technical prose ("digital signature APIs", DocuSign
+     integration) from a posting this candidate would plausibly be sent. */
 ];
 const HTML_MARKUP_PATTERN = /<\s*\/?\s*[a-z][^>]*>|<!--[\s\S]*?-->|<!--|-->/i;
 
@@ -397,6 +407,11 @@ async function loadReasoningProfile() {
   if (!raw || !Array.isArray(raw.recruiterEvidence)) return null;
   const recruiterEvidence = raw.recruiterEvidence.map(sanitizeRecruiterEvidenceRecord).filter(Boolean);
   if (!recruiterEvidence.length) return null;
+  /* CAREFUL: DEFAULT_PRIVACY_EXCLUSIONS.length is doing double duty as the cap on the
+     profile-supplied list. Adding a 10th entry to aimeer-profile.json's privacyExclusions
+     without also lengthening the default list would silently drop it, and shortening the
+     default list would silently drop real exclusions off the end of the profile's. Keep the
+     two lists the same length, or replace this with an explicit maximum. */
   const privacyExclusions = uniqueStrings(
     Array.isArray(raw.privacyExclusions) ? raw.privacyExclusions : DEFAULT_PRIVACY_EXCLUSIONS,
     DEFAULT_PRIVACY_EXCLUSIONS.length,
@@ -495,6 +510,26 @@ function normalizeText(value) {
 
 function clipText(value, maxChars) {
   return normalizeText(value).slice(0, maxChars);
+}
+
+/* The job description is the one field where line structure carries meaning. The browser's
+   extractor deliberately builds it — bullets become "\n- ", tabs become newlines, blank runs
+   collapse to one — and the model reads section boundaries and seniority framing from those
+   lines. So collapse spaces and tabs *within* a line, keep single newlines, cap blank runs at
+   one, then clip. clipText stays as it is for the short single-line fields, and
+   assets/js/jd-reasoning.js has the same helper: flattening here would discard the structure
+   the browser took care to send. */
+function normalizeJdProse(value) {
+  return String(value || "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function clipJdProse(value, maxChars) {
+  return normalizeJdProse(value).slice(0, maxChars);
 }
 
 function uniqueStrings(value, maxItems, maxChars) {
@@ -649,8 +684,8 @@ function validateJdReasoningBody(body, profile) {
     return { ok: false, error: "jd-language-invalid" };
   }
 
-  const jdText = clipText(body.jdText, JD_REASONING_JD_MAX);
-  if (!jdText || normalizeText(body.jdText).length > JD_REASONING_JD_MAX) {
+  const jdText = clipJdProse(body.jdText, JD_REASONING_JD_MAX);
+  if (!jdText || normalizeJdProse(body.jdText).length > JD_REASONING_JD_MAX) {
     return { ok: false, error: "jd-text-invalid" };
   }
 

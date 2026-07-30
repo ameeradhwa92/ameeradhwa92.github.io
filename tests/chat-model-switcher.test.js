@@ -987,6 +987,126 @@ test('two failed cloud scoring attempts fall back to the deterministic estimate 
   assert.doesNotMatch(rendered, /Penaakulan mengikut keperluan/i, 'no AI reasoning sections should render on the fallback path');
 });
 
+/* Builds a chat context whose only variable is how the cloud endpoint fails, so the retry
+   policy can be exercised one failure class at a time. */
+function createScoringFailureContext(cloudResponder) {
+  const deterministicResult = buildDeterministicResult();
+  const cloudCalls = [];
+  const harness = createChatContext({
+    saveData: true,
+    fetchImpl(url, init) {
+      const target = String(url);
+      if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
+      if (target.includes('workers.dev')) {
+        cloudCalls.push(JSON.parse(init.body));
+        return cloudResponder(cloudCalls.length);
+      }
+      return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
+    }
+  });
+  harness.context.window.JDExtractor = {
+    extract() {
+      return Promise.resolve({ text: '', source: 'pdf', warnings: [] });
+    },
+    normalize(text) {
+      return { normalizedText: text, warnings: [] };
+    }
+  };
+  harness.context.window.JDMatcher = {
+    scoreJobDescription() {
+      return clone(deterministicResult);
+    }
+  };
+  harness.context.window.JDReasoning = {
+    buildInput(normalized, result, profile, language) {
+      return {
+        language,
+        jdText: normalized.normalizedText,
+        requirements: result.requirements || [],
+        deterministicResult: result,
+        evidenceRegistry: profile.recruiterEvidence || []
+      };
+    },
+    validateModelOutput() {
+      return { ok: true, reasoning: { narrative: 'n', requirements: [], overall: { score: 78, fitBand: 'strong', narrative: 'n' } } };
+    },
+    mergeResult() {
+      throw new Error('mergeResult should not run when the cloud call never succeeds');
+    }
+  };
+  return { ...harness, cloudCalls };
+}
+
+test('a transport failure is retried once, then settles on the deterministic estimate', async () => {
+  const { context, elements, cloudCalls } = createScoringFailureContext(
+    () => Promise.reject(new TypeError('Failed to fetch'))
+  );
+
+  await loadChat(context);
+  await flushAsync();
+  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC ownership.';
+  elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+
+  assert.equal(cloudCalls.length, 2, 'a network rejection should be retried exactly once');
+  const rendered = collectText(elements['chat-jd-result']);
+  assert.match(rendered, /72%/, 'the deterministic score must survive an offline cloud');
+  assert.match(rendered, /Deterministic fallback is active/i, 'the fallback status should render');
+  assert.equal(
+    elements['chat-jd-status'].textContent,
+    'Deterministic match ready from pasted text.',
+    'the status line must settle rather than stay on "analyzing"'
+  );
+});
+
+/* A 4xx is the Worker refusing this exact payload — a privacy or shape violation. Repeating it
+   is guaranteed to fail identically, and in the residual case it would re-transmit the same
+   sensitive text a second time. */
+test('a 4xx from the Worker is not retried', async () => {
+  const { context, elements, cloudCalls } = createScoringFailureContext(
+    () => Promise.resolve({
+      ok: false,
+      status: 400,
+      text: () => Promise.resolve('{"error":"jd-privacy-invalid"}'),
+      json: () => Promise.resolve({ error: 'jd-privacy-invalid' })
+    })
+  );
+
+  await loadChat(context);
+  await flushAsync();
+  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC ownership.';
+  elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+
+  assert.equal(cloudCalls.length, 1, 'a deterministic 400 must not be sent a second time');
+  assert.match(collectText(elements['chat-jd-result']), /72%/, 'the deterministic score stays visible');
+  assert.equal(
+    elements['chat-jd-status'].textContent,
+    'Deterministic match ready from pasted text.',
+    'the status line must settle'
+  );
+});
+
+test('a 5xx from the Worker is still retried once', async () => {
+  const { context, elements, cloudCalls } = createScoringFailureContext(
+    () => Promise.resolve({
+      ok: false,
+      status: 502,
+      text: () => Promise.resolve('{"error":"ai-failed"}'),
+      json: () => Promise.resolve({ error: 'ai-failed' })
+    })
+  );
+
+  await loadChat(context);
+  await flushAsync();
+  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC ownership.';
+  elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+
+  assert.equal(cloudCalls.length, 2, 'a transient upstream failure deserves the retry');
+  assert.match(collectText(elements['chat-jd-result']), /72%/, 'the deterministic score stays visible');
+});
+
 test('a stale recruiter reasoning response cannot replace a newer JD result', async () => {
   const firstReasoning = deferred();
   const firstResult = buildDeterministicResult({

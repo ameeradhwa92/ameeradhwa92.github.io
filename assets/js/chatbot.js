@@ -1744,11 +1744,21 @@
       );
       return requestScoringAttempt().catch(function (firstError) {
         if (!canApplyReasoning()) return null;
+        /* A 4xx is the Worker refusing this exact payload — a privacy or shape violation.
+           Sending it again would fail identically, so retry only transport failures,
+           unparseable responses and invalid model output. */
+        if (/^cloud-4\d\d$/.test(String(firstError && firstError.message))) throw firstError;
         if (window.console && console.warn) console.warn("JD scoring retry after:", firstError);
         return requestScoringAttempt();
       });
     }).then(function (reasoning) {
-      if (!reasoning || !canApplyReasoning()) return;
+      /* Staleness returns silently — a newer analysis already owns jdState and the status
+         line.  Anything else must settle, or the status line stays on "analyzing" forever. */
+      if (!canApplyReasoning()) return;
+      if (!reasoning) {
+        applyScoringFallback("reasoning-empty");
+        return;
+      }
       jdState.reasoningBusy = false;
       jdState.reasoningFallback = false;
       jdState.reasoningError = "";

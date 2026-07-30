@@ -373,7 +373,6 @@ test('JDReasoning.buildInput forwards employer offer prose and withholds persona
     'Expected compensation discussed at offer stage',
     'Total compensation includes a performance bonus',
     'Compensation package is competitive',
-    'Compensation history reviewed at offer stage',
     'Remuneration package reviewed annually',
     'Employee compensation is benchmarked to market',
     'Payroll compensation review workflow ownership',
@@ -382,8 +381,12 @@ test('JDReasoning.buildInput forwards employer offer prose and withholds persona
     'Health benefits and dental',
     '18 days annual leave plus public holidays',
     'Parental leave and flexible hours',
-    'Leave entitlement grows with tenure',
-    'Employee benefits package includes gym membership'
+    'Employee benefits package includes gym membership',
+    /* Employers really do ask for salary history in Malaysian application-question sections,
+       so it stays forwarded even though its siblings below are treated as records. */
+    'State your salary history in the application form',
+    /* Ordinary technical prose: the singular "signature" must not withhold a whole posting. */
+    'Build digital signature APIs and DocuSign integration'
   ];
   for (const line of forwarded) {
     const { harness, profile, normalized, result } = analyze(`Required Skills:\n- Kubernetes\n${line}\n`);
@@ -408,7 +411,13 @@ test('JDReasoning.buildInput forwards employer offer prose and withholds persona
     'Passport number required for travel',
     'Bank account number for payroll setup',
     'Signatures required on the appointment letter',
-    'See the confidential contract language attached'
+    'See the confidential contract language attached',
+    /* Record-style phrasings name a person's history, not an employer's offer. */
+    'Medical history must be declared',
+    'Compensation history from your previous employer',
+    'Benefits history on file',
+    'Leave balance carried forward',
+    'Leave entitlement used to date'
   ];
   for (const line of withheld) {
     const { harness, profile, normalized, result } = analyze(`Required Skills:\n- Kubernetes\n${line}\n`);
@@ -422,6 +431,26 @@ test('JDReasoning.buildInput forwards employer offer prose and withholds persona
     assert.match(input.jdText, /withheld/i, `"${line}" should leave the withheld notice in place of the prose`);
     assert.equal(input.jdText.length > 0, true, 'the Worker rejects a blank jdText, so the notice must be non-empty');
   }
+});
+
+/* jd-extractor.js deliberately builds structure into normalizedText (bullets become "\n- ",
+   tabs become newlines, blank runs collapse to one). Sending the prose is only worth doing if
+   that structure survives: headings and bullet boundaries are how the model sees sections and
+   seniority framing. */
+test('JDReasoning.buildInput keeps the job description line structure in jdText', () => {
+  const { harness, profile, normalized, result } = analyze(
+    'Responsibilities:\n• Own    the   Azure platform\n• Mentor engineers\n\n\n\nRequired Skills:\n- Kubernetes\n- Azure DevOps\n'
+  );
+  const input = harness.JDReasoning.buildInput(normalized, result, profile, 'en');
+
+  assert.match(input.jdText, /^Responsibilities:$/m, 'headings should stay on their own line');
+  assert.match(input.jdText, /^Required Skills:$/m, 'later headings should stay on their own line');
+  assert.match(input.jdText, /^- Own the Azure platform$/m, 'bullets should stay on their own line');
+  assert.match(input.jdText, /^- Mentor engineers$/m, 'every bullet should keep its own line');
+  assert.doesNotMatch(input.jdText, /Own {2,}the/, 'runs of spaces within a line should collapse');
+  assert.doesNotMatch(input.jdText, /\n{3,}/, 'blank runs should cap at one blank line');
+  assert.doesNotMatch(input.jdText, / \n|\n /, 'no trailing or leading spaces around line breaks');
+  assert.equal(input.jdText.length <= 12000, true, 'the 12,000-character cap still applies');
 });
 
 test('JDReasoning.validateModelOutput accepts valid strict JSON and markdown-wrapped JSON', () => {
