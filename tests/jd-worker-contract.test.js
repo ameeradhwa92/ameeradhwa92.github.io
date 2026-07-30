@@ -867,6 +867,66 @@ test('jd-scoring passes an injected jdText through as delimited data instead of 
   );
 });
 
+test('jd-scoring tells the model to judge its own score instead of preserving the deterministic one', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const response = await callWorker(request, {
+    profile,
+    aiResponse: buildValidScoringResponse(request, profile)
+  });
+  assert.equal(response.status, 200);
+  const userMessage = response.aiCalls[0].payload.messages.find((message) => message.role === 'user');
+  assert.doesNotMatch(
+    userMessage.content,
+    /must not be changed/i,
+    'jd-scoring must not tell the model the deterministic score is authoritative — that contradicts JD_SCORING_PROMPT\'s own instruction and risks an 8B model just echoing deterministicResult.score, silently defeating the mode'
+  );
+  assert.match(
+    userMessage.content,
+    /report your own overall\.score/i,
+    'jd-scoring should explicitly tell the model the baseline is context only and it must judge and report its own score'
+  );
+});
+
+test('jd-reasoning keeps its client-authoritative score note byte-identical', async () => {
+  const request = buildValidRequest({ language: 'en' });
+  const profile = loadProfile();
+  const response = await callWorker(request, {
+    profile,
+    aiResponse: buildValidReasoningResponse(request, profile)
+  });
+  assert.equal(response.status, 200);
+  const userMessage = response.aiCalls[0].payload.messages.find((message) => message.role === 'user');
+  assert.match(
+    userMessage.content,
+    /Deterministic score is client-authoritative and must not be changed\./,
+    'jd-reasoning is a live path and must keep this exact wording'
+  );
+});
+
+test('jd-scoring sends the JD prose exactly once, inside the delimited block only', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const response = await callWorker(request, {
+    profile,
+    aiResponse: buildValidScoringResponse(request, profile)
+  });
+  assert.equal(response.status, 200);
+  const userMessage = response.aiCalls[0].payload.messages.find((message) => message.role === 'user');
+  const occurrences = userMessage.content.split(request.jdText).length - 1;
+  assert.equal(
+    occurrences,
+    1,
+    'the JD prose should appear exactly once in the outgoing payload — doubling it (once un-delimited inside JSON.stringify(reasoningInput), once inside the markers) roughly doubles input tokens and weakens the delimiters\' treat-as-data defense for the un-framed copy'
+  );
+  const beforeDelimiter = userMessage.content.split('===JD-START===')[0];
+  assert.equal(
+    beforeDelimiter.includes(request.jdText),
+    false,
+    'the JD prose must not appear before the delimited block, i.e. jdText must be stripped out of the JSON.stringify(reasoningInput) portion'
+  );
+});
+
 test('existing chat, summary, and jd-explanation modes remain compatible', async () => {
   const chat = await callWorker({
     mode: 'chat',

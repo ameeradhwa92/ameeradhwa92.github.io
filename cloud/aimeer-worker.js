@@ -47,15 +47,20 @@ const JD_REASONING_TEXT_LIMITS = {
   recruiterFraming: 320,
   verificationQuestion: 320
 };
-const JD_REASONING_MATCH_LEVELS = {
-  "direct-professional": true,
-  "adjacent-professional": true,
-  "transferable-professional": true,
-  "academic-foundation": true,
-  "learning-bridge": true,
-  "explicit-gap": true,
-  "unverified": true
-};
+/* Array + .includes, not an object-literal truthy lookup: a plain-object map keyed by
+   match level would let "constructor"/"toString"/"valueOf"/"hasOwnProperty" pass through
+   as valid match levels, since those are truthy Object.prototype members. Not exploitable
+   to acceptance today (a bogus matchLevel still fails the downstream evidence-type check),
+   but matches the fix already applied to the sibling JD_SCORING_FIT_BANDS. */
+const JD_REASONING_MATCH_LEVELS = [
+  "direct-professional",
+  "adjacent-professional",
+  "transferable-professional",
+  "academic-foundation",
+  "learning-bridge",
+  "explicit-gap",
+  "unverified"
+];
 const JD_REASONING_EVIDENCE_BASED_LEVELS = {
   "direct-professional": true,
   "adjacent-professional": true,
@@ -69,11 +74,8 @@ const JD_REASONING_MATCH_EVIDENCE_TYPES = {
   "academic-foundation": { academic: true },
   "learning-bridge": { professional: true, academic: true }
 };
-const JD_REASONING_CONFIDENCE = {
-  low: true,
-  medium: true,
-  high: true
-};
+/* Array + .includes — same rationale as JD_REASONING_MATCH_LEVELS above. */
+const JD_REASONING_CONFIDENCE = ["low", "medium", "high"];
 const JD_REASONING_STRENGTH = {
   required: true,
   neutral: true,
@@ -305,9 +307,17 @@ export default {
         prompt: JD_SCORING_PROMPT,
         maxTokens: JD_SCORING_MAX_TOKENS,
         validateBody: validateJdScoringBody,
-        buildUserContent: (payload) =>
-          buildJdReasoningMessage(payload.reasoningInput).content +
-          "\n\n===JD-START===\n" + payload.jdText + "\n===JD-END===",
+        /* jdText is stripped from reasoningInput before it goes into buildJdReasoningMessage's
+           JSON.stringify — reasoningInput already carries it (see validateJdReasoningBody),
+           and payload.jdText below is the same string. Without stripping it here it would ship
+           twice: once un-delimited inside the JSON blob, once inside the ===JD-START===
+           markers — doubling input tokens and weakening the delimiters' treat-as-data framing
+           for the copy that bypassed them. */
+        buildUserContent: (payload) => {
+          const { jdText, ...reasoningInputForMessage } = payload.reasoningInput;
+          return buildJdReasoningMessage(reasoningInputForMessage, JD_SCORING_SCORE_NOTE).content +
+            "\n\n===JD-START===\n" + payload.jdText + "\n===JD-END===";
+        },
         validateOutput: validateJdScoringModelOutput
       });
     }
@@ -827,7 +837,7 @@ function validateCompactDeterministicResult(result, allowedEvidenceIds) {
   }
   if (!isPlainObject(result.confidence) ||
     !hasOnlyKeys(result.confidence, ["label", "reasons"]) ||
-    !JD_REASONING_CONFIDENCE[clipText(result.confidence.label, 16)] ||
+    !JD_REASONING_CONFIDENCE.includes(clipText(result.confidence.label, 16)) ||
     !validateStringArray(result.confidence.reasons, 3, 180)) {
     return false;
   }
@@ -942,13 +952,25 @@ function isRequirementIdValid(id, category) {
   return !!prefix && new RegExp("^req-" + prefix + "-[a-z0-9-]+$").test(id);
 }
 
-function buildJdReasoningMessage(reasoningInput) {
+/* jd-reasoning's score-authority line: the model there is commentating on a score that
+   already stands, so it is told flatly not to touch it. Keep this string byte-identical —
+   jd-reasoning is a live path and this text is part of its accepted behavior. */
+const JD_REASONING_SCORE_NOTE = "\nDeterministic score is client-authoritative and must not be changed.";
+/* jd-scoring inverts that contract on purpose (Task 1/spec: the model IS the scoring
+   authority there, with the keyword pass demoted to a sanity clamp band applied after the
+   fact in mergeResult). Telling this mode's model the same "must not be changed" line
+   contradicts JD_SCORING_PROMPT's own instruction to produce its own overall.score, and an
+   8B model given both instructions can plausibly anchor on and echo deterministicResult.score
+   — silently defeating the point of this mode. */
+const JD_SCORING_SCORE_NOTE = "\nThe deterministic score below is a local keyword baseline for context only, not a value to reuse. Judge the fit yourself from the job description and evidence, and report your own overall.score.";
+
+function buildJdReasoningMessage(reasoningInput, scoreNote) {
   return {
     role: "user",
     content:
       (reasoningInput.language === "ms" ? "Pulangkan strict JSON sahaja." : "Return strict JSON only.") +
       "\n\nRequested language: " + reasoningInput.language +
-      "\nDeterministic score is client-authoritative and must not be changed." +
+      (scoreNote !== undefined ? scoreNote : JD_REASONING_SCORE_NOTE) +
       "\n\nReasoning input JSON:\n" + JSON.stringify(reasoningInput)
   };
 }
@@ -1000,11 +1022,11 @@ function validateJdReasoningModelOutput(rawOutput, input, extraRootKeys) {
     seenRequirementIds[requirementId] = true;
 
     const matchLevel = clipText(item.matchLevel, 32);
-    if (!JD_REASONING_MATCH_LEVELS[matchLevel]) {
+    if (!JD_REASONING_MATCH_LEVELS.includes(matchLevel)) {
       return { ok: false, error: "match-level-invalid" };
     }
     const confidence = clipText(item.confidence, 16);
-    if (!JD_REASONING_CONFIDENCE[confidence]) {
+    if (!JD_REASONING_CONFIDENCE.includes(confidence)) {
       return { ok: false, error: "confidence-invalid" };
     }
 
