@@ -797,7 +797,7 @@ body.modal-open { overflow: hidden; }
   animation: chat-msg-in 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 /* Safe on every .chat-msg: the first open of a session appends up to three bubbles in one task
-   (greeting, optionally the on-device-ready notice, then the JD promo), which animate together and
+   (greeting, optionally the cloud-fallback notice, then the JD promo), which animate together and
    read as the log fading in rather than as separate entrances. Every other append — AI status
    changes, conversation turns — really is one bubble at a time. There is no bulk history restore
    that would fire dozens of entrances at once. See

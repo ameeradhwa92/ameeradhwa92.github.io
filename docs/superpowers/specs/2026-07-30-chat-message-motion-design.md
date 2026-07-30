@@ -36,11 +36,11 @@ A bouncing overshoot was considered and rejected: next to the site's editorial
 typography it reads as toy-like.
 
 This is safe to apply to every `.chat-msg`. The first open of a session appends
-up to three bubbles in one task — the greeting, optionally the on-device-ready
-notice, then the JD promo — which animate together and read as the log fading
-in rather than as separate entrances. Every other append — AI status changes,
-conversation turns — really is one bubble at a time. There is no bulk history
-restore that would fire dozens of entrances at once.
+up to three bubbles in one task — the greeting, optionally the cloud-fallback
+notice (shown only when on-device AI is unavailable), then the JD promo — which
+animate together and read as the log fading in rather than as separate entrances.
+Every other append — AI status changes, conversation turns — really is one bubble
+at a time. There is no bulk history restore that would fire dozens of entrances at once.
 
 ### Typing indicator
 
