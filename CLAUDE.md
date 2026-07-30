@@ -76,13 +76,13 @@ asset lacks one, and names the offending file. While iterating locally, tick
 | `assets/js/aimeer-device.js` | Device/browser capability checks that decide local-AI eligibility (WebGPU, memory, iOS, known Android tiers) |
 | `assets/js/jd-extractor.js` | Recruiter JD matcher: local PDF/DOCX/paste text extraction and normalization |
 | `assets/js/jd-matcher.js` | Recruiter JD matcher: deterministic keyword-based scoring against the published profile |
-| `assets/js/jd-reasoning.js` | Recruiter JD matcher: builds the cloud scoring request, validates the model's response, merges it with the deterministic result (clamp band, fit band, report sections) |
+| `assets/js/jd-reasoning.js` | Recruiter JD matcher: builds the cloud scoring request, re-validates the model's response the Worker relays (must stay in lockstep with the Worker's validator), merges it with the deterministic result (clamp band, fit band, report sections) |
 | `assets/js/chatbot.js` | AIMeer, the three-tier chatbot, plus the recruiter JD match report UI and its cloud-scoring request flow |
 | `assets/data/aimeer-kb.txt` | Chatbot knowledge base — fetched by *both* the browser and the Worker |
 | `assets/data/aimeer-profile.json` | Recruiter evidence registry (`recruiterEvidence`, `privacyExclusions`) — the only allowlist of evidence the JD matcher's cloud reasoning may cite |
-| `cloud/aimeer-worker.js` | Cloudflare Worker relay (deployed manually, see below) |
+| `cloud/aimeer-worker.js` | Cloudflare Worker relay — chat/summary/jd-explanation/jd-reasoning/jd-scoring/version modes (deployed manually, see below) |
 | `docs/superpowers/specs/2026-07-24-portfolio-site-design.md` | Design spec + canonical project/URL/status registry |
-| `docs/superpowers/specs/2026-07-30-recruiter-copilot-ai-scoring-design.md` | Design spec for the recruiter JD matcher's AI-led scoring, clamp band, and privacy screen |
+| `docs/superpowers/specs/2026-07-30-recruiter-copilot-ai-scoring-design.md` | Design of record for AI-led JD scoring — two-call split, clamp band, privacy screen, model-output tolerance, Worker diagnosability. Read before touching either JD validator |
 | `docs/resume-source/resume.html` | Source for the downloadable résumé PDF |
 | `tests/*.test.js` | `node --test` suite — run before anything ships (see Running locally) |
 | `tools/` | Five extra harnesses `tests/*.test.js` does not cover (JD extractor/matcher/cloud-payload contracts, recruiter profile/KB drift, recruiter UI exact copy) — see Running locally |
@@ -139,6 +139,34 @@ card, which summarizes the chat and pre-fills WhatsApp or mailto for the *visito
 pasted into the Cloudflare dashboard editor by hand. Editing the file here changes nothing
 live — say so explicitly when handing back Worker changes. `cloud/README.md` has the setup
 steps; the `AI` binding variable name must be exactly `AI`.
+
+**Bump `WORKER_REVISION` on every Worker change, and confirm the paste landed before
+believing any live behaviour.** `POST {"mode":"version"}` returns `{revision, aiBinding}`.
+A paste that silently didn't take effect is indistinguishable from a fix that didn't work,
+and that ambiguity has already cost a full round of debugging on this file.
+
+### Recruiter JD scoring runs two model calls
+
+`jd-scoring` is the mode the site uses, and it calls Workers AI **twice**: the
+per-requirement reasoning (reusing `jd-reasoning`'s prompt and message verbatim, with no
+JD prose) and then the overall score (full JD prose, three-key `{score, fitBand,
+narrative}` schema). This is not an optimization — a single call failed every live request
+for six revisions while `jd-reasoning`, identical but without the JD prose, never failed.
+An 8B model cannot hold a whole job description *and* a ten-field-per-requirement
+contract. Don't recombine them.
+
+Two rules that are easy to break when editing the JD validators:
+
+- `assets/js/jd-reasoning.js` re-validates everything the Worker relays. The two files run
+  on the same payload in separate deployment targets, so **a rule made stricter on either
+  side rejects what the other just accepted.** Change both or neither.
+- The relayed response is rebuilt field by field from validated values. That rebuild — not
+  the key checks — is what stops model-invented content reaching the browser, which is why
+  unknown keys are ignored rather than fatal.
+
+A `502` carries `{stage, reason, revision}` and the browser folds the reason into a
+`console.warn`. If JD scoring is falling back, open DevTools and read it rather than
+guessing — the specific rule is named.
 
 ## Content rules
 

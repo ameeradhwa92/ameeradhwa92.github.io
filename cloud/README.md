@@ -69,15 +69,40 @@ Suggested smoke tests after a manual redeploy:
 - `jd-scoring` accepts the same payload plus the JD prose and returns an
   `overall` block. This is the mode the live site uses for every match report.
 
+## `jd-scoring` runs two model calls
+
+It is worth knowing before you read a failure. `jd-scoring` calls Workers AI twice
+and composes the answer:
+
+1. **Per-requirement reasoning** — reuses the `jd-reasoning` prompt and message
+   verbatim, with no JD prose. Produces the narrative and the requirements array.
+2. **Overall score** — the full JD prose plus a three-key schema
+   (`score`, `fitBand`, `narrative`). No requirement ids, nothing else to get wrong.
+
+This is load-bearing, not an optimization. A single call failed every live request
+across six revisions — invented requirement ids, then ids under other field names,
+then missing prose fields — while `jd-reasoning`, identical apart from carrying no
+JD prose, succeeded every time. An 8B model cannot hold a whole job description and
+a ten-field-per-requirement contract at once. Each `502` names which call broke via
+its `stage` field.
+
+Budget note: two calls per analysis instead of one, against 10,000 neurons/day.
+
 ## Diagnosing a `reasoning-invalid` 502
 
 `jd-scoring` and `jd-reasoning` reject a model response that breaks the output
 schema, and both return `502 {"error": "reasoning-invalid", "reason": "..."}`.
-The `reason` names the rule that failed — `json-invalid`, `match-level-invalid`,
-`evidence-invalid`, `capability-invalid`, `requirements-invalid`,
-`overall-fitband-invalid`, `unknown-key-invalid:<context>:<key>`, and so on. It
-is always a fixed code (the key name in the last of those is stripped to
-`[A-Za-z0-9_.-]` and clipped to 40 characters), never an echo of model prose.
+`stage` says which call broke (`reasoning` or `overall`). `reason` names the rule:
+`capability-invalid`, `match-level-invalid:strong`,
+`overall-fitband-invalid:excellent`, `requirements-invalid:got=0,want=10,keys=...`,
+`score-field-invalid:<context>:<key>`, and so on. Model-supplied fragments inside a
+reason (key names, rejected enum values) are stripped to `[A-Za-z0-9_.-]` and clipped
+to 40 characters, so a reason never carries model prose.
+
+`json-invalid` adds a structural fingerprint — `json-invalid:len=3784:opens-obj:unterminated`
+means the response ran out of tokens mid-object (raise the cap), while
+`json-invalid:len=210:leads-prose:no-obj` means it answered in prose (a prompt problem).
+Those have opposite fixes, which is why the bare code was not enough.
 
 The browser folds the reason into a `console.warn` line — `JD scoring fallback:
 Error: cloud-502:capability-invalid` — and never renders it. A visitor still sees
