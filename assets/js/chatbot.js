@@ -65,17 +65,11 @@
     "information and suggest asking Ameer directly — the chat will show WhatsApp and email buttons for that. " +
     "Never invent projects, employers, dates or links.\n\n";
 
-  var JD_REASONING_PROMPT =
-    "You are producing bounded recruiter reasoning for a deterministic recruiter JD match that was already scored locally on Ameer's portfolio site. " +
-    "Use only the supplied recruiter-safe JSON input. Do not invent evidence, do not change the deterministic score, do not add any score fields, " +
-    "and never present academic evidence as professional delivery. Return strict JSON only with the root keys narrative and requirements. " +
-    "The requirements array must include every supplied requirement exactly once. Every requirement object must include requirementId, recruiterIntent, expectedOutcome, matchLevel, evidenceRefs, transferableCapabilities, limitation, recruiterFraming, verificationQuestion, and confidence. " +
-    "Use only the provided evidence IDs and transferable capability vocabulary. If direct published evidence is unavailable, keep the reasoning conservative and explicit about the limitation.";
-
   /* ---------------- bounded recruiter helper compatibility ----------------
      Older local tools consume this public helper block directly.  The live
-     reasoning request below uses JDReasoning and the jd-reasoning contract;
-     this shim remains bounded and is not used as a free-form request path. */
+     scoring request below uses JDReasoning and the jd-scoring contract, whose
+     system prompt is assembled by the Worker and never by this file; this shim
+     remains bounded and is not used as a free-form request path. */
   var JD_EXPLANATION_JD_MAX = 12000;
   var JD_EXPLANATION_RESULT_MAX = 12000;
   var JD_EXPLANATION_CATEGORY_KEYS = [
@@ -276,6 +270,7 @@
       jdStatusIdle: "Paste a job description or choose a local PDF/DOCX to start.",
       jdStatusReading: "Reading the local document…",
       jdStatusScoring: "Scoring the job description locally…",
+      jdAiStatusScoring: "AIMeer is analyzing the match with AI…",
       jdStatusLoaded: "Local document ready: {source}.",
       jdStatusLoadedWithWarnings: "Local document ready: {source}. Warnings: {warnings}",
       jdStatusPasted: "Using the pasted job description text.",
@@ -295,6 +290,12 @@
       jdWarnTrimmed: "Only the first 60,000 characters were analyzed locally.",
       jdWarnGenericText: "No recognizable section headings were found; matching uses generic text only.",
       jdResultScoreLabel: "Estimated compatibility",
+      jdFallbackLabel: "Keyword estimate — full AI analysis unavailable right now.",
+      jdCalibratedNote: "Calibrated against published evidence.",
+      jdFitStrong: "Strong fit",
+      jdFitGood: "Good fit",
+      jdFitPartial: "Partial fit",
+      jdFitLimited: "Limited overlap",
       jdResultSourceLabel: "Source",
       jdResultConfidenceLabel: "Confidence",
       jdResultConfidenceHigh: "High",
@@ -402,6 +403,7 @@
       jdStatusIdle: "Tampal huraian jawatan atau pilih PDF/DOCX setempat untuk bermula.",
       jdStatusReading: "Sedang membaca dokumen setempat…",
       jdStatusScoring: "Sedang mengira skor huraian jawatan secara setempat…",
+      jdAiStatusScoring: "AIMeer sedang menganalisis padanan dengan AI…",
       jdStatusLoaded: "Dokumen setempat sedia digunakan: {source}.",
       jdStatusLoadedWithWarnings: "Dokumen setempat sedia digunakan: {source}. Amaran: {warnings}",
       jdStatusPasted: "Menggunakan teks huraian jawatan yang ditampal.",
@@ -421,6 +423,12 @@
       jdWarnTrimmed: "Hanya 60,000 aksara pertama dianalisis secara setempat.",
       jdWarnGenericText: "Tiada tajuk seksyen yang dapat dikenal pasti; padanan menggunakan teks umum sahaja.",
       jdResultScoreLabel: "Keserasian anggaran",
+      jdFallbackLabel: "Anggaran kata kunci — analisis AI penuh tidak tersedia buat masa ini.",
+      jdCalibratedNote: "Ditentukur berdasarkan bukti terbitan.",
+      jdFitStrong: "Padanan kukuh",
+      jdFitGood: "Padanan baik",
+      jdFitPartial: "Padanan separa",
+      jdFitLimited: "Pertindihan terhad",
       jdResultSourceLabel: "Sumber",
       jdResultConfidenceLabel: "Tahap keyakinan",
       jdResultConfidenceHigh: "Tinggi",
@@ -638,6 +646,7 @@
     result: null,
     normalizedText: "",
     resultSource: "",
+    scoringMode: "", /* "" | pending | ai | fallback — what produced jdState.result */
     reasoningMode: "",
     reasoningBusy: false,
     reasoningError: "",
@@ -754,6 +763,7 @@
     jdState.result = null;
     jdState.normalizedText = "";
     jdState.resultSource = "";
+    jdState.scoringMode = "";
     jdState.reasoningMode = "";
     jdState.reasoningBusy = false;
     jdState.reasoningError = "";
@@ -802,7 +812,10 @@
     var message = "";
     if (jdState.statusKind === "reading") message = t("jdStatusReading");
     else if (jdState.statusKind === "scoring") message = t("jdStatusScoring");
-    else if (jdState.statusKind === "loaded") {
+    else if (jdState.statusKind === "aiScoring") {
+      message = t("jdAiStatusScoring");
+      if (jdState.statusWarnings.length) message += " " + jdState.statusWarnings.join(" ");
+    } else if (jdState.statusKind === "loaded") {
       message = formatT(
         jdState.statusWarnings.length ? "jdStatusLoadedWithWarnings" : "jdStatusLoaded",
         { source: sourceLabel(jdState.statusSource), warnings: jdState.statusWarnings.join(" ") }
@@ -820,6 +833,23 @@
     jdStatus.className = "chat-jd-status" +
       (jdState.statusLevel === "error" ? " is-error" : jdState.statusLevel === "success" ? " is-success" : "");
     jdStatus.textContent = message;
+  }
+
+  /* The status line's source and extractor warnings belong to the deterministic pass;
+     automatic AI scoring only swaps the headline while its request is in flight. */
+  function markJdScoringInFlight() {
+    setJdStatus("aiScoring", {
+      source: jdState.statusSource,
+      warnings: jdState.statusWarnings.slice()
+    });
+  }
+
+  function markJdScoringSettled() {
+    setJdStatus("scored", {
+      level: "success",
+      source: jdState.statusSource,
+      warnings: jdState.statusWarnings.slice()
+    });
   }
 
   function createJdNode(tag, className, text) {
@@ -1274,6 +1304,9 @@
       jdState.reasoningFallback = false;
       jdState.reasoningLanguage = "";
       jdState.result = jdState.deterministicResult;
+      /* no AI score applies to the new language, so the report is the keyword estimate */
+      jdState.scoringMode = "fallback";
+      markJdScoringSettled();
     }
     input.placeholder = t("placeholder");
     refreshStatus();
@@ -1595,46 +1628,18 @@
     });
   }
 
-  function buildLocalReasoningMessages(input) {
-    var language = input && input.language === "ms" ? "ms" : "en";
-    return [
-      {
-        role: "system",
-        content:
-          PROMPT_HEAD + JD_REASONING_PROMPT
-      },
-      {
-        role: "user",
-        content:
-          (language === "ms" ? "Pulangkan strict JSON sahaja." : "Return strict JSON only.") +
-          "\n\nReasoning input JSON:\n" + JSON.stringify(input)
-      }
-    ];
-  }
-
-  function requestJdReasoningLocally(input) {
-    if (!engine) return Promise.reject(new Error("local-unavailable"));
-    return engine.chat.completions.create({
-      messages: buildLocalReasoningMessages(input),
-      stream: false,
-      temperature: 0.1,
-      max_tokens: 900
-    }).then(function (res) {
-      var reply = res && res.choices && res.choices[0] && res.choices[0].message
-        ? String(res.choices[0].message.content || "").trim()
-        : "";
-      if (!reply) throw new Error("local-empty");
-      return reply;
-    });
-  }
-
-  function buildJdReasoningCloudPayload(input) {
+  /* The Worker's jd-scoring mode accepts exactly these keys and rejects any body that
+     carries messages or system — the system prompt is assembled server-side on purpose.
+     jdText stays the recruiter-safe requirement summary that JDReasoning.buildInput
+     already filtered; nothing here re-derives it from the raw pasted JD, and 12000
+     mirrors the Worker's own clip so an oversize payload never round-trips. */
+  function buildJdScoringCloudPayload(input) {
     var safeInput = input || {};
     var evidenceIds = (Array.isArray(safeInput.evidenceRegistry) ? safeInput.evidenceRegistry : [])
       .map(function (record) { return record && typeof record.id === "string" ? record.id : ""; })
       .filter(Boolean);
     return {
-      mode: "jd-reasoning",
+      mode: "jd-scoring",
       language: safeInput.language === "ms" ? "ms" : "en",
       jdText: String(safeInput.jdText || "").slice(0, 12000),
       deterministicInput: {
@@ -1647,11 +1652,11 @@
     };
   }
 
-  function requestJdReasoningViaCloud(input) {
+  function requestJdScoringViaCloud(input) {
     return fetch(CLOUD_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildJdReasoningCloudPayload(input))
+      body: JSON.stringify(buildJdScoringCloudPayload(input))
     }).then(function (r) {
       if (!r.ok) throw new Error("cloud-" + r.status);
       return r.json();
@@ -1662,35 +1667,19 @@
     });
   }
 
+  /* AI scoring is cloud-only: the on-device 1B model cannot produce the structured
+     score this contract needs, so a pending local download never gates or delays it.
+     One silent retry, then the deterministic pass stands on its own as a labeled
+     keyword estimate. */
   function requestJdReasoning() {
     if (!jdState.deterministicResult || !jdState.normalizedText || jdState.reasoningBusy) return;
-    if (!window.JDReasoning ||
-      typeof window.JDReasoning.buildInput !== "function" ||
-      typeof window.JDReasoning.validateModelOutput !== "function" ||
-      typeof window.JDReasoning.mergeResult !== "function" ||
-      typeof window.JDReasoning.fallback !== "function") {
-      jdState.reasoningError = t("jdReasonError");
-      renderJdResult();
-      return;
-    }
-    var mode = getJdReasoningMode();
-    if (mode === "waiting" || mode === "unavailable") {
-      jdState.reasoningError = t("jdReasonError");
-      renderJdResult();
-      return;
-    }
     var deterministicResult = jdState.deterministicResult;
     var analysisToken = jdState.analysisRequestToken;
     var requestToken = nextExplanationToken(jdState.reasoningRequestToken);
     var currentLanguage = reasoningLanguage();
     var reasoningInput = null;
     jdState.reasoningRequestToken = requestToken;
-    jdState.reasoningBusy = true;
-    jdState.reasoningError = "";
-    jdState.reasoningMode = mode;
     jdState.reasoningLanguage = currentLanguage;
-    jdState.reasoningFallback = false;
-    renderJdResult();
 
     function canApplyReasoning() {
       return canApplyExplanationToken(requestToken, jdState.reasoningRequestToken) &&
@@ -1700,19 +1689,49 @@
         currentLanguage === jdState.reasoningLanguage;
     }
 
-    function applyReasoningFallback(reason) {
+    function applyScoringFallback(reason) {
       if (!canApplyReasoning()) return;
-      if (window.console && console.warn && reason) console.warn("JD reasoning fallback:", reason);
+      if (window.console && console.warn && reason) console.warn("JD scoring fallback:", reason);
       jdState.reasoningBusy = false;
       jdState.reasoningFallback = true;
       jdState.reasoningError = t("jdReasonError");
-      jdState.result = window.JDReasoning.fallback(
-        deterministicResult,
-        reasoningInput || { language: currentLanguage },
-        currentLanguage
-      );
+      jdState.scoringMode = "fallback";
+      jdState.result = deterministicResult;
       renderJdResult();
+      markJdScoringSettled();
     }
+
+    function requestScoringAttempt() {
+      return requestJdScoringViaCloud(reasoningInput).then(function (rawOutput) {
+        var validation = window.JDReasoning.validateModelOutput(rawOutput, reasoningInput);
+        if (!validation || !validation.ok) {
+          throw new Error(validation && validation.error ? validation.error : "reasoning-invalid");
+        }
+        return validation.reasoning;
+      });
+    }
+
+    if (!window.JDReasoning ||
+      typeof window.JDReasoning.buildInput !== "function" ||
+      typeof window.JDReasoning.validateModelOutput !== "function" ||
+      typeof window.JDReasoning.mergeResult !== "function") {
+      jdState.reasoningMode = "unavailable";
+      applyScoringFallback("reasoning-unavailable");
+      return;
+    }
+    if (!cloudOk) {
+      jdState.reasoningMode = "unavailable";
+      applyScoringFallback("cloud-unavailable");
+      return;
+    }
+
+    jdState.reasoningBusy = true;
+    jdState.reasoningError = "";
+    jdState.reasoningMode = "cloud";
+    jdState.reasoningFallback = false;
+    jdState.scoringMode = "pending";
+    renderJdResult();
+    markJdScoringInFlight();
 
     ensureProfile().then(function (profile) {
       if (!canApplyReasoning()) return null;
@@ -1722,23 +1741,22 @@
         profile,
         currentLanguage
       );
-      return mode === "local"
-        ? requestJdReasoningLocally(reasoningInput)
-        : requestJdReasoningViaCloud(reasoningInput);
-    }).then(function (rawOutput) {
-      if (!rawOutput || !canApplyReasoning()) return;
-      var validation = window.JDReasoning.validateModelOutput(rawOutput, reasoningInput);
-      if (!validation || !validation.ok) {
-        applyReasoningFallback(validation && validation.error ? validation.error : "reasoning-invalid");
-        return;
-      }
+      return requestScoringAttempt().catch(function (firstError) {
+        if (!canApplyReasoning()) return null;
+        if (window.console && console.warn) console.warn("JD scoring retry after:", firstError);
+        return requestScoringAttempt();
+      });
+    }).then(function (reasoning) {
+      if (!reasoning || !canApplyReasoning()) return;
       jdState.reasoningBusy = false;
       jdState.reasoningFallback = false;
       jdState.reasoningError = "";
-      jdState.result = window.JDReasoning.mergeResult(deterministicResult, validation.reasoning, reasoningInput);
+      jdState.scoringMode = "ai";
+      jdState.result = window.JDReasoning.mergeResult(deterministicResult, reasoning, reasoningInput);
       renderJdResult();
+      markJdScoringSettled();
     }).catch(function (err) {
-      applyReasoningFallback(err);
+      applyScoringFallback(err);
     });
   }
 
@@ -1930,6 +1948,7 @@
         ? normalized.normalizedText
         : (normalized && normalized.rawText ? normalized.rawText : text);
       jdState.resultSource = source || "paste";
+      jdState.scoringMode = "pending";
       jdState.reasoningMode = "";
       jdState.reasoningBusy = false;
       jdState.reasoningError = "";
@@ -1940,6 +1959,8 @@
         source: jdState.resultSource,
         warnings: warnings
       });
+      /* AI scoring starts on its own — the visitor never has to ask for it. */
+      requestJdReasoning();
     }).catch(function (err) {
       if (!canApplyAnalysisToken(requestToken, jdState.analysisRequestToken)) return;
       if (window.console && console.warn) console.warn("Recruiter scoring failed:", err);

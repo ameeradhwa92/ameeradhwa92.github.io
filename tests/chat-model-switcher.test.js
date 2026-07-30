@@ -86,16 +86,6 @@ function collectText(node) {
     .trim();
 }
 
-function findNode(node, predicate) {
-  if (!node) return null;
-  if (predicate(node)) return node;
-  for (const child of node.children || []) {
-    const match = findNode(child, predicate);
-    if (match) return match;
-  }
-  return null;
-}
-
 function countNodes(node, predicate) {
   if (!node) return 0;
   let total = predicate(node) ? 1 : 0;
@@ -103,10 +93,6 @@ function countNodes(node, predicate) {
     total += countNodes(child, predicate);
   }
   return total;
-}
-
-function getFirstButton(node) {
-  return findNode(node, (entry) => entry.tagName === 'BUTTON');
 }
 
 function createChatContext(options = {}) {
@@ -338,12 +324,52 @@ function buildDeterministicResult(overrides = {}) {
   });
 }
 
+/* The strict JSON the Worker's jd-scoring mode is expected to relay back: jd-reasoning's
+   per-requirement shape plus the AI-led `overall` block that validateModelOutput now
+   requires. Matches PROFILE_FIXTURE's evidence ids and buildDeterministicResult's
+   requirement ids so the real JDReasoning validate/merge path accepts it. */
+function buildScoringModelOutput(overrides = {}) {
+  return JSON.stringify(Object.assign({
+    narrative: 'Calibrated fit improves when adjacent cloud delivery is counted, but Kubernetes remains a verification topic.',
+    requirements: [
+      {
+        requirementId: 'req-aspnet-core',
+        recruiterIntent: 'Own production-grade web delivery on the current stack.',
+        expectedOutcome: 'Sustain and extend the current ASP.NET Core platform.',
+        matchLevel: 'direct-professional',
+        evidenceRefs: ['ev-retailaim-plus'],
+        transferableCapabilities: [],
+        limitation: 'Published evidence confirms the current stack but not every future module.',
+        recruiterFraming: 'Direct published production evidence is already available.',
+        verificationQuestion: 'Which high-scale production modules did he own directly?',
+        confidence: 'high'
+      },
+      {
+        requirementId: 'req-kubernetes',
+        recruiterIntent: 'Support containerized deployment and operations.',
+        expectedOutcome: 'Ramp into Kubernetes-backed delivery with adjacent cloud ownership.',
+        matchLevel: 'adjacent-professional',
+        evidenceRefs: ['ev-azure-devops'],
+        transferableCapabilities: ['Azure DevOps', 'Release automation'],
+        limitation: 'Published work does not yet confirm a production Kubernetes rollout.',
+        recruiterFraming: 'Adjacent cloud delivery shortens the ramp, but screening should confirm direct cluster experience.',
+        verificationQuestion: 'What hands-on Kubernetes rollout, if any, has he completed directly?',
+        confidence: 'medium'
+      }
+    ],
+    overall: {
+      score: 78,
+      fitBand: 'strong',
+      narrative: 'Strong overlap on the published .NET delivery stack; container operations remain the one screening topic.'
+    }
+  }, overrides));
+}
+
 function buildMergedResult(baseResult, overrides = {}) {
   const result = clone(baseResult);
   result.deterministicScore = 72;
   result.verifiedScore = 68;
   result.transferableScore = 79;
-  result.requiredGapCeiling = 88;
   result.compositeScore = 79;
   result.reasoningNarrative = 'Calibrated fit improves when adjacent cloud delivery is counted, but Kubernetes remains a verification topic.';
   result.requirementReasoning = [
@@ -421,23 +447,6 @@ function buildMergedResult(baseResult, overrides = {}) {
     ]
   };
   return Object.assign(result, overrides);
-}
-
-function buildFallback(language = 'en', overrides = {}) {
-  return Object.assign({
-    mode: 'deterministic-fallback',
-    language,
-    deterministicScore: 72,
-    narrative: language === 'ms'
-      ? 'Ringkasan deterministik digunakan. Kekuatan yang disahkan, jurang yang nyata, dan soalan saringan kekal dipaparkan tanpa penaakulan AI.'
-      : 'Deterministic fallback is active. Verified strengths, explicit gaps, and recruiter screening questions remain available without AI reasoning.',
-    sections: {
-      strengths: [{ term: 'ASP.NET Core MVC', note: 'Verified production delivery is already published.' }],
-      gaps: [{ term: 'Salesforce Marketing Cloud', note: 'No published implementation evidence is currently available.' }],
-      limitations: [{ term: 'Kubernetes', note: 'This remains a partial match and should be validated during screening.' }],
-      interviewQuestions: [{ term: 'Kubernetes', question: 'What production cluster rollout, if any, has he handled directly?' }]
-    }
-  }, overrides);
 }
 
 test('chat header exposes cloud and local model choices with accessible state', () => {
@@ -580,19 +589,24 @@ test('JD reasoning keeps local waiting state ahead of interim cloud fallback', a
   }), 'waiting');
 });
 
-test('switching to secure cloud rerenders an existing JD result from waiting to cloud reasoning', async () => {
+test('JD scoring goes straight to secure cloud without waiting for the pending on-device download', async () => {
   const pendingDownload = deferred();
   const deterministicResult = buildDeterministicResult();
+  const cloudCalls = [];
   const chatbotWithControlledWebLLM = chatbot.replace(
     'return import(WEBLLM_CDN).then(function (webllm) {',
     'return window.__importWebLLM(WEBLLM_CDN).then(function (webllm) {'
   );
-  const { context, elements } = createChatContext({
+  const { context, elements, progress } = createChatContext({
     saveData: false,
-    fetchImpl(url) {
+    fetchImpl(url, init) {
       const target = String(url);
       if (target.endsWith('aimeer-kb.txt')) return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
       if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
+      if (target.includes('workers.dev')) {
+        cloudCalls.push(JSON.parse(init.body));
+        return Promise.resolve(makeJsonResponse({ reasoning: buildScoringModelOutput() }));
+      }
       throw new Error(`Unexpected fetch: ${target}`);
     }
   });
@@ -611,113 +625,50 @@ test('switching to secure cloud rerenders an existing JD result from waiting to 
       return clone(deterministicResult);
     }
   };
+  vm.runInNewContext(jdReasoning, context);
 
   await loadChat(context, { source: chatbotWithControlledWebLLM });
   elements['chat-launcher'].dispatch('click');
   await flushAsync();
+  assert.equal(progress.hidden, false, 'the on-device download should still be in flight');
 
   elements['chat-jd-input'].value = 'Need ASP.NET Core MVC and cloud delivery ownership.';
   elements['chat-jd-analyze'].dispatch('click');
   await flushAsync();
 
-  const beforeSwitch = collectText(elements['chat-jd-result']);
-  const waitingButton = getFirstButton(elements['chat-jd-result']);
-  assert.match(beforeSwitch, /still getting ready/i, 'the initial recruiter reasoning state should stay in local waiting while the download is pending');
-  assert.equal(waitingButton.disabled, true, 'the waiting recruiter reasoning action should start disabled');
+  assert.equal(progress.hidden, false, 'JD scoring must not cancel or await the on-device download');
+  assert.equal(cloudCalls.length, 1, 'scoring should reach the secure cloud even while the local model is downloading');
+  assert.equal(cloudCalls[0].mode, 'jd-scoring');
 
-  elements['chat-model-cloud'].dispatch('click');
-  await flushAsync();
-
-  const afterSwitch = collectText(elements['chat-jd-result']);
-  const cloudButton = getFirstButton(elements['chat-jd-result']);
-  assert.match(afterSwitch, /secure cloud AI/i, 'switching to secure cloud should rerender the existing recruiter result with cloud status');
-  assert.equal(cloudButton.disabled, false, 'switching to secure cloud should enable the recruiter reasoning action for the existing result');
+  const rendered = collectText(elements['chat-jd-result']);
+  assert.match(rendered, /secure cloud AI/i, 'the report should state that scoring used secure cloud AI');
+  assert.doesNotMatch(rendered, /still getting ready/i, 'scoring never waits on the on-device model');
+  assert.match(rendered, /container operations remain the one screening topic/i, 'the merged AI narrative should render');
 });
 
-test('JD matcher keeps the deterministic score visible until recruiter reasoning is requested, then renders localized local reasoning sections', async () => {
+test('JD scoring runs automatically on the cloud without a click, keeping the deterministic score visible while it works', async () => {
   const deterministicResult = buildDeterministicResult();
   const buildCalls = [];
   const validateCalls = [];
   const mergeCalls = [];
-  const localReasoningCalls = [];
+  const cloudCalls = [];
+  const pendingScoring = deferred();
   let kbFetches = 0;
   let realMergedResult = null;
-  const chatbotWithControlledWebLLM = chatbot.replace(
-    'Promise.all([ensureKB(), navigator.gpu.requestAdapter()])',
-    'Promise.all([Promise.resolve(""), navigator.gpu.requestAdapter()])'
-  ).replace(
-    'return import(WEBLLM_CDN).then(function (webllm) {',
-    'return window.__importWebLLM(WEBLLM_CDN).then(function (webllm) {'
-  );
-  const fakeEngine = {
-    chat: {
-      completions: {
-        create(payload) {
-          if (Array.isArray(payload.messages) && payload.messages.some((message) => /strict json/i.test(String(message.content)))) {
-            localReasoningCalls.push(payload);
-            return Promise.resolve({
-              choices: [{
-                message: {
-                  content: JSON.stringify({
-                    narrative: 'Calibrated fit improves when adjacent cloud delivery is counted, but Kubernetes remains a verification topic.',
-                    requirements: [
-                      {
-                        requirementId: 'req-aspnet-core',
-                        recruiterIntent: 'Own production-grade web delivery on the current stack.',
-                        expectedOutcome: 'Sustain and extend the current ASP.NET Core platform.',
-                        matchLevel: 'direct-professional',
-                        evidenceRefs: ['ev-retailaim-plus'],
-                        transferableCapabilities: [],
-                        limitation: 'Published evidence confirms the current stack but not every future module.',
-                        recruiterFraming: 'Direct published production evidence is already available.',
-                        verificationQuestion: 'Which high-scale production modules did he own directly?',
-                        confidence: 'high'
-                      },
-                      {
-                        requirementId: 'req-kubernetes',
-                        recruiterIntent: 'Support containerized deployment and operations.',
-                        expectedOutcome: 'Ramp into Kubernetes-backed delivery with adjacent cloud ownership.',
-                        matchLevel: 'adjacent-professional',
-                        evidenceRefs: ['ev-azure-devops'],
-                        transferableCapabilities: ['Azure DevOps', 'Release automation'],
-                        limitation: 'Published work does not yet confirm a production Kubernetes rollout.',
-                        recruiterFraming: 'Adjacent cloud delivery shortens the ramp, but screening should confirm direct cluster experience.',
-                        verificationQuestion: 'What hands-on Kubernetes rollout, if any, has he completed directly?',
-                        confidence: 'medium'
-                      }
-                    ]
-                  })
-                }
-              }]
-            });
-          }
-          return Promise.resolve({
-            choices: [{
-              message: {
-                content: 'AIMeer local reply'
-              }
-            }]
-          });
-        }
-      }
-    }
-  };
   const { context, elements, setLanguage } = createChatContext({
-    saveData: false,
-    fetchImpl(url) {
+    saveData: true,
+    fetchImpl(url, init) {
       const target = String(url);
       if (target.endsWith('aimeer-kb.txt')) {
         kbFetches += 1;
         return Promise.resolve(makeTextResponse('KB-CONTACT-FACT client account details and employer history'));
       }
       if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
+      if (target.includes('workers.dev')) {
+        cloudCalls.push(JSON.parse(init.body));
+        return pendingScoring.promise;
+      }
       throw new Error(`Unexpected fetch: ${target}`);
-    }
-  });
-  context.window.__importWebLLM = () => Promise.resolve({
-    CreateMLCEngine(model, options) {
-      options.initProgressCallback({ progress: 1 });
-      return Promise.resolve(fakeEngine);
     }
   });
   context.window.JDExtractor = {
@@ -748,130 +699,95 @@ test('JD matcher keeps the deterministic score visible until recruiter reasoning
       mergeCalls.push({ result, reasoning, input });
       realMergedResult = realJDReasoning.mergeResult(result, reasoning, input);
       return realMergedResult;
-    },
-    fallback() {
-      throw new Error('fallback should not run on the happy local path');
     }
   };
 
-  await loadChat(context, { source: chatbotWithControlledWebLLM });
+  await loadChat(context);
   await flushAsync();
   elements['chat-launcher'].dispatch('click');
   await flushAsync();
 
-  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC and Kubernetes ownership.';
+  elements['chat-jd-input'].value =
+    'Need ASP.NET Core MVC and Kubernetes ownership. Expected salary range RM12,000 monthly plus medical insurance.';
   elements['chat-jd-analyze'].dispatch('click');
   await flushAsync();
 
-  const beforeReasoning = collectText(elements['chat-jd-result']);
-  assert.match(beforeReasoning, /72%/, 'the deterministic score should render immediately');
-  assert.doesNotMatch(beforeReasoning, /verified match/i, 'reasoning sections should not render before an explicit request');
+  const whileScoring = collectText(elements['chat-jd-result']);
+  assert.equal(cloudCalls.length, 1, 'the deterministic pass should trigger cloud scoring on its own, with no user click');
+  assert.equal(buildCalls.length, 1, 'the scoring payload should be built exactly once');
+  assert.equal(kbFetches, 0, 'recruiter scoring must not fetch the general chat knowledge base');
+  assert.match(whileScoring, /72%/, 'the deterministic score stays visible while AI scoring runs');
+  assert.match(
+    elements['chat-jd-status'].textContent,
+    /AIMeer is analyzing the match with AI/,
+    'the status line should announce that AI scoring is in flight'
+  );
 
-  const reasonButton = getFirstButton(elements['chat-jd-result']);
-  assert.ok(reasonButton, 'the recruiter result should expose an explicit reasoning action');
-  reasonButton.dispatch('click');
+  assert.deepEqual(Object.keys(cloudCalls[0]).sort(), [
+    'deterministicInput',
+    'evidenceIds',
+    'jdText',
+    'language',
+    'mode'
+  ]);
+  assert.equal(cloudCalls[0].mode, 'jd-scoring');
+  assert.equal('messages' in cloudCalls[0], false, 'the Worker rejects client-supplied chat messages outright');
+  assert.equal('system' in cloudCalls[0], false, 'the Worker assembles the system prompt itself');
+  assert.match(cloudCalls[0].jdText, /^Required Skills:/, 'jdText stays the recruiter-safe requirement summary');
+  assert.doesNotMatch(
+    cloudCalls[0].jdText,
+    /salary|medical insurance|RM12,000/i,
+    'the existing payload filter must keep compensation and benefits text out of the request'
+  );
+
+  pendingScoring.resolve(makeJsonResponse({ reasoning: buildScoringModelOutput() }));
   await flushAsync();
 
-  const afterReasoning = collectText(elements['chat-jd-result']);
-  assert.equal(buildCalls.length, 1, 'the reasoning payload should be built exactly once');
-  assert.equal(validateCalls.length, 1, 'local reasoning output should be validated');
-  assert.equal(mergeCalls.length, 1, 'validated reasoning should merge back into the deterministic result');
-  assert.equal(kbFetches, 0, 'local recruiter reasoning should not fetch the general knowledge base');
-  assert.equal(localReasoningCalls.length, 1, 'local recruiter reasoning should invoke the model once');
-  assert.doesNotMatch(localReasoningCalls[0].messages[0].content, /KB-CONTACT-FACT|client account details|employer history/i);
-  assert.equal(realMergedResult.deterministicScore, deterministicResult.score, 'the real merge path should preserve the deterministic baseline');
+  const afterScoring = collectText(elements['chat-jd-result']);
+  assert.equal(cloudCalls.length, 1, 'a valid first response must not trigger the retry');
+  assert.equal(validateCalls.length, 1, 'the cloud scoring output should be validated');
+  assert.equal(mergeCalls.length, 1, 'validated scoring should merge back over the deterministic result');
+  assert.equal(realMergedResult.deterministicScore, deterministicResult.score, 'the merge should preserve the deterministic baseline');
+  assert.equal(realMergedResult.aiScore, 78, 'the AI-led score should survive the merge');
+  assert.equal(realMergedResult.finalScore, 78, 'a score inside the clamp band should pass through unchanged');
+  assert.equal(realMergedResult.adjusted, false);
+  assert.equal(realMergedResult.fitBand, 'strong');
   assert.equal(realMergedResult.requirementReasoning[1].evidenceRecords[0].claim, 'Owns release pipelines and cloud delivery workflows.');
-  assert.equal(realMergedResult.requirementReasoning[1].evidenceRecords[0].sourceLabel, 'Azure DevOps release ownership');
-  assert.ok(realMergedResult.sections.verifiedStrengths.length, 'the real merge path should emit verifiedStrengths');
-  assert.ok(realMergedResult.sections.transferableAdvantages.length, 'the real merge path should emit transferableAdvantages');
-  assert.match(afterReasoning, /Deterministic compatibility/i, 'the merged recruiter view should keep the deterministic baseline audit card');
-  assert.match(afterReasoning, /Verified match/i);
-  assert.match(afterReasoning, /Transferable opportunity/i);
-  assert.match(afterReasoning, /Calibrated fit/i);
-  assert.match(afterReasoning, /Owns release pipelines and cloud delivery workflows./i, 'the merged recruiter view should surface the real evidence claim');
-  assert.match(afterReasoning, /Boundary/i, 'the merged recruiter view should surface recruiter-safe limitations');
-  assert.match(afterReasoning, /production Kubernetes rollout/i, 'the merged recruiter view should keep the limitation text');
-  assert.match(afterReasoning, /Verification question/i, 'the merged recruiter view should surface verification prompts');
-  assert.match(afterReasoning, /What hands-on Kubernetes rollout, if any, has he completed directly\?/i, 'the merged recruiter view should preserve verification questions');
-  assert.match(afterReasoning, /on this device/i, 'the local reasoning status should explain that reasoning stayed local');
+  assert.ok(realMergedResult.sections.verifiedStrengths.length, 'the merge should emit verifiedStrengths');
+  assert.ok(realMergedResult.sections.transferableAdvantages.length, 'the merge should emit transferableAdvantages');
+  assert.match(afterScoring, /Deterministic compatibility/i, 'the report should keep the deterministic baseline audit card');
+  assert.match(afterScoring, /Calibrated fit/i);
+  assert.match(afterScoring, /Owns release pipelines and cloud delivery workflows./i, 'the report should surface the resolved evidence claim');
+  assert.match(afterScoring, /production Kubernetes rollout/i, 'the report should keep the recruiter-safe limitation text');
+  assert.match(afterScoring, /What hands-on Kubernetes rollout, if any, has he completed directly\?/i);
+  assert.match(afterScoring, /secure cloud AI/i, 'the report should state that scoring used secure cloud AI');
+  assert.equal(
+    elements['chat-jd-status'].textContent,
+    'Deterministic match ready from pasted text.',
+    'the status line should settle once scoring finishes'
+  );
 
   setLanguage('ms');
   const localized = collectText(elements['chat-jd-result']);
   assert.match(localized, /Padanan disahkan/i);
-  assert.match(localized, /pada peranti ini/i, 'the local reasoning status should localize into formal Bahasa Melayu');
+  assert.match(localized, /awan selamat/i, 'the cloud scoring status should localize into formal Bahasa Melayu');
 });
 
-test('recruiter reasoning keeps a single partial matches section after the real merge renders', async () => {
+test('completed AI scoring keeps a single partial matches section after the real merge renders', async () => {
   const deterministicResult = buildDeterministicResult();
-  const chatbotWithControlledWebLLM = chatbot.replace(
-    'return import(WEBLLM_CDN).then(function (webllm) {',
-    'return window.__importWebLLM(WEBLLM_CDN).then(function (webllm) {'
-  );
-  const fakeEngine = {
-    chat: {
-      completions: {
-        create(payload) {
-          if (Array.isArray(payload.messages) && payload.messages.some((message) => /strict json/i.test(String(message.content)))) {
-            return Promise.resolve({
-              choices: [{
-                message: {
-                  content: JSON.stringify({
-                    narrative: 'Reasoning should not duplicate the deterministic partial matches section.',
-                    requirements: [
-                      {
-                        requirementId: 'req-aspnet-core',
-                        recruiterIntent: 'Own production-grade web delivery on the current stack.',
-                        expectedOutcome: 'Sustain and extend the current ASP.NET Core platform.',
-                        matchLevel: 'direct-professional',
-                        evidenceRefs: ['ev-retailaim-plus'],
-                        transferableCapabilities: [],
-                        limitation: 'Published production delivery is already verified.',
-                        recruiterFraming: 'Direct published production evidence is already available.',
-                        verificationQuestion: 'Which high-scale production modules did he own directly?',
-                        confidence: 'high'
-                      },
-                      {
-                        requirementId: 'req-kubernetes',
-                        recruiterIntent: 'Support containerized deployment and operations.',
-                        expectedOutcome: 'Ramp into Kubernetes-backed delivery with adjacent cloud ownership.',
-                        matchLevel: 'learning-bridge',
-                        evidenceRefs: ['ev-azure-devops'],
-                        transferableCapabilities: ['Azure DevOps', 'Release automation'],
-                        limitation: 'Published work does not yet confirm a production Kubernetes rollout.',
-                        recruiterFraming: 'Adjacent cloud delivery shortens the ramp, but screening should confirm direct cluster experience.',
-                        verificationQuestion: 'What hands-on Kubernetes rollout, if any, has he completed directly?',
-                        confidence: 'medium'
-                      }
-                    ]
-                  })
-                }
-              }]
-            });
-          }
-          return Promise.resolve({
-            choices: [{
-              message: {
-                content: 'AIMeer local reply'
-              }
-            }]
-          });
-        }
-      }
-    }
-  };
   const { context, elements } = createChatContext({
-    saveData: false,
+    saveData: true,
     fetchImpl(url) {
       const target = String(url);
-      if (target.endsWith('aimeer-kb.txt')) return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
       if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
-      throw new Error(`Unexpected fetch: ${target}`);
-    }
-  });
-  context.window.__importWebLLM = () => Promise.resolve({
-    CreateMLCEngine(model, options) {
-      options.initProgressCallback({ progress: 1 });
-      return Promise.resolve(fakeEngine);
+      if (target.includes('workers.dev')) {
+        return Promise.resolve(makeJsonResponse({
+          reasoning: buildScoringModelOutput({
+            narrative: 'Reasoning should not duplicate the deterministic partial matches section.'
+          })
+        }));
+      }
+      return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
     }
   });
   context.window.JDExtractor = {
@@ -889,7 +805,7 @@ test('recruiter reasoning keeps a single partial matches section after the real 
   };
   vm.runInNewContext(jdReasoning, context);
 
-  await loadChat(context, { source: chatbotWithControlledWebLLM });
+  await loadChat(context);
   await flushAsync();
   elements['chat-launcher'].dispatch('click');
   await flushAsync();
@@ -897,58 +813,45 @@ test('recruiter reasoning keeps a single partial matches section after the real 
   elements['chat-jd-input'].value = 'Need ASP.NET Core MVC and Kubernetes ownership.';
   elements['chat-jd-analyze'].dispatch('click');
   await flushAsync();
-  getFirstButton(elements['chat-jd-result']).dispatch('click');
-  await flushAsync();
 
+  assert.match(
+    collectText(elements['chat-jd-result']),
+    /Adjacent cloud delivery shortens the ramp/i,
+    'the merged AI reasoning should have rendered'
+  );
   assert.equal(
     countNodes(
       elements['chat-jd-result'],
       (node) => node.tagName === 'H6' && node.textContent === 'Partial or transferable matches'
     ),
     1,
-    'completed recruiter reasoning should keep only the deterministic partial matches heading'
+    'completed AI scoring should keep only the deterministic partial matches heading'
   );
   assert.doesNotMatch(
     collectText(elements['chat-jd-result']),
     /Partial or transferable matches No items in this section\./i,
-    'completed recruiter reasoning should not append an empty duplicate partial matches block'
+    'completed AI scoring should not append an empty duplicate partial matches block'
   );
 });
 
-test('completed recruiter reasoning keeps its captured local status after the general route changes', async () => {
-  const pendingReasoning = deferred();
+test('in-flight AI scoring keeps its secure-cloud status after the visitor switches to on-device AI', async () => {
+  const pendingScoring = deferred();
   const deterministicResult = buildDeterministicResult();
   const chatbotWithControlledWebLLM = chatbot.replace(
     'return import(WEBLLM_CDN).then(function (webllm) {',
     'return window.__importWebLLM(WEBLLM_CDN).then(function (webllm) {'
   );
-  const fakeEngine = {
-    chat: {
-      completions: {
-        create(payload) {
-          if (Array.isArray(payload.messages) && payload.messages.some((message) => /strict json/i.test(String(message.content)))) {
-            return pendingReasoning.promise;
-          }
-          return Promise.resolve({ choices: [{ message: { content: 'AIMeer local reply' } }] });
-        }
-      }
-    }
-  };
   const { context, elements } = createChatContext({
-    saveData: false,
+    saveData: true,
     fetchImpl(url) {
       const target = String(url);
       if (target.endsWith('aimeer-kb.txt')) return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
       if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
+      if (target.includes('workers.dev')) return pendingScoring.promise;
       throw new Error(`Unexpected fetch: ${target}`);
     }
   });
-  context.window.__importWebLLM = () => Promise.resolve({
-    CreateMLCEngine(model, options) {
-      options.initProgressCallback({ progress: 1 });
-      return Promise.resolve(fakeEngine);
-    }
-  });
+  context.window.__importWebLLM = () => new Promise(() => {});
   context.window.JDExtractor = {
     extract() {
       return Promise.resolve({ text: '', source: 'pdf', warnings: [] });
@@ -973,13 +876,10 @@ test('completed recruiter reasoning keeps its captured local status after the ge
       };
     },
     validateModelOutput() {
-      return { ok: true, reasoning: { narrative: 'captured local reasoning', requirements: [] } };
+      return { ok: true, reasoning: { narrative: 'cloud scoring', requirements: [], overall: { score: 78, fitBand: 'strong', narrative: 'cloud scoring' } } };
     },
     mergeResult(result) {
-      return buildMergedResult(result, { reasoningNarrative: 'captured local reasoning' });
-    },
-    fallback() {
-      throw new Error('fallback should not run on the captured local path');
+      return buildMergedResult(result, { reasoningNarrative: 'cloud scoring' });
     }
   };
 
@@ -989,23 +889,19 @@ test('completed recruiter reasoning keeps its captured local status after the ge
   elements['chat-jd-input'].value = 'Need ASP.NET Core MVC ownership.';
   elements['chat-jd-analyze'].dispatch('click');
   await flushAsync();
-  getFirstButton(elements['chat-jd-result']).dispatch('click');
-  await flushAsync();
 
-  elements['chat-model-cloud'].dispatch('click');
-  pendingReasoning.resolve({
-    choices: [{ message: { content: '{"narrative":"captured local reasoning","requirements":[]}' } }]
-  });
+  elements['chat-model-local'].dispatch('click');
+  pendingScoring.resolve(makeJsonResponse({ reasoning: '{"narrative":"cloud scoring","requirements":[]}' }));
   await flushAsync();
 
   const rendered = collectText(elements['chat-jd-result']);
-  assert.match(rendered, /on this device/i);
-  assert.doesNotMatch(rendered, /secure cloud AI/i);
+  assert.match(rendered, /cloud scoring/, 'the merged cloud result should still render after the route change');
+  assert.match(rendered, /secure cloud AI/i);
+  assert.doesNotMatch(rendered, /on this device/i, 'the report must never claim that cloud scoring stayed on the device');
 });
 
-test('cloud recruiter reasoning localizes its status and falls back without hiding the deterministic score', async () => {
+test('two failed cloud scoring attempts fall back to the deterministic estimate with localized status', async () => {
   const deterministicResult = buildDeterministicResult();
-  const fallback = buildFallback('ms');
   const cloudCalls = [];
   const { context, elements, setLanguage } = createChatContext({
     saveData: true,
@@ -1047,10 +943,6 @@ test('cloud recruiter reasoning localizes its status and falls back without hidi
     },
     mergeResult() {
       throw new Error('mergeResult should not run when validation fails');
-    },
-    fallback(result, input, language) {
-      assert.equal(language, 'ms');
-      return clone({ ...fallback, inputLanguage: input.language, deterministicScore: result.score });
     }
   };
 
@@ -1062,32 +954,30 @@ test('cloud recruiter reasoning localizes its status and falls back without hidi
   elements['chat-jd-analyze'].dispatch('click');
   await flushAsync();
 
-  const reasonButton = getFirstButton(elements['chat-jd-result']);
-  assert.ok(reasonButton, 'the deterministic cloud result should still expose an explicit reasoning action');
-  reasonButton.dispatch('click');
-  await flushAsync();
-
   const rendered = collectText(elements['chat-jd-result']);
-  assert.equal(cloudCalls.length, 1, 'cloud reasoning should send a single bounded request');
-  assert.deepEqual(Object.keys(cloudCalls[0]).sort(), [
-    'deterministicInput',
-    'evidenceIds',
-    'jdText',
-    'language',
-    'mode'
-  ]);
-  assert.equal(cloudCalls[0].mode, 'jd-reasoning');
-  assert.equal(cloudCalls[0].language, 'ms');
-  assert.equal(cloudCalls[0].jdText, 'Perlu ASP.NET Core MVC dan pengalaman orkestrasi kontena.');
-  assert.ok(cloudCalls[0].deterministicInput);
-  assert.equal(Array.isArray(cloudCalls[0].deterministicInput.requirements), true);
-  assert.equal(cloudCalls[0].deterministicInput.deterministicResult.score, 72);
-  assert.deepEqual(cloudCalls[0].evidenceIds, ['ev-retailaim-plus', 'ev-azure-devops']);
-  assert.equal('evidenceRegistry' in cloudCalls[0], false);
-  assert.equal('capabilityVocabulary' in cloudCalls[0], false);
-  assert.match(rendered, /72%/, 'the deterministic score must remain visible after a reasoning failure');
-  assert.match(rendered, /Ringkasan deterministik digunakan/i, 'the UI should show the localized fallback narrative');
-  assert.match(rendered, /awan selamat/i, 'the cloud reasoning status should be localized in Bahasa Melayu');
+  assert.equal(cloudCalls.length, 2, 'an invalid response should be retried exactly once before falling back');
+  cloudCalls.forEach((call) => {
+    assert.deepEqual(Object.keys(call).sort(), [
+      'deterministicInput',
+      'evidenceIds',
+      'jdText',
+      'language',
+      'mode'
+    ]);
+    assert.equal(call.mode, 'jd-scoring');
+    assert.equal(call.language, 'ms');
+    assert.equal(call.jdText, 'Perlu ASP.NET Core MVC dan pengalaman orkestrasi kontena.');
+    assert.ok(call.deterministicInput);
+    assert.equal(Array.isArray(call.deterministicInput.requirements), true);
+    assert.equal(call.deterministicInput.deterministicResult.score, 72);
+    assert.deepEqual(call.evidenceIds, ['ev-retailaim-plus', 'ev-azure-devops']);
+    assert.equal('evidenceRegistry' in call, false);
+    assert.equal('capabilityVocabulary' in call, false);
+  });
+  assert.match(rendered, /72%/, 'the deterministic score must remain visible after scoring fails');
+  assert.match(rendered, /Ringkasan deterministik digunakan/i, 'the UI should show the localized fallback status');
+  assert.match(rendered, /awan selamat/i, 'the cloud scoring status should be localized in Bahasa Melayu');
+  assert.doesNotMatch(rendered, /Penaakulan mengikut keperluan/i, 'no AI reasoning sections should render on the fallback path');
 });
 
 test('a stale recruiter reasoning response cannot replace a newer JD result', async () => {
@@ -1158,9 +1048,6 @@ test('a stale recruiter reasoning response cannot replace a newer JD result', as
     },
     mergeResult(result) {
       return clone(result.score === 58 ? mergedSecond : mergedFirst);
-    },
-    fallback(result, input, language) {
-      return buildFallback(language, { deterministicScore: result.score, inputLanguage: input.language });
     }
   };
 
@@ -1170,8 +1057,7 @@ test('a stale recruiter reasoning response cannot replace a newer JD result', as
   elements['chat-jd-input'].value = 'Need ASP.NET Core MVC ownership.';
   elements['chat-jd-analyze'].dispatch('click');
   await flushAsync();
-  getFirstButton(elements['chat-jd-result']).dispatch('click');
-  await flushAsync();
+  assert.equal(requestCount, 1, 'the first analysis should start its own cloud scoring request');
 
   elements['chat-jd-input'].value = 'Need React architecture ownership.';
   elements['chat-jd-analyze'].dispatch('click');
@@ -1226,9 +1112,6 @@ test('a language change invalidates an in-flight recruiter reasoning response', 
     mergeResult() {
       mergeCalls += 1;
       return buildMergedResult(deterministicResult, { reasoningNarrative: 'stale language reasoning' });
-    },
-    fallback() {
-      throw new Error('fallback should not run when the language changes');
     }
   };
 
@@ -1236,8 +1119,6 @@ test('a language change invalidates an in-flight recruiter reasoning response', 
   await flushAsync();
   elements['chat-jd-input'].value = 'Need ASP.NET Core MVC ownership.';
   elements['chat-jd-analyze'].dispatch('click');
-  await flushAsync();
-  getFirstButton(elements['chat-jd-result']).dispatch('click');
   await flushAsync();
 
   setLanguage('ms');
@@ -1247,6 +1128,11 @@ test('a language change invalidates an in-flight recruiter reasoning response', 
   assert.equal(mergeCalls, 0, 'a response generated for the old language must not merge');
   assert.match(collectText(elements['chat-jd-result']), /72%/);
   assert.doesNotMatch(collectText(elements['chat-jd-result']), /stale language reasoning/i);
+  assert.equal(
+    elements['chat-jd-status'].textContent,
+    'Padanan deterministik siap daripada teks tampalan.',
+    'the status line must not stay stuck on the AI-analyzing message after the language change'
+  );
 });
 
 test('selecting eligible local AI presents Local while the active route is cloud', async () => {
