@@ -31,7 +31,32 @@ mode for recruiter reasoning — is **not live** until you:
 2. Replace the dashboard editor contents with the latest `cloud/aimeer-worker.js`.
 3. Confirm the **Workers AI** binding named exactly `AI` is still present.
 4. Click **Deploy**.
-5. Smoke-test the live endpoint from an allowed origin after deployment.
+5. **Confirm the deploy actually landed** (see below) before smoke-testing anything.
+
+### Always confirm which revision is live
+
+A paste that does not take effect — editor not saved, Deploy not clicked, a stale
+copy pasted — looks exactly like a fix that did not work. That mistake cost
+several rounds of debugging: the same failures kept reappearing because the code
+under test was never the code deployed.
+
+`WORKER_REVISION` at the top of `aimeer-worker.js` is bumped on every change that
+gets pasted. Ask the live endpoint which one it is running:
+
+```bash
+curl -s -X POST https://aimeer-ai.<your-subdomain>.workers.dev/ \
+  -H 'Content-Type: application/json' \
+  -H 'Origin: https://ameeradhwa92.github.io' \
+  -d '{"mode":"version"}'
+# {"revision":"2026-07-30-jd-6","aiBinding":true}
+```
+
+If `revision` does not match the constant in the file you just pasted, the deploy
+did not land — fix that before reading anything into the behaviour. `aiBinding`
+reports whether the `AI` binding is still attached, and the version probe costs no
+Workers AI call. Every `jd-scoring` / `jd-reasoning` response carries the same
+`revision`, so a failure reason can always be read against the code that produced
+it.
 
 Suggested smoke tests after a manual redeploy:
 

@@ -14,6 +14,13 @@
    No API key lives anywhere: the model runs on this Worker's own AI binding,
    and only requests from the portfolio site's origin are served. */
 
+/* Bump this on every change that gets pasted into the dashboard. `{"mode":"version"}` returns it,
+   which is the only way to tell from outside which revision is actually live — this file is
+   deployed by hand, and a paste that silently does not take effect looks exactly like a fix that
+   did not work. That cost several rounds of debugging: the same failures kept coming back because
+   the revision under test was never the revision deployed. */
+const WORKER_REVISION = "2026-07-30-jd-6";
+
 const SITE = "https://ameeradhwa92.github.io";
 const KB_URL = SITE + "/assets/data/aimeer-kb.txt";
 const PROFILE_URL = SITE + "/assets/data/aimeer-profile.json";
@@ -356,6 +363,12 @@ export default {
       return json({ error: "invalid-body" }, 400, cors);
     }
 
+    /* Answered before the AI-binding check on purpose: "which revision is live" must be answerable
+       even when the binding is missing, since that is one of the things it is used to diagnose. */
+    if (detectMode(body.mode) === "version") {
+      return json({ revision: WORKER_REVISION, aiBinding: !!env.AI }, 200, cors);
+    }
+
     if (!env.AI) {
       /* the Workers AI binding is missing: Settings → Bindings → Add → Workers AI,
          variable name exactly "AI", then Deploy again */
@@ -489,9 +502,11 @@ async function runJdReasoningMode(env, cors, body, options) {
       const reason = validated.error === "json-invalid"
         ? jsonInvalidFingerprint(rawOutput)
         : (validated.error || "unknown");
-      return json({ error: "reasoning-invalid", reason }, 502, cors);
+      /* revision travels with the failure so a reason can never again be read against the wrong
+         deployed code — the mistake that made the same failures look like unfixed ones. */
+      return json({ error: "reasoning-invalid", reason, revision: WORKER_REVISION }, 502, cors);
     }
-    return json({ reasoning: JSON.stringify(validated.reasoning) }, 200, cors);
+    return json({ reasoning: JSON.stringify(validated.reasoning), revision: WORKER_REVISION }, 200, cors);
   } catch (e) {
     return json({ error: "ai-failed", detail: String((e && e.message) || e).slice(0, 200) }, 502, cors);
   }
@@ -562,7 +577,8 @@ function json(obj, status, headers) {
 }
 
 function detectMode(value) {
-  return value === "summary" ? "summary"
+  return value === "version" ? "version"
+    : value === "summary" ? "summary"
     : value === "jd-explanation" ? "jd-explanation"
       : value === "jd-reasoning" ? "jd-reasoning"
         : value === "jd-scoring" ? "jd-scoring"

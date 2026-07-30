@@ -1294,6 +1294,36 @@ test('duplicate and unknown requirement ids are dropped, and the count is report
   );
 });
 
+/* This file is deployed by hand, and a paste that silently does not take effect looks exactly like
+   a fix that did not work — which is what happened, repeatedly, during this debugging. The revision
+   marker is how a live response can be read against the code that produced it. */
+test('the worker reports its revision, with and without the AI binding', async () => {
+  const withAi = await callWorker({ mode: 'version' });
+  assert.equal(withAi.status, 200);
+  assert.match(withAi.json.revision, /^\d{4}-\d{2}-\d{2}-/, 'the revision must be a dated marker');
+  assert.equal(withAi.json.aiBinding, true);
+  assert.equal(withAi.aiCalls.length, 0, 'a version probe must not spend a Workers AI call');
+
+  const withoutAi = await callWorker({ mode: 'version' }, { includeAi: false });
+  assert.equal(withoutAi.status, 200, 'the revision must be answerable when the binding is missing');
+  assert.equal(withoutAi.json.aiBinding, false, 'a missing AI binding is one of the things this diagnoses');
+});
+
+test('JD responses carry the revision that produced them', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const version = await callWorker({ mode: 'version' });
+
+  const ok = await callWorker(request, { profile, aiResponse: buildValidScoringResponse(request, profile) });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.json.revision, version.json.revision);
+
+  const failed = await callWorker(request, { profile, aiResponse: 'not json' });
+  assert.equal(failed.status, 502);
+  assert.equal(failed.json.revision, version.json.revision,
+    'a reason must never be readable against the wrong deployed code');
+});
+
 test('the requirement count and the list to judge are stated in the user message', async () => {
   const request = buildValidScoringRequest({ language: 'en' });
   const profile = loadProfile();
