@@ -11,9 +11,9 @@ directly; `.nojekyll` disables Jekyll processing. Pushing to `main` *is* the dep
 
 ## Running locally
 
-There is no build, no test runner and no linter. Serve over HTTP — do **not** open
-`index.html` via `file://`, because the chatbot `fetch()`es its knowledge base and the
-cloud relay validates the request `Origin`:
+There is no build step and no linter, but there **is** a test suite. Serve over HTTP —
+do **not** open `index.html` via `file://`, because the chatbot `fetch()`es its knowledge
+base and the cloud relay validates the request `Origin`:
 
 ```bash
 python -m http.server 8080     # port 8080 specifically — see below
@@ -22,6 +22,30 @@ python -m http.server 8080     # port 8080 specifically — see below
 The Cloudflare Worker's `ALLOWED_ORIGINS` only whitelists the live site plus
 `http://localhost:8080` and `http://127.0.0.1:8080`. Any other port silently loses the
 cloud AI tier during local preview.
+
+Before anything ships, run the test suite from the repo root and confirm 0 failing:
+
+```bash
+node --test "tests/*.test.js"
+```
+
+`tests/*.test.js` is not the whole verification surface — `tools/` holds five more
+harnesses that catch regressions the unit tests don't (recruiter profile/KB drift, JD
+extractor/matcher/cloud-payload contracts, and the recruiter UI's exact copy strings).
+Run all five too:
+
+```bash
+node tools/test_jd_extractor.mjs
+node tools/test_jd_matcher.mjs
+node tools/test_recruiter_cloud_payload.mjs
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify_recruiter_profile.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify_recruiter_ui.ps1
+```
+
+A green tree means the `tests/` suite **and** all five `tools/` harnesses pass — not the
+`tests/` suite alone. `verify_recruiter_ui.ps1` asserts on exact disclaimer and chip
+copy, so any change to that text must update the script's expectations in the same
+change, or it goes red unnoticed.
 
 Verification is manual: open in a browser, check 375 / 768 / 1440 widths, toggle
 dark/light and EN/BM, and `curl` every project URL before publishing a status change.
@@ -34,16 +58,25 @@ dark/light and EN/BM, and `curl` every project URL before publishing a status ch
 | `assets/css/style.css` | All styling; palette as CSS custom properties |
 | `assets/js/main.js` | Theme, language, scroll progress + self-drawing spine, reveals, cert modal, cursor glow |
 | `assets/js/i18n.js` | `window.I18N_MS` — Bahasa Melayu strings only |
-| `assets/js/chatbot.js` | AIMeer, the three-tier chatbot |
+| `assets/js/aimeer-device.js` | Device/browser capability checks that decide local-AI eligibility (WebGPU, memory, iOS, known Android tiers) |
+| `assets/js/jd-extractor.js` | Recruiter JD matcher: local PDF/DOCX/paste text extraction and normalization |
+| `assets/js/jd-matcher.js` | Recruiter JD matcher: deterministic keyword-based scoring against the published profile |
+| `assets/js/jd-reasoning.js` | Recruiter JD matcher: builds the cloud scoring request, validates the model's response, merges it with the deterministic result (clamp band, fit band, report sections) |
+| `assets/js/chatbot.js` | AIMeer, the three-tier chatbot, plus the recruiter JD match report UI and its cloud-scoring request flow |
 | `assets/data/aimeer-kb.txt` | Chatbot knowledge base — fetched by *both* the browser and the Worker |
+| `assets/data/aimeer-profile.json` | Recruiter evidence registry (`recruiterEvidence`, `privacyExclusions`) — the only allowlist of evidence the JD matcher's cloud reasoning may cite |
 | `cloud/aimeer-worker.js` | Cloudflare Worker relay (deployed manually, see below) |
 | `docs/superpowers/specs/2026-07-24-portfolio-site-design.md` | Design spec + canonical project/URL/status registry |
+| `docs/superpowers/specs/2026-07-30-recruiter-copilot-ai-scoring-design.md` | Design spec for the recruiter JD matcher's AI-led scoring, clamp band, and privacy screen |
 | `docs/resume-source/resume.html` | Source for the downloadable résumé PDF |
+| `tests/*.test.js` | `node --test` suite — run before anything ships (see Running locally) |
+| `tools/` | Five extra harnesses `tests/*.test.js` does not cover (JD extractor/matcher/cloud-payload contracts, recruiter profile/KB drift, recruiter UI exact copy) — see Running locally |
 
-Scripts are plain IIFEs loaded with `defer` in order: `i18n.js` → `main.js` → `chatbot.js`.
-An inline script in `<head>` applies the saved theme/language to `documentElement.dataset`
-before first paint to avoid a flash — it runs before the stylesheet's cascade matters, so
-keep it in sync with the palette selectors.
+Scripts are plain IIFEs loaded with `defer` in the order `verify_recruiter_ui.ps1` asserts:
+`i18n.js` → `main.js` → `aimeer-device.js` → `jd-extractor.js` → `jd-matcher.js` →
+`jd-reasoning.js` → `chatbot.js`. An inline script in `<head>` applies the saved
+theme/language to `documentElement.dataset` before first paint to avoid a flash — it runs
+before the stylesheet's cascade matters, so keep it in sync with the palette selectors.
 
 ### i18n model
 

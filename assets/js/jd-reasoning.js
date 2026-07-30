@@ -3,6 +3,9 @@
 
   var JD_TEXT_MAX = 12000;
   var RESULT_CHARS_MAX = 12000;
+  /* Stands in for the JD prose when the screen below refuses it.  Must stay non-empty (the
+     Worker rejects a blank jdText) and must not itself trip the screen. */
+  var JD_TEXT_WITHHELD_NOTICE = "Job description prose withheld: it carried personal identifiers. Score from the structured requirements only.";
   var DEFAULT_PRIVACY_EXCLUSIONS = [
     "salary",
     "nric",
@@ -14,31 +17,46 @@
     "signatures",
     "confidential contract language"
   ];
-  var AMBIGUOUS_PRIVACY_TERMS = {
+  /* Terms from the exclusion list that describe the EMPLOYER's offer when they appear in a
+     job description, not private data about anyone.  A bare substring match on them would
+     reject nearly every real posting ("competitive salary", "medical insurance", "annual
+     leave"), so this screen skips them.  jd-matcher.js still drops requirement lines that
+     contain them, so they never become scored requirements. */
+  var EMPLOYER_BOILERPLATE_TERMS = {
     salary: true,
     benefits: true,
     leave: true,
     medical: true
   };
-  var CONTEXTUAL_PRIVACY_PATTERNS = [
-    /\b(?:expected|expecting|monthly|basic)\s+(?:[a-z]+\s+){0,2}salary\b/i,
-    /\bsalary\s+(?:expectation|expectations|range|package|history)\b/i,
-    /\b(?:expected|total)\s+compensation\b/i,
-    /\bcompensation\s+(?:package|history|range)\b/i,
-    /\bremuneration\s+(?:package|expectation|range)\b/i,
-    /\b(?:salary|employee|pay)\s+(?:[a-z]+\s+){0,2}(?:compensation|remuneration)\b/i,
-    /\b(?:compensation|remuneration)\s+(?:[a-z]+\s+){0,2}(?:salary|employee|pay)\b/i,
-    /\b(?:candidate|applicant|employee|staff|admin|administrative|payroll|hr)\s+(?:[a-z]+\s+){0,2}(?:compensation|remuneration)\b/i,
-    /\b(?:compensation|remuneration)\s+(?:[a-z]+\s+){0,2}(?:candidate|applicant|employee|staff|admin|administrative|payroll|hr)\b/i,
-    /\b(?:compensation|remuneration)\s+(?:review|workflow|administration)\b/i,
-    /\b(?:review|workflow|administration)\s+(?:of|for|around|on)?\s*(?:compensation|remuneration)\b/i,
-    /\bmedical\s+(?:coverage|insurance|benefits|plan|history)\b/i,
-    /\b(?:health|employee)\s+(?:benefits|coverage|insurance|plan)\b/i,
-    /\b(?:annual|sick|paid|unpaid|parental|maternity|paternity|casual)\s+leave\b/i,
-    /\bleave\s+(?:entitlement|history|balance|policy|policies|allowance)\b/i,
-    /\bbenefits\s+(?:package|coverage|plan|plans|history|entitlement)\b/i
+  /* A pasted document can carry a THIRD PARTY's personal identifiers — someone else's
+     NRIC, home address or date of birth.  Forwarding those to the cloud model would leak
+     data that is not ours to share, so this group still blocks.  Keep it identical to
+     cloud/aimeer-worker.js: the browser and the Worker are separate deployment targets
+     that cannot share code, and the same JD must be accepted or refused by both. */
+  var PERSONAL_IDENTIFIER_PATTERNS = [
+    /\bnric\b/i,
+    /\bmy[- ]?kad\b/i,
+    /\b(?:ic|i\/c)\s*(?:no\.?|number)\b/i,
+    /\b\d{6}-\d{2}-\d{4}\b/,
+    /\bhome\s+address\b/i,
+    /\bdate\s+of\s+birth\b/i,
+    /\bpassport\s*(?:no\.?|number)\b/i,
+    /\bbank\s+account\s*(?:no\.?|number)\b/i,
+    /* Record-style history and balance phrasings name a PERSON's own data, and this tool
+       accepts arbitrary pasted text and PDF/DOCX — a mis-pasted employee record or CV must
+       not forward them.  "salary history" and "leave entitlement" are deliberately absent:
+       employers use both to describe or ask about their own offer ("Leave entitlement: 18
+       days", "state your salary history"), and withholding a real posting's whole prose over
+       an employer's own words is the worse trade — the same over-blocking this list exists to
+       avoid.  Keep them out unless the phrasing genuinely names one person's figure. */
+    /\b(?:medical|compensation|benefits)\s+history\b/i,
+    /\bleave\s+balance\b/i
+    /* No bare "signature" pattern: privacyExclusions already blocks the plural through the
+       term loop below, exactly as it did before this list existed.  Matching the singular
+       too would withhold ordinary technical prose ("digital signature APIs", DocuSign
+       integration) from a posting this candidate would plausibly be sent. */
   ];
-  var ROOT_KEYS = ["narrative", "requirements"];
+  var ROOT_KEYS = ["narrative", "requirements", "overall"];
   var REQUIREMENT_KEYS = [
     "requirementId",
     "recruiterIntent",
@@ -83,11 +101,11 @@
     "academic-foundation": { academic: true },
     "learning-bridge": { professional: true, academic: true }
   };
-  var CONFIDENCE_LEVELS = {
-    low: true,
-    medium: true,
-    high: true
-  };
+  /* Array + indexOf, not an object-literal truthy lookup: a plain-object map keyed by
+     confidence would let "constructor"/"toString"/"valueOf"/"hasOwnProperty" pass through
+     as valid confidence levels, since those are truthy Object.prototype members. Matches
+     the FIT_BANDS array pattern already used above and cloud/aimeer-worker.js's sibling fix. */
+  var CONFIDENCE_LEVELS = ["low", "medium", "high"];
   var STRENGTH_FACTORS = {
     required: 1,
     neutral: 0.75,
@@ -105,12 +123,39 @@
     return String(value || "").replace(/\s+/g, " ").trim().slice(0, maxChars);
   }
 
+  /* The job description is the one field where line structure carries meaning.
+     jd-extractor.js deliberately builds it — bullets become "\n- ", tabs become newlines,
+     blank runs collapse to one — and the model reads section boundaries and seniority
+     framing from those lines.  So collapse spaces and tabs *within* a line, keep single
+     newlines, cap blank runs at one, then clip.  clipText stays as it is for the short
+     single-line fields (terms, claims, narrative), and cloud/aimeer-worker.js has the
+     same helper so the structure is not flattened again server-side. */
+  function clipJdProse(value, maxChars) {
+    return String(value || "")
+      .replace(/\r\n?/g, "\n")
+      .replace(/[^\S\n]+/g, " ")
+      .replace(/ *\n */g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+      .slice(0, maxChars);
+  }
+
   function roundScore(value) {
     return Math.round((Number(value) || 0) * 100) / 100;
   }
 
   function clampScore(value) {
     return Math.max(0, Math.min(100, Number(value) || 0));
+  }
+
+  var FIT_BANDS = ["strong", "good", "partial", "limited"];
+
+  function computeFitBand(score) {
+    var value = clampScore(score);
+    if (value >= 75) return "strong";
+    if (value >= 60) return "good";
+    if (value >= 40) return "partial";
+    return "limited";
   }
 
   function isPlainObject(value) {
@@ -135,17 +180,22 @@
     var haystack = String(text || "").toLowerCase();
     for (var index = 0; index < privacyTerms.length; index += 1) {
       var term = String(privacyTerms[index] || "").toLowerCase().trim();
-      if (!term || AMBIGUOUS_PRIVACY_TERMS[term]) continue;
+      if (!term || EMPLOYER_BOILERPLATE_TERMS[term]) continue;
       var escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       if (new RegExp("(^|[^a-z0-9])" + escapedTerm + "(?=$|[^a-z0-9])", "i").test(haystack)) {
         return true;
       }
     }
-    return CONTEXTUAL_PRIVACY_PATTERNS.some(function (pattern) {
+    return PERSONAL_IDENTIFIER_PATTERNS.some(function (pattern) {
       return pattern.test(haystack);
     });
   }
 
+  /* CAREFUL: DEFAULT_PRIVACY_EXCLUSIONS.length is doing double duty as the cap on the
+     profile-supplied list.  Adding a 10th entry to aimeer-profile.json's privacyExclusions
+     without also lengthening the default list would silently drop it, and shortening the
+     default list would silently drop real exclusions off the end of the profile's.  Keep the
+     two lists the same length, or replace this with an explicit maximum. */
   function getPrivacyTerms(profile) {
     var terms = uniqueStrings(
       profile && profile.privacyExclusions,
@@ -269,48 +319,21 @@
     return true;
   }
 
-  function buildRequirementOnlyJdText(requirements, privacyTerms) {
-    var grouped = {
-      required: [],
-      neutral: [],
-      preferred: []
-    };
-    var seen = Object.create(null);
-    for (var index = 0; index < requirements.length; index += 1) {
-      var requirement = requirements[index];
-      var candidate = clipText(
-        requirement && (requirement.original || requirement.term),
-        240
-      ).replace(/^\-\s*/, "");
-      if (!candidate || containsPrivacyTerms(candidate, privacyTerms)) continue;
-      var dedupeKey = candidate.toLowerCase();
-      if (seen[dedupeKey]) continue;
-      seen[dedupeKey] = true;
-      var strength = requirement && requirement.strength === "required"
-        ? "required"
-        : requirement && requirement.strength === "preferred"
-          ? "preferred"
-          : "neutral";
-      grouped[strength].push(candidate);
+  /* The model reads the recruiter's own prose, not a keyword digest — judging whether
+     adjacent experience actually covers a role needs the posting's wording, seniority
+     framing and responsibilities.  Employer boilerplate about pay, benefits and leave is
+     expected here and no longer withheld.  A document carrying a third party's personal
+     identifiers is different: that prose is withheld outright rather than forwarded, and
+     the Worker screens the same text again server-side. */
+  function buildScreenedJdText(normalizedJd, privacyTerms) {
+    var source = normalizedJd && typeof normalizedJd === "object"
+      ? (normalizedJd.normalizedText || normalizedJd.rawText)
+      : normalizedJd;
+    var text = clipJdProse(source, JD_TEXT_MAX);
+    if (!text || containsPrivacyTerms(text, privacyTerms)) {
+      return JD_TEXT_WITHHELD_NOTICE;
     }
-
-    var lines = [];
-    function appendSection(label, items) {
-      if (!items.length) return;
-      lines.push(label);
-      for (var itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
-        lines.push("- " + items[itemIndex]);
-      }
-    }
-
-    appendSection("Required Skills:", grouped.required);
-    appendSection("Additional Requirements:", grouped.neutral);
-    appendSection("Preferred Skills:", grouped.preferred);
-
-    if (!lines.length) {
-      return "Recruiter-safe requirement summary only.";
-    }
-    return clipText(lines.join("\n"), JD_TEXT_MAX);
+    return text;
   }
 
   function buildInput(normalizedJd, deterministicResult, profile, language) {
@@ -337,9 +360,8 @@
     }).filter(Boolean);
 
     return {
-      mode: "jd-reasoning",
       language: language === "ms" ? "ms" : "en",
-      jdText: buildRequirementOnlyJdText(requirements, privacyTerms),
+      jdText: buildScreenedJdText(normalizedJd, privacyTerms),
       requirements: requirements,
       deterministicResult: compactDeterministicResult(deterministicResult || {}),
       evidenceRegistry: evidenceRegistry,
@@ -402,6 +424,16 @@
       return reject("Every deterministic requirement must be included exactly once.");
     }
 
+    var overall = parsed.overall;
+    if (!isPlainObject(overall)) return reject("overall-missing");
+    var overallKeyError = ensureOnlyKeys(overall, ["score", "fitBand", "narrative"], "overall");
+    if (overallKeyError) return reject(overallKeyError);
+    if (typeof overall.score !== "number" || !Number.isFinite(overall.score) ||
+        overall.score < 0 || overall.score > 100) return reject("overall-score-invalid");
+    if (FIT_BANDS.indexOf(overall.fitBand) === -1) return reject("overall-fitband-invalid");
+    if (typeof overall.narrative !== "string" || !overall.narrative.trim() ||
+        overall.narrative.length > FIELD_LIMITS.narrative) return reject("overall-narrative-invalid");
+
     var inputRequirements = Array.isArray(input && input.requirements) ? input.requirements : [];
     var requirementIndex = Object.create(null);
     for (var index = 0; index < inputRequirements.length; index += 1) {
@@ -443,7 +475,7 @@
       }
 
       var confidence = clipText(item.confidence, 16);
-      if (!CONFIDENCE_LEVELS[confidence]) {
+      if (CONFIDENCE_LEVELS.indexOf(confidence) === -1) {
         return reject("Invalid confidence level: " + confidence + ".");
       }
 
@@ -510,7 +542,12 @@
       ok: true,
       reasoning: {
         narrative: clipText(parsed.narrative, FIELD_LIMITS.narrative),
-        requirements: sanitizedRequirements
+        requirements: sanitizedRequirements,
+        overall: {
+          score: clampScore(overall.score),
+          fitBand: overall.fitBand,
+          narrative: clipText(overall.narrative, FIELD_LIMITS.narrative)
+        }
       }
     };
   }
@@ -661,90 +698,46 @@
       var entry = requirementReasoning.find(function (item) { return item.requirementId === requirement.id; });
       return entry ? entry.effectiveFactor : baseFactorForRequirement(requirement);
     });
-    var requiredGapCeiling = scoreByFactor(inputRequirements, categories, function (requirement) {
-      var entry = requirementReasoning.find(function (item) { return item.requirementId === requirement.id; });
-      if (entry && entry.matchLevel === "explicit-gap" && requirement.strength === "required") return 0;
-      return 1;
-    });
-
     var deterministicScore = clampScore(result.deterministicScore !== undefined ? result.deterministicScore : result.score);
-    var compositeScore = Math.round(Math.min(
-      transferableScore,
-      deterministicScore + 15,
-      requiredGapCeiling
-    ));
+    var aiScore = clampScore(reasoning && reasoning.overall ? reasoning.overall.score : deterministicScore);
+    var roundedAiScore = Math.round(aiScore);
+    var bandMin = Math.max(0, deterministicScore - 10);
+    /* Ceiling is additive (deterministicScore + 35) so a well-evidenced adjacent-stack
+       judgment isn't capped at a low keyword score, but floored at 65 so "Good fit" is
+       always reachable even when the keyword pass found nothing (deterministicScore 0) —
+       owner-approved trade-off (.superpowers/sdd/2026-07-30-recruiter-copilot-ai-scoring/
+       progress.md, FINAL WHOLE-BRANCH REVIEW, I1). "Strong fit" (>=75) still
+       requires deterministicScore >= 40 for the ceiling to clear 75 on its own; the
+       accepted cost is a successful "score me 100%" injection against a zero-keyword JD
+       lands at 65, not 35. bandMin is unchanged. */
+    var bandMax = Math.min(100, Math.max(deterministicScore + 35, 65));
+    var finalScore = Math.round(Math.min(bandMax, Math.max(bandMin, aiScore)));
 
     result.deterministicScore = deterministicScore;
+    result.aiScore = roundedAiScore;
+    result.finalScore = finalScore;
+    result.adjusted = roundedAiScore !== finalScore;
+    result.fitBand = computeFitBand(finalScore);
+    /* verifiedScore/transferableScore/compositeScore are no longer read by the renderer
+       (chatbot.js's report renders fitBand/finalScore instead — see Task 4), but they stay:
+       tests/jd-reasoning.test.js asserts on them directly as an independent regression
+       check on the score-lift math (how much AI-validated match levels lifted the score
+       over pure keyword matches), which is useful to keep even though nothing displays it. */
     result.verifiedScore = verifiedScore;
     result.transferableScore = transferableScore;
-    result.requiredGapCeiling = requiredGapCeiling;
-    result.compositeScore = compositeScore;
+    result.compositeScore = finalScore;
     result.requirementReasoning = requirementReasoning;
-    result.reasoningNarrative = clipText(reasoning && reasoning.narrative, FIELD_LIMITS.narrative);
+    result.reasoningNarrative = reasoning && reasoning.overall && reasoning.overall.narrative
+      ? clipText(reasoning.overall.narrative, FIELD_LIMITS.narrative)
+      : clipText(reasoning && reasoning.narrative, FIELD_LIMITS.narrative);
     result.sections = buildSections(requirementReasoning);
     return result;
-  }
-
-  function fallback(deterministicResult, input, language) {
-    var lang = language === "ms" ? "ms" : "en";
-    var result = isPlainObject(deterministicResult) ? deterministicResult : {};
-    var strengths = (Array.isArray(result.strongMatches) ? result.strongMatches : []).slice(0, 6).map(function (item) {
-      return {
-        term: clipText(item && item.term, 120),
-        note: clipText(item && item.label, 220)
-      };
-    });
-    var gaps = (Array.isArray(result.gaps) ? result.gaps : []).slice(0, 6).map(function (item) {
-      return {
-        term: clipText(item && item.term, 120),
-        note: clipText(item && item.label, 220)
-      };
-    });
-    var limitations = []
-      .concat((Array.isArray(result.partialMatches) ? result.partialMatches : []).slice(0, 6).map(function (item) {
-        return {
-          term: clipText(item && item.term, 120),
-          note: lang === "ms"
-            ? "Padanan ini kekal separa dan perlu disahkan semasa saringan."
-            : "This remains a partial match and should be validated during screening."
-        };
-      }))
-      .concat((Array.isArray(result.unverified) ? result.unverified : []).slice(0, 6).map(function (item) {
-        return {
-          term: clipText(item && item.term, 120),
-          note: lang === "ms"
-            ? "Tiada bukti terbitan yang mengesahkan keperluan ini setakat ini."
-            : "No published evidence verifies this requirement yet."
-        };
-      }));
-    var interviewQuestions = (Array.isArray(result.interviewTopics) ? result.interviewTopics : []).slice(0, 6).map(function (item) {
-      return {
-        term: clipText(item && item.term, 120),
-        question: clipText(item && item.prompt, 220)
-      };
-    });
-
-    return {
-      mode: "deterministic-fallback",
-      language: lang,
-      deterministicScore: clampScore(result.deterministicScore !== undefined ? result.deterministicScore : result.score),
-      narrative: lang === "ms"
-        ? "Ringkasan deterministik digunakan. Kekuatan yang disahkan, jurang yang nyata, dan soalan saringan kekal dipaparkan tanpa penaakulan AI."
-        : "Deterministic fallback is active. Verified strengths, explicit gaps, and recruiter screening questions remain available without AI reasoning.",
-      sections: {
-        strengths: strengths,
-        gaps: gaps,
-        limitations: limitations,
-        interviewQuestions: interviewQuestions
-      },
-      inputLanguage: input && input.language ? input.language : lang
-    };
   }
 
   global.JDReasoning = {
     buildInput: buildInput,
     validateModelOutput: validateModelOutput,
     mergeResult: mergeResult,
-    fallback: fallback
+    computeFitBand: computeFitBand
   };
 }(typeof window !== "undefined" ? window : globalThis));

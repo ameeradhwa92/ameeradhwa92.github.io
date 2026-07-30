@@ -823,6 +823,11 @@ body.modal-open { overflow: hidden; }
 
 .chat-handoff { border-color: var(--teal-deep); }
 .chat-handoff p { margin: 0; }
+/* Same handoff prompt + buttons, rendered inline in the JD match report (not the chat
+   log) so it is visible while the report itself is visible instead of sitting in a
+   sibling container the JD panel hides — see chat-jd-section for the shared card look. */
+.chat-jd-handoff { border-color: var(--teal-deep); }
+.chat-jd-handoff p { margin: 0; }
 .chat-handoff-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .chat-handoff-btns button {
   padding: 7px 14px; border-radius: 999px; cursor: pointer;
@@ -937,7 +942,7 @@ body.modal-open { overflow: hidden; }
 .chat-jd-result {
   display: grid; gap: 12px;
 }
-.chat-jd-result-card, .chat-jd-category-list, .chat-jd-section {
+.chat-jd-section {
   border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 12px;
 }
 .chat-jd-result-disclaimer {
@@ -945,42 +950,50 @@ body.modal-open { overflow: hidden; }
   border: 1px solid rgba(var(--teal-rgb), 0.3); background: rgba(var(--teal-rgb), 0.07);
   color: var(--paper); font-size: 0.75rem; line-height: 1.55;
 }
-.chat-jd-score-row {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-}
-.chat-jd-score {
-  font-family: var(--display); font-size: 1.8rem; line-height: 1; color: var(--teal);
-}
-.chat-jd-score-label, .chat-jd-confidence, .chat-jd-meta {
+.chat-jd-meta {
   color: var(--muted); font-size: 0.76rem; line-height: 1.45;
 }
-.chat-jd-category-list, .chat-jd-match-list, .chat-jd-topic-list {
+.chat-jd-match-list, .chat-jd-topic-list {
   display: grid; gap: 8px;
 }
-.chat-jd-category-item, .chat-jd-match-item {
+.chat-jd-match-item {
   display: grid; gap: 4px;
 }
-.chat-jd-category-row, .chat-jd-match-head {
+.chat-jd-match-head {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap;
 }
-.chat-jd-category-label, .chat-jd-section h6 {
-  color: var(--paper); font-weight: 600; font-size: 0.82rem; line-height: 1.45;
-}
-.chat-jd-category-score {
-  font-family: var(--mono); font-size: 0.7rem; color: var(--teal);
-}
-.chat-jd-category-bar {
-  width: 100%; height: 6px; border-radius: 999px; background: var(--line); overflow: hidden;
-}
-.chat-jd-category-bar span {
-  display: block; height: 100%; border-radius: inherit; background: var(--teal);
-  box-shadow: 0 0 8px rgba(var(--teal-rgb), 0.45);
-}
 .chat-jd-section h6 {
+  color: var(--paper); font-weight: 600; font-size: 0.82rem; line-height: 1.45;
   margin-bottom: 8px;
 }
 .chat-jd-match-list, .chat-jd-topic-list {
   list-style: none; padding: 0; margin: 0;
+}
+
+/* Recruiter match report (Task 4): leads with the fit band + narrative, treats
+   the percentage as supporting detail. See docs/superpowers/specs/
+   2026-07-30-recruiter-copilot-ai-scoring-design.md. */
+.jd-report {
+  display: grid; gap: 10px;
+}
+.jd-report-band {
+  margin: 0; font-family: var(--display); font-size: 1.3rem; font-weight: 700;
+  color: var(--teal); line-height: 1.25;
+}
+.jd-report-narrative {
+  margin: 0; color: var(--paper); font-size: 0.86rem; line-height: 1.6;
+}
+.jd-report-score {
+  margin: 0; color: var(--muted); font-size: 0.8rem; line-height: 1.5;
+}
+.jd-report-calibrated {
+  margin: 0; color: var(--teal); font-size: 0.74rem; line-height: 1.5; font-style: italic;
+}
+.jd-report-interview li {
+  margin-bottom: 6px;
+}
+.chat-jd-framing {
+  margin: 4px 0 0; color: var(--muted); font-size: 0.76rem; line-height: 1.5; font-style: italic;
 }
 .chat-jd-badge {
   display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;
@@ -989,9 +1002,6 @@ body.modal-open { overflow: hidden; }
 }
 .chat-jd-badge.is-professional {
   color: var(--teal); background: rgba(23, 118, 110, 0.16); border: 1px solid rgba(23, 118, 110, 0.32);
-}
-.chat-jd-badge.is-academic {
-  color: var(--paper); background: rgba(139, 149, 154, 0.12); border: 1px solid var(--line);
 }
 .chat-jd-badge.is-user {
   color: var(--paper); background: rgba(62, 207, 187, 0.09); border: 1px solid rgba(62, 207, 187, 0.24);
@@ -1018,20 +1028,11 @@ body.modal-open { overflow: hidden; }
 .chat-jd-empty {
   color: var(--muted); font-size: 0.74rem; line-height: 1.5;
 }
-.chat-jd-score-measures {
-  display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
-}
-.chat-jd-measure-card, .chat-jd-requirement-card {
+.chat-jd-requirement-card {
   border: 1px solid var(--line); border-radius: 12px; background: rgba(var(--teal-rgb), 0.04);
 }
-.chat-jd-measure-card {
-  padding: 12px;
-}
-.chat-jd-measure-label, .chat-jd-reason-label {
+.chat-jd-reason-label {
   color: var(--muted); font-size: 0.72rem; line-height: 1.45;
-}
-.chat-jd-measure-value {
-  margin-top: 6px; font-family: var(--display); font-size: 1.2rem; line-height: 1; color: var(--paper);
 }
 .chat-jd-requirement-list {
   display: grid; gap: 10px;
@@ -1085,7 +1086,6 @@ body.modal-open { overflow: hidden; }
   .chat-jd-actions { display: grid; grid-template-columns: 1fr; }
   .chat-jd-file-btn, .chat-jd-action, .chat-jd-promo-action { width: 100%; }
   .chat-jd-file-name { flex-basis: 100%; }
-  .chat-jd-score-measures { grid-template-columns: 1fr; }
   .chat-jd-requirement-summary { align-items: flex-start; }
 }
 @media (max-width: 390px) {

@@ -65,17 +65,11 @@
     "information and suggest asking Ameer directly — the chat will show WhatsApp and email buttons for that. " +
     "Never invent projects, employers, dates or links.\n\n";
 
-  var JD_REASONING_PROMPT =
-    "You are producing bounded recruiter reasoning for a deterministic recruiter JD match that was already scored locally on Ameer's portfolio site. " +
-    "Use only the supplied recruiter-safe JSON input. Do not invent evidence, do not change the deterministic score, do not add any score fields, " +
-    "and never present academic evidence as professional delivery. Return strict JSON only with the root keys narrative and requirements. " +
-    "The requirements array must include every supplied requirement exactly once. Every requirement object must include requirementId, recruiterIntent, expectedOutcome, matchLevel, evidenceRefs, transferableCapabilities, limitation, recruiterFraming, verificationQuestion, and confidence. " +
-    "Use only the provided evidence IDs and transferable capability vocabulary. If direct published evidence is unavailable, keep the reasoning conservative and explicit about the limitation.";
-
   /* ---------------- bounded recruiter helper compatibility ----------------
      Older local tools consume this public helper block directly.  The live
-     reasoning request below uses JDReasoning and the jd-reasoning contract;
-     this shim remains bounded and is not used as a free-form request path. */
+     scoring request below uses JDReasoning and the jd-scoring contract, whose
+     system prompt is assembled by the Worker and never by this file; this shim
+     remains bounded and is not used as a free-form request path. */
   var JD_EXPLANATION_JD_MAX = 12000;
   var JD_EXPLANATION_RESULT_MAX = 12000;
   var JD_EXPLANATION_CATEGORY_KEYS = [
@@ -268,18 +262,19 @@
       sumAsked: "What I asked:",
       sumOpen: "AIMeer couldn't answer this one:",
       sumVia: "sent via AIMeer · ameeradhwa92.github.io",
-      jdPromo: "Paste a job description or load a local PDF/DOCX for a deterministic compatibility estimate.",
+      jdPromo: "Paste a job description or load a local PDF/DOCX. AIMeer analyzes the fit with AI and shows an evidence-backed match report.",
       jdPromoAction: "Open JD matcher",
       jdInputPlaceholder: "Paste the job description here…",
       jdDisclaimer: "This is an estimated compatibility score based only on the job description and Ameer's published profile. It is not an objective hiring decision, technical assessment, or guarantee of suitability.",
       jdFileEmpty: "No file selected",
       jdStatusIdle: "Paste a job description or choose a local PDF/DOCX to start.",
       jdStatusReading: "Reading the local document…",
-      jdStatusScoring: "Scoring the job description locally…",
+      jdStatusScoring: "Preparing the match locally…",
+      jdAiStatusScoring: "AIMeer is analyzing the match with AI…",
       jdStatusLoaded: "Local document ready: {source}.",
       jdStatusLoadedWithWarnings: "Local document ready: {source}. Warnings: {warnings}",
       jdStatusPasted: "Using the pasted job description text.",
-      jdStatusScored: "Deterministic match ready from {source}.",
+      jdStatusScored: "Match report ready from {source}.",
       jdSourcePaste: "pasted text",
       jdSourcePdf: "PDF text",
       jdSourceDocx: "DOCX text",
@@ -294,52 +289,30 @@
       jdWarnDocxNoText: "No readable text was found in this DOCX file. Please paste the job description text instead.",
       jdWarnTrimmed: "Only the first 60,000 characters were analyzed locally.",
       jdWarnGenericText: "No recognizable section headings were found; matching uses generic text only.",
-      jdResultScoreLabel: "Estimated compatibility",
-      jdResultSourceLabel: "Source",
+      jdFallbackLabel: "Keyword estimate — full AI analysis unavailable right now.",
+      jdCalibratedNote: "Calibrated against published evidence.",
+      jdFitStrong: "Strong fit",
+      jdFitGood: "Good fit",
+      jdFitPartial: "Partial fit",
+      jdFitLimited: "Limited overlap",
       jdResultConfidenceLabel: "Confidence",
       jdResultConfidenceHigh: "High",
       jdResultConfidenceMedium: "Medium",
       jdResultConfidenceLow: "Low",
-      jdResultCategories: "Weighted category breakdown",
-      jdResultNotSpecified: "Not specified in this JD",
-      jdResultStrong: "Strong matches",
-      jdResultPartial: "Partial or transferable matches",
-      jdResultGaps: "Requirements with published evidence gaps",
-      jdResultUnverified: "Requirements not verified in the published profile",
-      jdResultInterview: "Suggested interview topics",
-      jdEvidenceProfessional: "Professional evidence",
-      jdEvidenceAcademic: "Academic exposure",
-      jdEvidenceUser: "User-provided context",
       jdEvidenceGap: "Published evidence gap",
       jdEvidenceUnverified: "Unverified",
       jdNoMatches: "No items in this section.",
-      jdInterviewPrompt: "{term}: ask for concrete delivery examples and hands-on depth.",
-      jdCategoryCoreTechnologies: "Core technologies",
-      jdCategoryProfessionalExperience: "Professional experience and seniority",
-      jdCategoryArchitectureDeliveryCloud: "Production architecture, delivery, and cloud",
-      jdCategoryDomainIntegrations: "Domain and integrations",
-      jdCategoryMobile: "Mobile delivery",
-      jdCategoryEducationCoursework: "Education and coursework",
-      jdCategoryLanguagesCommunication: "Communication and collaboration",
-      jdReasonAction: "Add recruiter reasoning",
-      jdReasonLoading: "Generating recruiter reasoning…",
       jdReasonTitle: "Recruiter reasoning",
-      jdReasonStatusLocal: "Recruiter reasoning ran on this device. Only the bounded normalized JD, deterministic result, and recruiter-safe evidence map were used.",
-      jdReasonStatusCloud: "Recruiter reasoning used secure cloud AI. Only the bounded normalized JD, deterministic result, and recruiter-safe evidence map were sent.",
-      jdReasonStatusWaiting: "On-device AIMeer is still getting ready. Recruiter reasoning will stay on this device once the local model is ready.",
-      jdReasonStatusUnavailable: "Recruiter reasoning is unavailable right now. The deterministic score above remains the authoritative result.",
-      jdReasonStatusFallback: "Deterministic fallback is active because recruiter reasoning could not be validated. The baseline score remains authoritative.",
-      jdReasonError: "AIMeer could not validate recruiter reasoning right now. The deterministic score above remains the authoritative result.",
-      jdReasonDeterministicScore: "Deterministic compatibility",
-      jdReasonVerifiedScore: "Verified match",
-      jdReasonTransferableScore: "Transferable opportunity",
-      jdReasonCompositeScore: "Calibrated fit",
+      jdReasonStatusCloud: "Recruiter reasoning used secure cloud AI, weighing the job description wording, the keyword-based baseline, and recruiter-safe evidence.",
+      jdReasonStatusUnavailable: "Recruiter reasoning is unavailable right now, so the keyword-based estimate above stands on its own.",
+      jdReasonStatusFallback: "AI reasoning could not be completed, so this report uses the keyword-based estimate above instead.",
       jdReasonRequirements: "Requirement-by-requirement reasoning",
-      jdReasonNarrativeTitle: "Recruiter narrative",
+      jdHandoffSummary: "AIMeer match report — {band} ({score}%).",
+      jdHandoffStrengths: "Strengths: {terms}.",
+      jdHandoffFallbackLabel: "Keyword estimate",
       jdReasonVerifiedStrengths: "Verified strengths",
       jdReasonTransferableAdvantages: "Transferable advantages",
       jdReasonPriorityGaps: "Priority gaps",
-      jdReasonLearningBridges: "Learning bridges",
       jdReasonInterviewQuestions: "Verification questions",
       jdReasonIntentLabel: "Requirement intent",
       jdReasonOutcomeLabel: "Expected outcome",
@@ -348,9 +321,8 @@
       jdReasonVerificationLabel: "Verification question",
       jdReasonEvidenceLabel: "Evidence references",
       jdReasonCapabilitiesLabel: "Transferable capabilities",
-      jdReasonPrivacyLabel: "Privacy status",
-      jdReasonPrivacyLocal: "Reasoning stayed on this device.",
-      jdReasonPrivacyCloud: "Reasoning used secure cloud AI with bounded recruiter-safe input only.",
+      jdReasonPrivacyCloud: "The job description wording was sent to secure cloud AI for this analysis; personal identifiers are withheld rather than sent.",
+      jdReasonPrivacyUnavailable: "This analysis could not be completed, so no AI result is shown.",
       jdReasonNoRequirementDetails: "No requirement-level reasoning is available yet.",
       jdReasonMatchDirectProfessional: "Direct professional match",
       jdReasonMatchAdjacentProfessional: "Adjacent professional match",
@@ -394,18 +366,19 @@
       sumAsked: "Soalan saya:",
       sumOpen: "AIMeer tidak dapat menjawab soalan ini:",
       sumVia: "dihantar melalui AIMeer · ameeradhwa92.github.io",
-      jdPromo: "Tampal huraian jawatan atau muatkan PDF/DOCX setempat untuk anggaran keserasian yang deterministik.",
+      jdPromo: "Tampal huraian jawatan atau muatkan PDF/DOCX setempat. AIMeer menganalisis kesesuaian dengan AI dan memaparkan laporan padanan yang disokong bukti.",
       jdPromoAction: "Buka mod padanan huraian jawatan",
       jdInputPlaceholder: "Tampal huraian jawatan di sini…",
       jdDisclaimer: "Ini ialah skor keserasian anggaran yang berasaskan hanya pada huraian jawatan dan profil terbitan Ameer. Ia bukan keputusan pengambilan pekerja yang objektif, penilaian teknikal, atau jaminan kesesuaian.",
       jdFileEmpty: "Belum ada fail dipilih",
       jdStatusIdle: "Tampal huraian jawatan atau pilih PDF/DOCX setempat untuk bermula.",
       jdStatusReading: "Sedang membaca dokumen setempat…",
-      jdStatusScoring: "Sedang mengira skor huraian jawatan secara setempat…",
+      jdStatusScoring: "Sedang menyediakan padanan secara setempat…",
+      jdAiStatusScoring: "AIMeer sedang menganalisis padanan dengan AI…",
       jdStatusLoaded: "Dokumen setempat sedia digunakan: {source}.",
       jdStatusLoadedWithWarnings: "Dokumen setempat sedia digunakan: {source}. Amaran: {warnings}",
       jdStatusPasted: "Menggunakan teks huraian jawatan yang ditampal.",
-      jdStatusScored: "Padanan deterministik siap daripada {source}.",
+      jdStatusScored: "Laporan padanan sedia daripada {source}.",
       jdSourcePaste: "teks tampalan",
       jdSourcePdf: "teks PDF",
       jdSourceDocx: "teks DOCX",
@@ -420,52 +393,30 @@
       jdWarnDocxNoText: "Tiada teks yang boleh dibaca ditemui dalam fail DOCX ini. Sila tampal teks huraian jawatan sebagai ganti.",
       jdWarnTrimmed: "Hanya 60,000 aksara pertama dianalisis secara setempat.",
       jdWarnGenericText: "Tiada tajuk seksyen yang dapat dikenal pasti; padanan menggunakan teks umum sahaja.",
-      jdResultScoreLabel: "Keserasian anggaran",
-      jdResultSourceLabel: "Sumber",
+      jdFallbackLabel: "Anggaran kata kunci — analisis AI penuh tidak tersedia buat masa ini.",
+      jdCalibratedNote: "Ditentukur berdasarkan bukti terbitan.",
+      jdFitStrong: "Padanan kukuh",
+      jdFitGood: "Padanan baik",
+      jdFitPartial: "Padanan separa",
+      jdFitLimited: "Pertindihan terhad",
       jdResultConfidenceLabel: "Tahap keyakinan",
       jdResultConfidenceHigh: "Tinggi",
       jdResultConfidenceMedium: "Sederhana",
       jdResultConfidenceLow: "Rendah",
-      jdResultCategories: "Pecahan kategori berwajaran",
-      jdResultNotSpecified: "Tidak dinyatakan dalam JD ini",
-      jdResultStrong: "Padanan kukuh",
-      jdResultPartial: "Padanan separa atau boleh dipindahkan",
-      jdResultGaps: "Keperluan dengan jurang bukti terbitan",
-      jdResultUnverified: "Keperluan yang belum disahkan dalam profil terbitan",
-      jdResultInterview: "Topik temu duga yang dicadangkan",
-      jdEvidenceProfessional: "Bukti profesional",
-      jdEvidenceAcademic: "Pendedahan akademik",
-      jdEvidenceUser: "Konteks yang dibekalkan pengguna",
       jdEvidenceGap: "Jurang bukti terbitan",
       jdEvidenceUnverified: "Belum disahkan",
       jdNoMatches: "Tiada item dalam seksyen ini.",
-      jdInterviewPrompt: "{term}: minta contoh penyampaian sebenar dan kedalaman pengalaman langsung.",
-      jdCategoryCoreTechnologies: "Teknologi teras",
-      jdCategoryProfessionalExperience: "Pengalaman profesional dan senioriti",
-      jdCategoryArchitectureDeliveryCloud: "Seni bina produksi, penyampaian, dan awan",
-      jdCategoryDomainIntegrations: "Domain dan integrasi",
-      jdCategoryMobile: "Penyampaian mudah alih",
-      jdCategoryEducationCoursework: "Pendidikan dan kerja kursus",
-      jdCategoryLanguagesCommunication: "Komunikasi dan kolaborasi",
-      jdReasonAction: "Tambah penaakulan perekrut",
-      jdReasonLoading: "Sedang menjana penaakulan perekrut…",
       jdReasonTitle: "Penaakulan perekrut",
-      jdReasonStatusLocal: "Penaakulan perekrut dijalankan pada peranti ini. Hanya JD ternormal terhad, keputusan deterministik, dan peta bukti selamat perekrut digunakan.",
-      jdReasonStatusCloud: "Penaakulan perekrut menggunakan AI awan selamat. Hanya JD ternormal terhad, keputusan deterministik, dan peta bukti selamat perekrut dihantar.",
-      jdReasonStatusWaiting: "AIMeer setempat masih disediakan. Penaakulan perekrut akan kekal pada peranti ini sebaik sahaja model setempat siap.",
-      jdReasonStatusUnavailable: "Penaakulan perekrut tidak tersedia sekarang. Skor deterministik di atas kekal sebagai keputusan autoritatif.",
-      jdReasonStatusFallback: "Ringkasan deterministik digunakan kerana penaakulan perekrut tidak dapat disahkan. Skor asas kekal autoritatif.",
-      jdReasonError: "AIMeer tidak dapat mengesahkan penaakulan perekrut sekarang. Skor deterministik di atas kekal sebagai keputusan autoritatif.",
-      jdReasonDeterministicScore: "Keserasian deterministik",
-      jdReasonVerifiedScore: "Padanan disahkan",
-      jdReasonTransferableScore: "Peluang boleh dipindahkan",
-      jdReasonCompositeScore: "Kesesuaian terkalibrasi",
+      jdReasonStatusCloud: "Penaakulan perekrut menggunakan AI awan selamat, menimbang kandungan huraian jawatan, garis dasar berasaskan kata kunci, dan bukti selamat perekrut.",
+      jdReasonStatusUnavailable: "Penaakulan perekrut tidak tersedia sekarang, jadi anggaran berasaskan kata kunci di atas berdiri dengan sendirinya.",
+      jdReasonStatusFallback: "Penaakulan AI tidak dapat diselesaikan, jadi laporan ini menggunakan anggaran berasaskan kata kunci di atas.",
       jdReasonRequirements: "Penaakulan mengikut keperluan",
-      jdReasonNarrativeTitle: "Naratif perekrut",
+      jdHandoffSummary: "Laporan padanan AIMeer — {band} ({score}%).",
+      jdHandoffStrengths: "Kekuatan: {terms}.",
+      jdHandoffFallbackLabel: "Anggaran kata kunci",
       jdReasonVerifiedStrengths: "Kekuatan yang disahkan",
       jdReasonTransferableAdvantages: "Kelebihan boleh dipindahkan",
       jdReasonPriorityGaps: "Jurang keutamaan",
-      jdReasonLearningBridges: "Jambatan pembelajaran",
       jdReasonInterviewQuestions: "Soalan pengesahan",
       jdReasonIntentLabel: "Niat keperluan",
       jdReasonOutcomeLabel: "Hasil yang dijangka",
@@ -474,9 +425,8 @@
       jdReasonVerificationLabel: "Soalan pengesahan",
       jdReasonEvidenceLabel: "Rujukan bukti",
       jdReasonCapabilitiesLabel: "Keupayaan boleh dipindahkan",
-      jdReasonPrivacyLabel: "Status privasi",
-      jdReasonPrivacyLocal: "Penaakulan kekal pada peranti ini.",
-      jdReasonPrivacyCloud: "Penaakulan menggunakan AI awan selamat dengan input selamat perekrut yang terhad sahaja.",
+      jdReasonPrivacyCloud: "Kandungan huraian jawatan dihantar kepada AI awan selamat untuk analisis ini; pengenalan diri peribadi ditahan, bukan dihantar.",
+      jdReasonPrivacyUnavailable: "Analisis ini tidak dapat diselesaikan, jadi tiada keputusan AI dipaparkan.",
       jdReasonNoRequirementDetails: "Butiran penaakulan mengikut keperluan belum tersedia.",
       jdReasonMatchDirectProfessional: "Padanan profesional langsung",
       jdReasonMatchAdjacentProfessional: "Padanan profesional bersebelahan",
@@ -523,7 +473,7 @@
       ms: "Sembilan sistem beliau masih beroperasi sekarang: RetailAIM Plus (retailaim.com), BIS LPPEH (lpeph.gov.my), EEV MARii (eev.marii.my), CCPM CIDB (ccpm.cidb.gov.my), eCLAPS SPAN (eclaps.span.gov.my), eCAF Kastam (terhad), Check Your Label SIRIM (Google Play & App Store), eDCFZ PKA (edcfz.pka.gov.my) dan PIMS PKFZ (pkfz.com) — serta sistem persendirian seperti CRM Abbott dan Sistem Pembayaran Promoter. Sistem yang dihentikan ditanda secara jujur pada garis masa."
     },
     {
-      keys: /\b(skill|stack|tech|teknologi|kemahiran|framework|language|bahasa pengaturcaraan|tool)\b/,
+      keys: /\b(skill|stack|tech|teknologi|kemahiran|framework|language|bahasa pengaturcaraan|tool|cloud|azure|awan)\b/,
       en: "Core stack: ASP.NET Core & C# with Entity Framework, plus Python FastAPI and Laravel/PHP on the backend; React + TypeScript (Vite, TailwindCSS, ShadCN) and DevExpress on the frontend; Flutter/Dart, native Android (Kotlin/Java) and iOS (Swift) on mobile; MS SQL Server / Azure SQL for data; Azure DevOps pipelines, App Service and Bicep IaC for delivery. Integrations include Salesforce, SAP, iPay88, SenangPay, eGHL and the WhatsApp Business API.",
       ms: "Tindanan teras: ASP.NET Core & C# dengan Entity Framework, serta Python FastAPI dan Laravel/PHP di hujung belakang; React + TypeScript (Vite, TailwindCSS, ShadCN) dan DevExpress di hujung hadapan; Flutter/Dart, Android natif (Kotlin/Java) dan iOS (Swift) untuk mudah alih; MS SQL Server / Azure SQL untuk data; saluran paip Azure DevOps, App Service dan Bicep IaC untuk penghantaran. Integrasi termasuk Salesforce, SAP, iPay88, SenangPay, eGHL dan API WhatsApp Business."
     },
@@ -638,9 +588,10 @@
     result: null,
     normalizedText: "",
     resultSource: "",
-    reasoningMode: "",
+    scoringMode: "", /* "" | pending | ai | fallback — what produced jdState.result */
+    reasoningMode: "unavailable", /* "cloud" | "unavailable" — never "", so renderJdReasoning never
+      has to guess a mode from ambient chat-tier state (see FINAL WHOLE-BRANCH REVIEW, I3) */
     reasoningBusy: false,
-    reasoningError: "",
     reasoningFallback: false,
     reasoningLanguage: "",
     reasoningRequestToken: 0,
@@ -700,16 +651,6 @@
         : t("jdSourcePaste");
   }
 
-  function categoryLabel(key) {
-    return key === "coreTechnologies" ? t("jdCategoryCoreTechnologies")
-      : key === "professionalExperience" ? t("jdCategoryProfessionalExperience")
-        : key === "architectureDeliveryCloud" ? t("jdCategoryArchitectureDeliveryCloud")
-          : key === "domainIntegrations" ? t("jdCategoryDomainIntegrations")
-            : key === "mobile" ? t("jdCategoryMobile")
-              : key === "educationCoursework" ? t("jdCategoryEducationCoursework")
-                : t("jdCategoryLanguagesCommunication");
-  }
-
   function confidenceLabel(level) {
     return level === "high" ? t("jdResultConfidenceHigh")
       : level === "medium" ? t("jdResultConfidenceMedium")
@@ -754,9 +695,9 @@
     jdState.result = null;
     jdState.normalizedText = "";
     jdState.resultSource = "";
-    jdState.reasoningMode = "";
+    jdState.scoringMode = "";
+    jdState.reasoningMode = "unavailable";
     jdState.reasoningBusy = false;
-    jdState.reasoningError = "";
     jdState.reasoningFallback = false;
     jdState.reasoningLanguage = "";
     if (recruiterUI) jdResult.innerHTML = "";
@@ -766,26 +707,17 @@
     return root.dataset.lang === "ms" ? "ms" : "en";
   }
 
-  function getJdReasoningMode() {
-    return computeJdReasoningMode({
-      hasResult: !!jdState.result,
-      hasNormalizedText: !!jdState.normalizedText,
-      aiState: aiState,
-      localOK: localOK,
-      preferredMode: preferredMode,
-      route: route,
-      cloudOk: cloudOk,
-      dlActive: dlActive,
-      hasEngine: !!engine
-    });
-  }
-
+  /* JD scoring is cloud-only (Task 3b): jdState.reasoningMode is only ever explicitly set
+     to "cloud" or "unavailable" by the request flow below, never derived from the general
+     chat tier's on-device/waiting state. There used to be a getJdReasoningMode() helper that
+     fell back to computeJdReasoningMode(aiState, route, ...) whenever reasoningMode was falsy
+     — that fallback could report "local" or "waiting" (borrowed from the general chat AI
+     tier) even though recruiter reasoning itself never runs on-device, so the UI could claim
+     "ran on this device" or "will stay on this device" for a request that in fact only ever
+     goes to the cloud Worker or nowhere at all. Removed; see FINAL WHOLE-BRANCH REVIEW, I3. */
   function reasoningStatusKey(mode) {
     if (jdState.reasoningFallback) return "jdReasonStatusFallback";
-    return mode === "local" ? "jdReasonStatusLocal"
-      : mode === "cloud" ? "jdReasonStatusCloud"
-        : mode === "waiting" ? "jdReasonStatusWaiting"
-          : "jdReasonStatusUnavailable";
+    return mode === "cloud" ? "jdReasonStatusCloud" : "jdReasonStatusUnavailable";
   }
 
   function setJdStatus(kind, options) {
@@ -802,7 +734,10 @@
     var message = "";
     if (jdState.statusKind === "reading") message = t("jdStatusReading");
     else if (jdState.statusKind === "scoring") message = t("jdStatusScoring");
-    else if (jdState.statusKind === "loaded") {
+    else if (jdState.statusKind === "aiScoring") {
+      message = t("jdAiStatusScoring");
+      if (jdState.statusWarnings.length) message += " " + jdState.statusWarnings.join(" ");
+    } else if (jdState.statusKind === "loaded") {
       message = formatT(
         jdState.statusWarnings.length ? "jdStatusLoadedWithWarnings" : "jdStatusLoaded",
         { source: sourceLabel(jdState.statusSource), warnings: jdState.statusWarnings.join(" ") }
@@ -820,6 +755,23 @@
     jdStatus.className = "chat-jd-status" +
       (jdState.statusLevel === "error" ? " is-error" : jdState.statusLevel === "success" ? " is-success" : "");
     jdStatus.textContent = message;
+  }
+
+  /* The status line's source and extractor warnings belong to the deterministic pass;
+     automatic AI scoring only swaps the headline while its request is in flight. */
+  function markJdScoringInFlight() {
+    setJdStatus("aiScoring", {
+      source: jdState.statusSource,
+      warnings: jdState.statusWarnings.slice()
+    });
+  }
+
+  function markJdScoringSettled() {
+    setJdStatus("scored", {
+      level: "success",
+      source: jdState.statusSource,
+      warnings: jdState.statusWarnings.slice()
+    });
   }
 
   function createJdNode(tag, className, text) {
@@ -850,64 +802,6 @@
       list.appendChild(createJdNode("li", "", entry));
     });
     parent.appendChild(list);
-  }
-
-  function renderMatchItems(titleKey, items, modeClass) {
-    var section = createJdNode("section", "chat-jd-section");
-    section.appendChild(createJdNode("h6", "", t(titleKey)));
-    if (!items.length) {
-      section.appendChild(createJdNode("p", "chat-jd-empty", t("jdNoMatches")));
-      return section;
-    }
-    var list = createJdNode("ul", "chat-jd-match-list");
-    items.forEach(function (item) {
-      var li = createJdNode("li", "chat-jd-match-item");
-      var head = createJdNode("div", "chat-jd-match-head");
-      head.appendChild(createJdNode("span", "chat-jd-term", item.term));
-      if (modeClass === "gap") head.appendChild(createJdBadge(t("jdEvidenceGap"), "is-gap"));
-      else if (modeClass === "unverified") head.appendChild(createJdBadge(t("jdEvidenceUnverified"), "is-unverified"));
-      else if (item.evidenceType === "academic") head.appendChild(createJdBadge(t("jdEvidenceAcademic"), "is-academic"));
-      else if (item.evidenceType === "user-provided") head.appendChild(createJdBadge(t("jdEvidenceUser"), "is-user"));
-      else head.appendChild(createJdBadge(t("jdEvidenceProfessional"), "is-professional"));
-      li.appendChild(head);
-      appendEvidenceList(li, item.evidence);
-      list.appendChild(li);
-    });
-    section.appendChild(list);
-    return section;
-  }
-
-  function renderInterviewTopics(items) {
-    var section = createJdNode("section", "chat-jd-section");
-    section.appendChild(createJdNode("h6", "", t("jdResultInterview")));
-    if (!items.length) {
-      section.appendChild(createJdNode("p", "chat-jd-empty", t("jdNoMatches")));
-      return section;
-    }
-    var list = createJdNode("ul", "chat-jd-topic-list");
-    items.forEach(function (item) {
-      list.appendChild(createJdNode("li", "", formatT("jdInterviewPrompt", { term: item.term })));
-    });
-    section.appendChild(list);
-    return section;
-  }
-
-  function renderScoreMeasureList(result) {
-    if (!result || typeof result.deterministicScore !== "number") return null;
-    var section = createJdNode("section", "chat-jd-score-measures");
-    [
-      { key: "jdReasonDeterministicScore", value: result.deterministicScore },
-      { key: "jdReasonVerifiedScore", value: result.verifiedScore },
-      { key: "jdReasonTransferableScore", value: result.transferableScore },
-      { key: "jdReasonCompositeScore", value: result.compositeScore }
-    ].forEach(function (item) {
-      if (typeof item.value !== "number") return;
-      var card = createJdNode("article", "chat-jd-measure-card");
-      card.appendChild(createJdNode("div", "chat-jd-measure-label", t(item.key)));
-      card.appendChild(createJdNode("div", "chat-jd-measure-value", formatScore(item.value) + "%"));
-      section.appendChild(card);
-    });
-    return section.children.length ? section : null;
   }
 
   function renderReasoningTextRow(parent, labelKey, text) {
@@ -959,6 +853,28 @@
     return section;
   }
 
+  /* Shallow-copies each item and tags it with a gapKind so the combined "Priority
+     gaps" list (explicitGaps + unverifiedRequirements) can still show a recruiter
+     which of the two materially different claims an item is — "no evidence he's
+     done X" vs. "X wasn't verified in the published profile" — without mutating
+     the original result.sections arrays. */
+  function tagGapKind(items, gapKind) {
+    return (items || []).map(function (item) {
+      var copy = {};
+      for (var key in item) {
+        if (Object.prototype.hasOwnProperty.call(item, key)) copy[key] = item[key];
+      }
+      copy.gapKind = gapKind;
+      return copy;
+    });
+  }
+
+  /* Renders one recruiter-report list (Strong / Transferable / Gaps): each item
+     shows its term (with a gap/unverified badge when the item carries a gapKind),
+     the canonical evidence claim(s) resolved from evidenceRecords, and a one-line
+     recruiter framing (or, for gaps, the limitation). All model-supplied text goes
+     through createJdNode/appendEvidenceList, which only ever assign .textContent —
+     never innerHTML. */
   function renderReasoningSection(titleKey, items, valueKey) {
     var section = createJdNode("section", "chat-jd-section");
     section.appendChild(createJdNode("h6", "", t(titleKey)));
@@ -966,40 +882,79 @@
       section.appendChild(createJdNode("p", "chat-jd-empty", t("jdNoMatches")));
       return section;
     }
-    var list = createJdNode("ul", "chat-jd-topic-list");
+    var list = createJdNode("ul", "chat-jd-match-list");
     items.forEach(function (item) {
-      var value = item && (item[valueKey] || item.note || item.limitation || item.question) || "";
-      var text = item && item.term ? item.term + ": " + String(value).trim() : String(value).trim();
-      list.appendChild(createJdNode("li", "", text));
+      var li = createJdNode("li", "chat-jd-match-item");
+      var head = createJdNode("div", "chat-jd-match-head");
+      head.appendChild(createJdNode("div", "chat-jd-term", (item && item.term) || ""));
+      if (item && item.gapKind === "gap") head.appendChild(createJdBadge(t("jdEvidenceGap"), "is-gap"));
+      else if (item && item.gapKind === "unverified") head.appendChild(createJdBadge(t("jdEvidenceUnverified"), "is-unverified"));
+      li.appendChild(head);
+      var evidenceClaims = Array.isArray(item && item.evidenceRecords)
+        ? item.evidenceRecords.map(function (entry) { return entry && entry.claim; }).filter(Boolean)
+        : [];
+      appendEvidenceList(li, evidenceClaims);
+      var value = String((item && (item[valueKey] || item.note || item.limitation || item.question)) || "").trim();
+      if (value) li.appendChild(createJdNode("p", "chat-jd-framing", value));
+      list.appendChild(li);
     });
     section.appendChild(list);
     return section;
   }
 
+  /* .jd-report-interview: the first 5 unique, non-empty verification questions
+     drawn from result.sections.interviewQuestions (each item's `question` field). */
+  function renderReportInterview(items) {
+    var section = createJdNode("section", "chat-jd-section jd-report-interview");
+    section.appendChild(createJdNode("h6", "", t("jdReasonInterviewQuestions")));
+    var seen = {};
+    var questions = [];
+    (items || []).forEach(function (item) {
+      var question = String((item && (item.question || item.verificationQuestion)) || "").trim();
+      if (!question || seen[question]) return;
+      seen[question] = true;
+      questions.push(question);
+    });
+    questions = questions.slice(0, 5);
+    if (!questions.length) {
+      section.appendChild(createJdNode("p", "chat-jd-empty", t("jdNoMatches")));
+      return section;
+    }
+    var list = createJdNode("ul", "chat-jd-topic-list");
+    questions.forEach(function (question) {
+      list.appendChild(createJdNode("li", "", question));
+    });
+    section.appendChild(list);
+    return section;
+  }
+
+  function fitBandKey(band) {
+    return band === "strong" ? "jdFitStrong"
+      : band === "good" ? "jdFitGood"
+        : band === "partial" ? "jdFitPartial"
+          : "jdFitLimited";
+  }
+
+  /* Scoring is automatic (Task 3) and cloud-only (Task 3b) — there is no manual trigger
+     and no on-device path, so this only ever renders "cloud" (a request was sent) or
+     "unavailable" (nothing was sent), plus the fallback status when reasoning did not
+     settle. jdState.reasoningMode is always one of those two explicit values (never ""),
+     so this never has to guess a mode from ambient chat-tier state — see I3. */
   function renderJdReasoning(section) {
-    /* Once a request starts, keep its captured route visible even if the
-       general AIMeer route changes while the model is working. */
-    var mode = jdState.reasoningMode || getJdReasoningMode();
+    var mode = jdState.reasoningMode || "unavailable";
     var reasonSection = createJdNode("section", "chat-jd-section chat-jd-reasoning");
     reasonSection.appendChild(createJdNode("h6", "", t("jdReasonTitle")));
     reasonSection.appendChild(createJdNode("p", "chat-jd-hint", t(reasoningStatusKey(mode))));
-    reasonSection.appendChild(createJdNode("p", "chat-jd-meta", t(mode === "cloud" ? "jdReasonPrivacyCloud" : "jdReasonPrivacyLocal")));
-
-    var button = document.createElement("button");
-    button.type = "button";
-    button.className = "chat-jd-action" + (mode === "local" ? " chat-jd-action-primary" : "");
-    button.textContent = jdState.reasoningBusy ? t("jdReasonLoading") : t("jdReasonAction");
-    button.disabled = jdState.reasoningBusy || mode === "waiting" || mode === "unavailable";
-    button.addEventListener("click", requestJdReasoning);
-    reasonSection.appendChild(button);
-
-    if (jdState.reasoningError) {
-      reasonSection.appendChild(createJdNode("p", "chat-jd-status is-error", jdState.reasoningError));
-    }
+    reasonSection.appendChild(createJdNode("p", "chat-jd-meta", t(mode === "cloud" ? "jdReasonPrivacyCloud" : "jdReasonPrivacyUnavailable")));
 
     section.appendChild(reasonSection);
   }
 
+  /* Recruiter match report. Leads with the qualitative verdict (fit band + narrative)
+     and treats the percentage as supporting detail, not the headline — see
+     docs/superpowers/specs/2026-07-30-recruiter-copilot-ai-scoring-design.md. Every
+     field below can originate from the model, so every value is written via
+     .textContent (through createJdNode/appendEvidenceList), never innerHTML. */
   function renderJdResult() {
     if (!recruiterUI) return;
     jdResult.innerHTML = "";
@@ -1007,82 +962,73 @@
 
     var result = jdState.result;
     var baseline = jdState.deterministicResult || result;
-    jdResult.appendChild(createJdNode("p", "chat-jd-result-disclaimer", t("jdDisclaimer")));
+    var isFallback = jdState.scoringMode === "fallback";
+    var report = createJdNode("section", "jd-report");
 
-    var summary = createJdNode("section", "chat-jd-result-card");
-    var scoreRow = createJdNode("div", "chat-jd-score-row");
-    var scoreBlock = createJdNode("div", "");
-    scoreBlock.appendChild(createJdNode("div", "chat-jd-score-label", t("jdResultScoreLabel")));
-    scoreBlock.appendChild(createJdNode("div", "chat-jd-score", formatScore(baseline.score) + "%"));
-    scoreRow.appendChild(scoreBlock);
-    var meta = createJdNode("div", "chat-jd-meta");
-    meta.textContent = t("jdResultSourceLabel") + ": " + sourceLabel(jdState.resultSource || "paste");
-    scoreRow.appendChild(meta);
-    summary.appendChild(scoreRow);
-    summary.appendChild(createJdNode("p", "chat-jd-confidence",
-      t("jdResultConfidenceLabel") + ": " + confidenceLabel(baseline.confidence && baseline.confidence.label)));
-    jdResult.appendChild(summary);
-
-    var measures = renderScoreMeasureList(result);
-    if (measures) jdResult.appendChild(measures);
-
-    var categories = createJdNode("section", "chat-jd-category-list");
-    categories.appendChild(createJdNode("h6", "", t("jdResultCategories")));
-    [
-      "coreTechnologies",
-      "professionalExperience",
-      "architectureDeliveryCloud",
-      "domainIntegrations",
-      "mobile",
-      "educationCoursework",
-      "languagesCommunication"
-    ].forEach(function (key) {
-      var item = baseline.categories && baseline.categories[key];
-      if (!item) return;
-      var card = createJdNode("div", "chat-jd-category-item");
-      var row = createJdNode("div", "chat-jd-category-row");
-      row.appendChild(createJdNode("span", "chat-jd-category-label", categoryLabel(key)));
-      row.appendChild(createJdNode("span", "chat-jd-category-score",
-        item.active ? formatScore(item.score) + " / " + formatScore(item.weight) : t("jdResultNotSpecified")));
-      card.appendChild(row);
-      var bar = createJdNode("div", "chat-jd-category-bar");
-      var fill = createJdNode("span", "", "");
-      fill.style.width = (item.active && item.weight ? Math.max(0, Math.min(100, (item.score / item.weight) * 100)) : 0) + "%";
-      bar.appendChild(fill);
-      card.appendChild(bar);
-      categories.appendChild(card);
-    });
-    jdResult.appendChild(categories);
-
-    jdResult.appendChild(renderMatchItems("jdResultStrong", baseline.strongMatches || [], "strong"));
-    jdResult.appendChild(renderMatchItems("jdResultPartial", baseline.partialMatches || [], "partial"));
-    jdResult.appendChild(renderMatchItems("jdResultGaps", baseline.gaps || [], "gap"));
-    jdResult.appendChild(renderMatchItems("jdResultUnverified", baseline.unverified || [], "unverified"));
-    jdResult.appendChild(renderInterviewTopics(baseline.interviewTopics || []));
-    renderJdReasoning(jdResult);
-    if (result.reasoningNarrative) {
-      var narrative = createJdNode("section", "chat-jd-section");
-      narrative.appendChild(createJdNode("h6", "", t("jdReasonNarrativeTitle")));
-      narrative.appendChild(createJdNode("p", "", result.reasoningNarrative));
-      jdResult.appendChild(narrative);
+    /* 1. Fit band headline (or the keyword-estimate label when AI scoring never
+       settled). Skip the headline entirely while scoring is still pending — there
+       is no band to show yet, and the deterministic score alone would be misleading. */
+    if (isFallback) {
+      report.appendChild(createJdNode("h5", "jd-report-band", t("jdFallbackLabel")));
+    } else if (result.fitBand) {
+      report.appendChild(createJdNode("h5", "jd-report-band", t(fitBandKey(result.fitBand))));
     }
-    if (Array.isArray(result.requirementReasoning) && result.requirementReasoning.length) {
-      jdResult.appendChild(renderRequirementReasoning(result));
+
+    /* 2. Recruiter narrative (model-authored, may be empty). */
+    var narrativeText = String(result.reasoningNarrative || "").trim();
+    if (narrativeText) {
+      report.appendChild(createJdNode("p", "jd-report-narrative", narrativeText));
     }
+
+    /* 3. Percentage + confidence, de-emphasized on purpose — supporting detail,
+       not the headline. finalScore only exists once AI scoring has merged; before
+       that (pending) or if it never did (fallback), fall back to the deterministic
+       baseline score. */
+    var scoreValue = typeof result.finalScore === "number" ? result.finalScore : baseline.score;
+    report.appendChild(createJdNode("p", "jd-report-score",
+      formatScore(scoreValue) + "% · " + t("jdResultConfidenceLabel") + ": " +
+      confidenceLabel(baseline.confidence && baseline.confidence.label)));
+    if (result.adjusted) {
+      report.appendChild(createJdNode("p", "jd-report-calibrated", t("jdCalibratedNote")));
+    }
+
+    renderJdReasoning(report);
+
+    /* 4 & 5. Strong / Transferable / Gaps and the interview questions only exist
+       once AI reasoning has merged (result.sections); pending and fallback states
+       have no sections to show. */
     if (result.sections && typeof result.sections === "object") {
-      var verifiedStrengths = result.sections.verifiedStrengths || result.sections.strengths || [];
-      var transferableAdvantages = result.sections.transferableAdvantages || result.sections.transferable || [];
-      var learningBridges = result.sections.learningBridges && result.sections.learningBridges.length
-        ? result.sections.learningBridges
-        : (result.sections.limitations || []);
-      var explicitGaps = result.sections.explicitGaps || result.sections.gaps || [];
-      var unverifiedRequirements = result.sections.unverifiedRequirements || result.sections.unverified || [];
-      jdResult.appendChild(renderReasoningSection("jdReasonVerifiedStrengths", verifiedStrengths, "recruiterFraming"));
-      jdResult.appendChild(renderReasoningSection("jdReasonTransferableAdvantages", transferableAdvantages, "recruiterFraming"));
-      jdResult.appendChild(renderReasoningSection("jdReasonPriorityGaps", explicitGaps, "limitation"));
-      jdResult.appendChild(renderReasoningSection("jdResultUnverified", unverifiedRequirements, "limitation"));
-      jdResult.appendChild(renderReasoningSection("jdReasonLearningBridges", learningBridges, "limitation"));
-      jdResult.appendChild(renderReasoningSection("jdReasonInterviewQuestions", result.sections.interviewQuestions || [], "question"));
+      var verifiedStrengths = result.sections.verifiedStrengths || [];
+      var transferableAdvantages = result.sections.transferableAdvantages || [];
+      /* Merged into one list per the plan, but each item keeps a badge marking
+         whether it's a confirmed gap or merely unverified — those are materially
+         different claims to put in front of a recruiter. */
+      var gaps = tagGapKind(result.sections.explicitGaps, "gap")
+        .concat(tagGapKind(result.sections.unverifiedRequirements, "unverified"));
+      report.appendChild(renderReasoningSection("jdReasonVerifiedStrengths", verifiedStrengths, "recruiterFraming"));
+      report.appendChild(renderReasoningSection("jdReasonTransferableAdvantages", transferableAdvantages, "recruiterFraming"));
+      report.appendChild(renderReasoningSection("jdReasonPriorityGaps", gaps, "limitation"));
+      report.appendChild(renderReportInterview(result.sections.interviewQuestions || []));
+    }
+
+    if (Array.isArray(result.requirementReasoning) && result.requirementReasoning.length) {
+      report.appendChild(renderRequirementReasoning(result));
+    }
+
+    jdResult.appendChild(report);
+
+    /* 6. Disclaimer, unchanged, then the WhatsApp/mailto handoff whenever scoring has
+       settled (ai or fallback), never mid-flight. This renders INSIDE the JD result panel
+       (jdResult), not into the chat log: .chat-panel--jd-open .chat-log is display:none
+       while the JD panel is open, and scoring always settles while it is open, so a
+       chat-log card was being offered into a container the recruiter could not see (and
+       likely never would, since closing the panel to look for it is not an obvious move).
+       jdResult.innerHTML is rebuilt from scratch at the top of this function on every
+       call, so simply re-appending here on every settled render cannot duplicate or
+       re-scroll anything the way appending to the persistent chat log could — see I2. */
+    jdResult.appendChild(createJdNode("p", "chat-jd-result-disclaimer", t("jdDisclaimer")));
+    if (jdState.scoringMode === "ai" || isFallback) {
+      jdResult.appendChild(buildHandoffCard("chat-jd-section chat-jd-handoff"));
     }
   }
 
@@ -1269,11 +1215,13 @@
          baseline visible and invalidate the in-flight response. */
       jdState.reasoningRequestToken = nextExplanationToken(jdState.reasoningRequestToken);
       jdState.reasoningBusy = false;
-      jdState.reasoningMode = "";
-      jdState.reasoningError = "";
+      jdState.reasoningMode = "unavailable";
       jdState.reasoningFallback = false;
       jdState.reasoningLanguage = "";
       jdState.result = jdState.deterministicResult;
+      /* no AI score applies to the new language, so the report is the keyword estimate */
+      jdState.scoringMode = "fallback";
+      markJdScoringSettled();
     }
     input.placeholder = t("placeholder");
     refreshStatus();
@@ -1595,46 +1543,19 @@
     });
   }
 
-  function buildLocalReasoningMessages(input) {
-    var language = input && input.language === "ms" ? "ms" : "en";
-    return [
-      {
-        role: "system",
-        content:
-          PROMPT_HEAD + JD_REASONING_PROMPT
-      },
-      {
-        role: "user",
-        content:
-          (language === "ms" ? "Pulangkan strict JSON sahaja." : "Return strict JSON only.") +
-          "\n\nReasoning input JSON:\n" + JSON.stringify(input)
-      }
-    ];
-  }
-
-  function requestJdReasoningLocally(input) {
-    if (!engine) return Promise.reject(new Error("local-unavailable"));
-    return engine.chat.completions.create({
-      messages: buildLocalReasoningMessages(input),
-      stream: false,
-      temperature: 0.1,
-      max_tokens: 900
-    }).then(function (res) {
-      var reply = res && res.choices && res.choices[0] && res.choices[0].message
-        ? String(res.choices[0].message.content || "").trim()
-        : "";
-      if (!reply) throw new Error("local-empty");
-      return reply;
-    });
-  }
-
-  function buildJdReasoningCloudPayload(input) {
+  /* The Worker's jd-scoring mode accepts exactly these keys and rejects any body that
+     carries messages or system — the system prompt is assembled server-side on purpose.
+     jdText is whatever JDReasoning.buildInput's screen already approved (the JD's own
+     prose, or a withheld-notice when it carried personal identifiers); nothing here
+     re-derives or re-screens it, and 12000 mirrors the Worker's own clip so an oversize
+     payload never round-trips. */
+  function buildJdScoringCloudPayload(input) {
     var safeInput = input || {};
     var evidenceIds = (Array.isArray(safeInput.evidenceRegistry) ? safeInput.evidenceRegistry : [])
       .map(function (record) { return record && typeof record.id === "string" ? record.id : ""; })
       .filter(Boolean);
     return {
-      mode: "jd-reasoning",
+      mode: "jd-scoring",
       language: safeInput.language === "ms" ? "ms" : "en",
       jdText: String(safeInput.jdText || "").slice(0, 12000),
       deterministicInput: {
@@ -1647,11 +1568,11 @@
     };
   }
 
-  function requestJdReasoningViaCloud(input) {
+  function requestJdScoringViaCloud(input) {
     return fetch(CLOUD_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildJdReasoningCloudPayload(input))
+      body: JSON.stringify(buildJdScoringCloudPayload(input))
     }).then(function (r) {
       if (!r.ok) throw new Error("cloud-" + r.status);
       return r.json();
@@ -1662,35 +1583,19 @@
     });
   }
 
+  /* AI scoring is cloud-only: the on-device 1B model cannot produce the structured
+     score this contract needs, so a pending local download never gates or delays it.
+     One silent retry, then the deterministic pass stands on its own as a labeled
+     keyword estimate. */
   function requestJdReasoning() {
     if (!jdState.deterministicResult || !jdState.normalizedText || jdState.reasoningBusy) return;
-    if (!window.JDReasoning ||
-      typeof window.JDReasoning.buildInput !== "function" ||
-      typeof window.JDReasoning.validateModelOutput !== "function" ||
-      typeof window.JDReasoning.mergeResult !== "function" ||
-      typeof window.JDReasoning.fallback !== "function") {
-      jdState.reasoningError = t("jdReasonError");
-      renderJdResult();
-      return;
-    }
-    var mode = getJdReasoningMode();
-    if (mode === "waiting" || mode === "unavailable") {
-      jdState.reasoningError = t("jdReasonError");
-      renderJdResult();
-      return;
-    }
     var deterministicResult = jdState.deterministicResult;
     var analysisToken = jdState.analysisRequestToken;
     var requestToken = nextExplanationToken(jdState.reasoningRequestToken);
     var currentLanguage = reasoningLanguage();
     var reasoningInput = null;
     jdState.reasoningRequestToken = requestToken;
-    jdState.reasoningBusy = true;
-    jdState.reasoningError = "";
-    jdState.reasoningMode = mode;
     jdState.reasoningLanguage = currentLanguage;
-    jdState.reasoningFallback = false;
-    renderJdResult();
 
     function canApplyReasoning() {
       return canApplyExplanationToken(requestToken, jdState.reasoningRequestToken) &&
@@ -1700,19 +1605,47 @@
         currentLanguage === jdState.reasoningLanguage;
     }
 
-    function applyReasoningFallback(reason) {
+    function applyScoringFallback(reason) {
       if (!canApplyReasoning()) return;
-      if (window.console && console.warn && reason) console.warn("JD reasoning fallback:", reason);
+      if (window.console && console.warn && reason) console.warn("JD scoring fallback:", reason);
       jdState.reasoningBusy = false;
       jdState.reasoningFallback = true;
-      jdState.reasoningError = t("jdReasonError");
-      jdState.result = window.JDReasoning.fallback(
-        deterministicResult,
-        reasoningInput || { language: currentLanguage },
-        currentLanguage
-      );
+      jdState.scoringMode = "fallback";
+      jdState.result = deterministicResult;
       renderJdResult();
+      markJdScoringSettled();
     }
+
+    function requestScoringAttempt() {
+      return requestJdScoringViaCloud(reasoningInput).then(function (rawOutput) {
+        var validation = window.JDReasoning.validateModelOutput(rawOutput, reasoningInput);
+        if (!validation || !validation.ok) {
+          throw new Error(validation && validation.error ? validation.error : "reasoning-invalid");
+        }
+        return validation.reasoning;
+      });
+    }
+
+    if (!window.JDReasoning ||
+      typeof window.JDReasoning.buildInput !== "function" ||
+      typeof window.JDReasoning.validateModelOutput !== "function" ||
+      typeof window.JDReasoning.mergeResult !== "function") {
+      jdState.reasoningMode = "unavailable";
+      applyScoringFallback("reasoning-unavailable");
+      return;
+    }
+    if (!cloudOk) {
+      jdState.reasoningMode = "unavailable";
+      applyScoringFallback("cloud-unavailable");
+      return;
+    }
+
+    jdState.reasoningBusy = true;
+    jdState.reasoningMode = "cloud";
+    jdState.reasoningFallback = false;
+    jdState.scoringMode = "pending";
+    renderJdResult();
+    markJdScoringInFlight();
 
     ensureProfile().then(function (profile) {
       if (!canApplyReasoning()) return null;
@@ -1722,41 +1655,76 @@
         profile,
         currentLanguage
       );
-      return mode === "local"
-        ? requestJdReasoningLocally(reasoningInput)
-        : requestJdReasoningViaCloud(reasoningInput);
-    }).then(function (rawOutput) {
-      if (!rawOutput || !canApplyReasoning()) return;
-      var validation = window.JDReasoning.validateModelOutput(rawOutput, reasoningInput);
-      if (!validation || !validation.ok) {
-        applyReasoningFallback(validation && validation.error ? validation.error : "reasoning-invalid");
+      return requestScoringAttempt().catch(function (firstError) {
+        if (!canApplyReasoning()) return null;
+        /* A 4xx is the Worker refusing this exact payload — a privacy or shape violation.
+           Sending it again would fail identically, so retry only transport failures,
+           unparseable responses and invalid model output. */
+        if (/^cloud-4\d\d$/.test(String(firstError && firstError.message))) throw firstError;
+        if (window.console && console.warn) console.warn("JD scoring retry after:", firstError);
+        return requestScoringAttempt();
+      });
+    }).then(function (reasoning) {
+      /* Staleness returns silently — a newer analysis already owns jdState and the status
+         line.  Anything else must settle, or the status line stays on "analyzing" forever. */
+      if (!canApplyReasoning()) return;
+      if (!reasoning) {
+        applyScoringFallback("reasoning-empty");
         return;
       }
       jdState.reasoningBusy = false;
       jdState.reasoningFallback = false;
-      jdState.reasoningError = "";
-      jdState.result = window.JDReasoning.mergeResult(deterministicResult, validation.reasoning, reasoningInput);
+      jdState.scoringMode = "ai";
+      jdState.result = window.JDReasoning.mergeResult(deterministicResult, reasoning, reasoningInput);
       renderJdResult();
+      markJdScoringSettled();
     }).catch(function (err) {
-      applyReasoningFallback(err);
+      applyScoringFallback(err);
     });
   }
 
   /* ---------------- whatsapp / email handoff ---------------- */
+  /* When a JD match report has settled (ai or fallback), lead the handoff summary
+     with the fit band, score, and up to three verified strengths — so a recruiter
+     forwarding the chat gets the report headline, not just a raw transcript. */
+  function jdHandoffPrefixText() {
+    if (!jdState.result || (jdState.scoringMode !== "ai" && jdState.scoringMode !== "fallback")) return "";
+    var result = jdState.result;
+    var baseline = jdState.deterministicResult || result;
+    var scoreValue = typeof result.finalScore === "number" ? result.finalScore : baseline.score;
+    /* jdFallbackLabel is a full sentence made for the report headline; the handoff
+       line needs a short label so it doesn't run two sentences together. */
+    var bandLabel = jdState.scoringMode === "fallback" ? t("jdHandoffFallbackLabel") : t(fitBandKey(result.fitBand));
+    var strengths = (result.sections && Array.isArray(result.sections.verifiedStrengths))
+      ? result.sections.verifiedStrengths
+      : [];
+    var terms = [];
+    strengths.forEach(function (item) {
+      var term = item && String(item.term || "").trim();
+      if (term && terms.indexOf(term) === -1) terms.push(term);
+    });
+    terms = terms.slice(0, 3);
+    var line = formatT("jdHandoffSummary", { band: bandLabel, score: formatScore(scoreValue) });
+    if (terms.length) line += " " + formatT("jdHandoffStrengths", { terms: terms.join(", ") });
+    return line;
+  }
+
   function mechanicalSummary() {
     var qs = [];
     transcript.forEach(function (m) {
       if (m.role === "user") qs.push(m.content.slice(0, 120));
     });
     qs = qs.slice(-6);
-    var s = t("sumIntro") + "\n\n" + t("sumAsked") + "\n" +
+    var jdLine = jdHandoffPrefixText();
+    var s = t("sumIntro") + "\n\n" + (jdLine ? jdLine + "\n\n" : "") + t("sumAsked") + "\n" +
       qs.map(function (q) { return "• " + q; }).join("\n");
     if (lastUnanswered) s += "\n\n" + t("sumOpen") + ' "' + lastUnanswered.slice(0, 200) + '"';
     return s + "\n\n— " + t("sumVia");
   }
 
   function decorateSummary(body) {
-    var s = t("sumIntro") + "\n\n" + body.trim();
+    var jdLine = jdHandoffPrefixText();
+    var s = t("sumIntro") + "\n\n" + (jdLine ? jdLine + "\n\n" : "") + body.trim();
     if (lastUnanswered) s += "\n\n" + t("sumOpen") + ' "' + lastUnanswered.slice(0, 200) + '"';
     return s + "\n\n— " + t("sumVia");
   }
@@ -1817,11 +1785,12 @@
     });
   }
 
-  function offerHandoff() {
-    var old = log.querySelector(".chat-handoff");
-    if (old) old.remove();
+  /* Shared by offerHandoff() (general chat, appended into the persistent chat log) and
+     renderJdResult() (JD match report, appended into the JD result panel — see I2). Takes
+     the container class name so each caller gets its own visual treatment. */
+  function buildHandoffCard(className) {
     var card = document.createElement("div");
-    card.className = "chat-msg chat-msg-bot chat-handoff";
+    card.className = className;
     var p = document.createElement("p");
     p.textContent = t("handoffPrompt");
     var row = document.createElement("div");
@@ -1840,6 +1809,13 @@
     row.appendChild(mail);
     card.appendChild(p);
     card.appendChild(row);
+    return card;
+  }
+
+  function offerHandoff() {
+    var old = log.querySelector(".chat-handoff");
+    if (old) old.remove();
+    var card = buildHandoffCard("chat-msg chat-msg-bot chat-handoff");
     log.appendChild(card);
     log.scrollTop = log.scrollHeight;
   }
@@ -1930,9 +1906,9 @@
         ? normalized.normalizedText
         : (normalized && normalized.rawText ? normalized.rawText : text);
       jdState.resultSource = source || "paste";
-      jdState.reasoningMode = "";
+      jdState.scoringMode = "pending";
+      jdState.reasoningMode = "unavailable";
       jdState.reasoningBusy = false;
-      jdState.reasoningError = "";
       jdState.reasoningFallback = false;
       renderJdResult();
       setJdStatus("scored", {
@@ -1940,6 +1916,8 @@
         source: jdState.resultSource,
         warnings: warnings
       });
+      /* AI scoring starts on its own — the visitor never has to ask for it. */
+      requestJdReasoning();
     }).catch(function (err) {
       if (!canApplyAnalysisToken(requestToken, jdState.analysisRequestToken)) return;
       if (window.console && console.warn) console.warn("Recruiter scoring failed:", err);

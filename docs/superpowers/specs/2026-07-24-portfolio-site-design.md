@@ -48,6 +48,9 @@ If regenerating the site from scratch, feed this whole document to the builder.
 - Recruiter-facing academic subject clusters:
   - Diploma: Structured Programming, Object-Oriented Programming, Web Application Development, Database Management Systems, Data Structures, Operating Systems, Information Systems Development, Networking, Visual Programming, Programming Paradigms.
   - Degree: Algorithms, Algorithm Analysis, Artificial Intelligence Programming Paradigms, Artificial Neural Networks, Knowledge-Based Systems, Fuzzy Logic, Data Mining, Evolutionary Algorithms, Intelligent Decision Support Systems, Intelligent Agents, IT Project Management, Ethical, Social and Professional Issues, Industrial Attachment.
+- The JD matcher's scoring behavior (AI-led compatibility judgment, sanity-clamped to a
+  local keyword baseline, keyword-only fallback when cloud AI is unavailable) is no longer
+  governed by this spec — see `docs/superpowers/specs/2026-07-30-recruiter-copilot-ai-scoring-design.md`.
 
 ## Page flow
 

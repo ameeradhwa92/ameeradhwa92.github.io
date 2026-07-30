@@ -131,6 +131,14 @@ function manualScoreByFactor(requirements, categories, factorResolver) {
   return activeWeight ? Math.round(manualClampScore((weightedScore / activeWeight) * 100)) : 0;
 }
 
+function manualComputeFitBand(score) {
+  const value = manualClampScore(score);
+  if (value >= 75) return 'strong';
+  if (value >= 60) return 'good';
+  if (value >= 40) return 'partial';
+  return 'limited';
+}
+
 function manualReasoningAudit(result, reasoning, input) {
   const requirements = Array.isArray(input && input.requirements) ? input.requirements : [];
   const categories = result && typeof result.categories === 'object' ? result.categories : {};
@@ -141,21 +149,33 @@ function manualReasoningAudit(result, reasoning, input) {
     categories,
     (requirement) => manualEffectiveFactorForRequirement(requirement, reasoningByRequirementId.get(requirement.id))
   );
-  const requiredGapCeiling = manualScoreByFactor(requirements, categories, (requirement) => {
-    const reasoningItem = reasoningByRequirementId.get(requirement.id);
-    if (reasoningItem && reasoningItem.matchLevel === 'explicit-gap' && requirement.strength === 'required') return 0;
-    return 1;
-  });
   const deterministicScore = manualClampScore(result && (result.deterministicScore !== undefined ? result.deterministicScore : result.score));
+  // Independent re-derivation of the clamp band: finalScore must stay inside
+  // [deterministicScore - 10, max(deterministicScore + 35, 65)], bounded to 0-100.
+  // The ceiling is floored at 65 (owner-approved, see FINAL WHOLE-BRANCH REVIEW I1) so a
+  // well-evidenced adjacent-stack judgment can still reach "Good fit" even when the keyword
+  // pass found nothing (deterministicScore 0 -> ceiling would otherwise be 35).
+  const aiScore = manualClampScore(reasoning && reasoning.overall ? reasoning.overall.score : deterministicScore);
+  const bandMin = Math.max(0, deterministicScore - 10);
+  const bandMax = Math.min(100, Math.max(deterministicScore + 35, 65));
+  const finalScore = Math.round(Math.min(bandMax, Math.max(bandMin, aiScore)));
   return {
     verifiedScore,
     transferableScore,
-    requiredGapCeiling,
-    compositeScore: Math.round(Math.min(transferableScore, deterministicScore + 15, requiredGapCeiling))
+    aiScore: Math.round(aiScore),
+    finalScore,
+    adjusted: Math.round(aiScore) !== finalScore,
+    fitBand: manualComputeFitBand(finalScore)
   };
 }
 
-function reasoningForFixture(input, overrides) {
+const DEFAULT_OVERALL = {
+  score: 62,
+  fitBand: 'good',
+  narrative: 'AI-led recruiter-facing summary grounded only in the published deterministic match result and evidence registry.'
+};
+
+function reasoningForFixture(input, overrides, overallOverride) {
   const byTerm = new Map(input.requirements.map((item) => [item.term, item]));
   const directProfessionalLevels = new Set(['direct-professional', 'adjacent-professional', 'transferable-professional']);
   const entries = input.requirements.map((item) => {
@@ -196,7 +216,8 @@ function reasoningForFixture(input, overrides) {
 
   return {
     narrative: 'Bounded recruiter reasoning grounded only in the published deterministic match result.',
-    requirements: entries
+    requirements: entries,
+    overall: Object.assign({}, DEFAULT_OVERALL, overallOverride || {})
   };
 }
 
@@ -340,55 +361,102 @@ Preferred Skills:
   assert.deepEqual(Array.from(input.capabilityVocabulary).sort(), expectedCapabilities, 'capability vocabulary should be derived from the referenced evidence registry');
   assert.equal(serialized.includes('ameeradhwa92@gmail.com'), false, 'reasoning input should not include contact details');
   assert.equal(serialized.includes('+60 13-961 0053'), false, 'reasoning input should not include phone numbers');
-  assert.equal(serialized.toLowerCase().includes('salary'), false, 'reasoning input should exclude privacy terms');
+  assert.match(input.jdText, /platform delivery/, 'jdText should carry the job description prose, not only the extracted requirement terms');
 });
 
-test('JDReasoning.buildInput keeps valid medical and leave domain requirements while filtering admin privacy terms', () => {
-  const allowedCases = [
+test('JDReasoning.buildInput forwards employer offer prose and withholds personal identifiers', () => {
+  /* These describe the employer's own offer or a technical domain. They are not private data
+     about anyone, and a screen that rejected them would reject nearly every real posting. */
+  const forwarded = [
     'Azure medical device integration',
     'Azure leave management system',
-    'Azure compensation analytics platform'
+    'Azure compensation analytics platform',
+    'Expected monthly basic salary RM12,000',
+    'Salary range is negotiable',
+    'Expected compensation discussed at offer stage',
+    'Total compensation includes a performance bonus',
+    'Compensation package is competitive',
+    'Remuneration package reviewed annually',
+    'Employee compensation is benchmarked to market',
+    'Payroll compensation review workflow ownership',
+    'Medical coverage for you and your dependents',
+    'Medical insurance from day one',
+    'Health benefits and dental',
+    '18 days annual leave plus public holidays',
+    'Parental leave and flexible hours',
+    'Employee benefits package includes gym membership',
+    /* Employers use both of these to describe or ask about their own offer, so they stay
+       forwarded even though their record-style siblings below are blocked. Withholding a real
+       posting's whole prose over the employer's own words is the over-blocking this screen
+       exists to avoid. */
+    'State your salary history in the application form',
+    'Leave entitlement: 18 days annual leave plus public holidays',
+    'Leave entitlement grows with tenure',
+    /* Ordinary technical prose: the singular "signature" must not withhold a whole posting. */
+    'Build digital signature APIs and DocuSign integration'
   ];
-  for (const requirement of allowedCases) {
-    const { harness, profile, normalized, result } = analyze(`Required Skills:\n- ${requirement}\n`);
+  for (const line of forwarded) {
+    const { harness, profile, normalized, result } = analyze(`Required Skills:\n- Kubernetes\n${line}\n`);
     const input = harness.JDReasoning.buildInput(normalized, result, profile, 'en');
 
-    assert.match(input.jdText.toLowerCase(), new RegExp(requirement.toLowerCase()), `${requirement} should remain in the recruiter-safe projection`);
+    assert.match(
+      input.jdText.toLowerCase(),
+      new RegExp(line.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+      `"${line}" should reach the model`
+    );
   }
 
-  const rejectedCases = [
-    'Expected monthly basic salary',
-    'Expected compensation',
-    'Total compensation',
-    'Compensation package',
-    'Compensation history',
-    'Compensation range',
-    'Remuneration package',
-    'Remuneration expectation',
-    'Remuneration range',
-    'Employee compensation',
-    'Pay remuneration',
-    'Azure candidate compensation review',
-    'Azure candidate remuneration review',
-    'Azure admin compensation workflow',
-    'Medical coverage',
-    'Annual leave',
-    'Employee benefits',
-    'NRIC verification',
-    'Home address',
-    'Date of birth',
-    'Signatures'
+  /* A pasted document can carry a third party's identifiers. Those must never be forwarded,
+     whatever else the document says. */
+  const withheld = [
+    'NRIC verification required',
+    'Attach a copy of your MyKad',
+    'State your IC number in the application form',
+    'Reference 920101-14-5523 on file',
+    'Home address must be stated',
+    'Date of birth must be stated',
+    'Passport number required for travel',
+    'Bank account number for payroll setup',
+    'Signatures required on the appointment letter',
+    'See the confidential contract language attached',
+    /* Record-style phrasings name a person's history, not an employer's offer. */
+    'Medical history must be declared',
+    'Compensation history from your previous employer',
+    'Benefits history on file',
+    'Leave balance carried forward'
   ];
-  for (const requirement of rejectedCases) {
-    const { harness, profile, normalized, result } = analyze(`Required Skills:\n- ${requirement}\n`);
+  for (const line of withheld) {
+    const { harness, profile, normalized, result } = analyze(`Required Skills:\n- Kubernetes\n${line}\n`);
     const input = harness.JDReasoning.buildInput(normalized, result, profile, 'en');
 
     assert.equal(
-      input.jdText.toLowerCase().includes(requirement.toLowerCase()),
+      input.jdText.toLowerCase().includes(line.toLowerCase()),
       false,
-      `${requirement} should not enter the recruiter-safe projection`
+      `"${line}" must not reach the model`
     );
+    assert.match(input.jdText, /withheld/i, `"${line}" should leave the withheld notice in place of the prose`);
+    assert.equal(input.jdText.length > 0, true, 'the Worker rejects a blank jdText, so the notice must be non-empty');
   }
+});
+
+/* jd-extractor.js deliberately builds structure into normalizedText (bullets become "\n- ",
+   tabs become newlines, blank runs collapse to one). Sending the prose is only worth doing if
+   that structure survives: headings and bullet boundaries are how the model sees sections and
+   seniority framing. */
+test('JDReasoning.buildInput keeps the job description line structure in jdText', () => {
+  const { harness, profile, normalized, result } = analyze(
+    'Responsibilities:\n• Own    the   Azure platform\n• Mentor engineers\n\n\n\nRequired Skills:\n- Kubernetes\n- Azure DevOps\n'
+  );
+  const input = harness.JDReasoning.buildInput(normalized, result, profile, 'en');
+
+  assert.match(input.jdText, /^Responsibilities:$/m, 'headings should stay on their own line');
+  assert.match(input.jdText, /^Required Skills:$/m, 'later headings should stay on their own line');
+  assert.match(input.jdText, /^- Own the Azure platform$/m, 'bullets should stay on their own line');
+  assert.match(input.jdText, /^- Mentor engineers$/m, 'every bullet should keep its own line');
+  assert.doesNotMatch(input.jdText, /Own {2,}the/, 'runs of spaces within a line should collapse');
+  assert.doesNotMatch(input.jdText, /\n{3,}/, 'blank runs should cap at one blank line');
+  assert.doesNotMatch(input.jdText, / \n|\n /, 'no trailing or leading spaces around line breaks');
+  assert.equal(input.jdText.length <= 12000, true, 'the 12,000-character cap still applies');
 });
 
 test('JDReasoning.validateModelOutput accepts valid strict JSON and markdown-wrapped JSON', () => {
@@ -528,7 +596,7 @@ test('JDReasoning.validateModelOutput rejects HTML-bearing model strings', () =>
   }
 });
 
-test('JDReasoning.validateModelOutput rejects unknown requirement ids, duplicate ids, unknown evidence refs, unsupported capabilities, invalid match levels, overlong fields, and model numeric scores', () => {
+test('JDReasoning.validateModelOutput rejects unknown requirement ids, duplicate ids, unknown evidence refs, unsupported capabilities, invalid match levels, overlong fields, and smuggled per-requirement score fields', () => {
   const { harness, profile, normalized, result } = analyze(`Required Skills:
 - Kubernetes
 - Azure
@@ -594,9 +662,16 @@ Preferred Skills:
       pattern: /length|long/i
     },
     {
-      label: 'model numeric scores',
+      label: 'model numeric scores at the reasoning root',
       mutate(payload) {
         payload.transferableScore = 99;
+      },
+      pattern: /score/i
+    },
+    {
+      label: 'smuggled per-requirement score fields',
+      mutate(payload) {
+        payload.requirements[0].score = 99;
       },
       pattern: /score/i
     }
@@ -609,9 +684,16 @@ Preferred Skills:
     assert.equal(validation.ok, false, `${invalidCase.label} should reject the model output`);
     assert.match(validation.error, invalidCase.pattern, `${invalidCase.label} should explain the failure`);
   }
+
+  // The scoring contract inverted in Task 1: the model is now REQUIRED to report a
+  // top-level overall.score (validated 0-100 above), but it must still never be able to
+  // report a score on an individual requirement or anywhere outside `overall`.
+  const validBaseline = harness.JDReasoning.validateModelOutput(JSON.stringify(valid), input);
+  assert.equal(validBaseline.ok, true, 'a legitimate overall.score must still be accepted');
+  assert.equal(validBaseline.reasoning.overall.score, valid.overall.score, 'the accepted overall.score should survive validation unchanged (aside from clamping)');
 });
 
-test('JDReasoning.mergeResult preserves the deterministic score and applies the 15-point composite cap', () => {
+test('JDReasoning.mergeResult preserves the deterministic score and clamps the AI score into the [det-10, det+35] band', () => {
   const { harness, profile, normalized, result } = analyze(`Required Skills:
 - Kubernetes
 - Azure
@@ -623,6 +705,8 @@ Preferred Skills:
   assert.ok(harness.JDReasoning, 'JDReasoning should be loaded');
 
   const input = harness.JDReasoning.buildInput(normalized, result, profile, 'en');
+  // deterministicScore for this fixture is 30, so the clamp band is [max(0, 30-10), min(100, 30+35)] = [20, 65].
+  // A model score of 90 sits above the band ceiling, so it must be clamped down to 65 (not accepted as-is).
   const validation = harness.JDReasoning.validateModelOutput(JSON.stringify(reasoningForFixture(input, {
     Kubernetes: {
       matchLevel: 'adjacent-professional',
@@ -631,7 +715,7 @@ Preferred Skills:
       limitation: 'Published Azure delivery is adjacent to Kubernetes operations, but Kubernetes itself is still unproven.',
       verificationQuestion: 'Which Kubernetes clusters or workloads has he operated in production?'
     }
-  })), input);
+  }, { score: 90, fitBand: 'strong', narrative: 'Strong overall fit driven by adjacent cloud delivery experience.' })), input);
   assert.equal(validation.ok, true, 'the reasoning fixture should validate before merge');
 
   const merged = harness.JDReasoning.mergeResult(result, validation.reasoning, input);
@@ -640,8 +724,11 @@ Preferred Skills:
   assert.equal(merged.deterministicScore, 30, 'deterministic score should remain unchanged');
   assert.equal(merged.verifiedScore, 30, 'verified score should reflect only direct deterministic evidence');
   assert.equal(merged.transferableScore, 83, 'transferable score should apply the adjacent-professional factor');
-  assert.equal(merged.compositeScore, 45, 'composite score should respect the deterministic +15 ceiling');
-  assert.equal(merged.requiredGapCeiling, 100, 'no explicit required gap should leave the ceiling fully open');
+  assert.equal(merged.aiScore, 90, 'aiScore should carry the raw model-reported score, unclamped');
+  assert.equal(merged.finalScore, 65, 'finalScore should clamp to the deterministic+35 band ceiling (30 + 35)');
+  assert.equal(merged.adjusted, true, 'adjusted should flag that clamping changed the reported AI score');
+  assert.equal(merged.fitBand, 'good', 'fitBand must derive from the clamped finalScore (65), not the raw aiScore or the model-reported fitBand');
+  assert.equal(merged.compositeScore, merged.finalScore, 'compositeScore should mirror finalScore for legacy consumers (chatbot.js renderer)');
   assert.equal(kubernetes.matchLevel, 'adjacent-professional', 'validated reasoning should remain attached to the requirement');
   assert.deepEqual(
     Array.from(kubernetes.evidenceRefs),
@@ -652,6 +739,50 @@ Preferred Skills:
     merged.sections.transferableAdvantages.some((item) => item.requirementId === kubernetes.requirementId),
     'adjacent transferable reasoning should surface in the transferable section'
   );
+});
+
+test('JDReasoning.mergeResult floors the clamp ceiling at 65 even when the deterministic score is 0', () => {
+  // Owner-approved decision (FINAL WHOLE-BRANCH REVIEW, I1): the ceiling is additive
+  // (deterministicScore + 35) EXCEPT it never drops below 65, so a well-evidenced
+  // adjacent-stack judgment can always reach "Good fit" even against a pure zero-overlap
+  // keyword pass (e.g. an AWS/Go JD scored against this Azure/.NET profile) instead of
+  // being capped at 35 ("Limited overlap") purely because the keyword engine found nothing.
+  const { harness, profile, normalized } = analyze('Required Skills:\n- Kubernetes\n');
+  assert.ok(harness.JDReasoning, 'JDReasoning should be loaded');
+
+  const zeroDeterministicResult = {
+    score: 0,
+    deterministicScore: 0,
+    confidence: { label: 'low', reasons: [] },
+    categories: {},
+    requirements: [],
+    strongMatches: [],
+    partialMatches: [],
+    gaps: [],
+    unverified: []
+  };
+  const input = harness.JDReasoning.buildInput(normalized, zeroDeterministicResult, profile, 'en');
+  const reasoning = {
+    narrative: 'The keyword pass found no overlap, but the underlying stack is judged adjacent.',
+    requirements: [],
+    overall: {
+      score: 95,
+      fitBand: 'strong',
+      narrative: 'A high AI-judged score against a zero-keyword deterministic baseline.'
+    }
+  };
+
+  const merged = harness.JDReasoning.mergeResult(zeroDeterministicResult, reasoning, input);
+
+  assert.equal(merged.deterministicScore, 0, 'deterministic score should remain 0');
+  assert.equal(merged.aiScore, 95, 'aiScore should carry the raw model-reported score, unclamped');
+  assert.equal(
+    merged.finalScore,
+    65,
+    'the ceiling must floor at 65 (not the additive 0 + 35 = 35), so a well-evidenced adjacent-stack judgment can still reach "Good fit"'
+  );
+  assert.equal(merged.fitBand, 'good', 'fitBand must derive from the floored ceiling (65), not "limited"');
+  assert.equal(merged.adjusted, true, 'adjusted should flag that clamping changed the reported AI score (95 -> 65)');
 });
 
 test('JDReasoning.mergeResult refuses score lift from incompatible evidence records without prior validation', () => {
@@ -679,29 +810,6 @@ test('JDReasoning.mergeResult refuses score lift from incompatible evidence reco
     assert.equal(entry.effectiveFactor, entry.baseFactor, `${evidenceRef} must not create a score lift`);
     assert.equal(entry.lifted, false, `${evidenceRef} must remain unlifted even when merge bypasses validation`);
   }
-});
-
-test('JDReasoning.fallback returns deterministic recruiter-facing reasoning without AI output', () => {
-  const { harness, profile, normalized, result } = analyze(`Required Skills:
-- Kubernetes
-- Azure
-- Azure DevOps
-- Bicep
-Preferred Skills:
-- CI/CD
-`);
-  assert.ok(harness.JDReasoning, 'JDReasoning should be loaded');
-
-  const input = harness.JDReasoning.buildInput(normalized, result, profile, 'ms');
-  const fallback = harness.JDReasoning.fallback(result, input, 'ms');
-
-  assert.equal(fallback.mode, 'deterministic-fallback');
-  assert.equal(fallback.language, 'ms');
-  assert.equal(fallback.deterministicScore, result.score);
-  assert.equal(fallback.sections.strengths.length > 0, true, 'fallback should preserve deterministic strengths');
-  assert.equal(fallback.sections.gaps.length > 0 || fallback.sections.limitations.length > 0, true, 'fallback should preserve deterministic gaps or limitations');
-  assert.equal(fallback.sections.interviewQuestions.length > 0, true, 'fallback should preserve deterministic interview topics');
-  assert.match(fallback.narrative, /deterministik|disahkan|jurang/i);
 });
 
 test('JDReasoning task 6 fixtures preserve deterministic scores and keep every score lift audited and bounded', () => {
@@ -814,13 +922,16 @@ test('JDReasoning task 6 fixtures preserve deterministic scores and keep every s
     assert.equal(after.score, before.score, `${fixture.name}: the top-level score should remain the authoritative deterministic score`);
     assert.equal(after.verifiedScore, expectedAudit.verifiedScore, `${fixture.name}: verified score should match the independent audit`);
     assert.equal(after.transferableScore, expectedAudit.transferableScore, `${fixture.name}: transferable score should match the independent audit`);
-    assert.equal(after.requiredGapCeiling, expectedAudit.requiredGapCeiling, `${fixture.name}: required-gap ceiling should match the independent audit`);
-    assert.equal(
-      after.compositeScore,
-      Math.min(after.transferableScore, before.score + 15, after.requiredGapCeiling),
-      `${fixture.name}: composite score should respect the bounded merge formula`
+    assert.equal(after.aiScore, expectedAudit.aiScore, `${fixture.name}: aiScore should carry the model's reported overall.score`);
+    assert.equal(after.finalScore, expectedAudit.finalScore, `${fixture.name}: finalScore should match the independent clamp-band audit`);
+    assert.ok(
+      after.finalScore >= Math.max(0, before.score - 10) &&
+        after.finalScore <= Math.min(100, Math.max(before.score + 35, 65)),
+      `${fixture.name}: finalScore must never leave the [deterministicScore-10, max(deterministicScore+35, 65)] sanity band`
     );
-    assert.equal(after.compositeScore, expectedAudit.compositeScore, `${fixture.name}: composite score should match the independent audit`);
+    assert.equal(after.adjusted, expectedAudit.adjusted, `${fixture.name}: adjusted should reflect whether the clamp changed the reported AI score`);
+    assert.equal(after.fitBand, expectedAudit.fitBand, `${fixture.name}: fitBand should be derived from the clamped finalScore`);
+    assert.equal(after.compositeScore, after.finalScore, `${fixture.name}: composite score should mirror finalScore for legacy consumers`);
 
     for (const entry of liftedEntries) {
       assert.ok(entry.evidenceRefs.length > 0, `${fixture.name}: every score lift must cite evidence refs`);

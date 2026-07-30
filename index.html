@@ -634,27 +634,25 @@
     <div class="chat-log" id="chat-log" aria-live="polite"></div>
 
     <div class="chat-chips" id="chat-chips">
-      <button type="button" data-i18n="chat.chip1">What does he do now?</button>
-      <button type="button" data-i18n="chat.chip2">Which projects are still live?</button>
-      <button type="button" data-i18n="chat.chip3">What's his tech stack?</button>
-      <button type="button" data-i18n="chat.chip4">How do I contact him?</button>
-      <button type="button" id="chat-jd-toggle" aria-expanded="false" aria-controls="chat-jd-panel" data-i18n="chat.jd.toggle">Match a JD</button>
+      <button type="button" data-i18n="chat.chip1">What's Ameer's strongest experience?</button>
+      <button type="button" data-i18n="chat.chip2">Walk me through his cloud &amp; Azure work</button>
+      <button type="button" id="chat-jd-toggle" aria-expanded="false" aria-controls="chat-jd-panel" data-i18n="chat.jd.toggle">Match a job description →</button>
     </div>
 
     <section class="chat-jd-panel" id="chat-jd-panel" aria-labelledby="chat-jd-title" hidden>
       <div class="chat-jd-head">
         <h5 id="chat-jd-title" data-i18n="chat.jd.title">Recruiter match mode</h5>
-        <p data-i18n="chat.jd.body">Paste a job description or parse a local PDF/DOCX for a deterministic compatibility estimate.</p>
+        <p data-i18n="chat.jd.body">Paste a job description or load a local PDF/DOCX. AIMeer analyzes the fit with AI and shows an evidence-backed match report.</p>
       </div>
 
       <label class="chat-jd-label" for="chat-jd-input" data-i18n="chat.jd.pasteLabel">Paste the job description</label>
       <textarea class="chat-jd-input" id="chat-jd-input" rows="6" spellcheck="false" aria-describedby="chat-jd-paste-hint chat-jd-disclaimer"></textarea>
-      <p class="chat-jd-hint" id="chat-jd-paste-hint" data-i18n="chat.jd.pasteHint">Pasted text stays in this browser tab only.</p>
+      <p class="chat-jd-hint" id="chat-jd-paste-hint" data-i18n="chat.jd.pasteHint">Pasted text is analyzed here, and the posting's wording is sent to AIMeer's secure cloud AI for scoring. Text that looks like a personal identifier is withheld instead of sent.</p>
 
       <div class="chat-jd-upload">
         <div class="chat-jd-upload-copy">
           <span class="chat-jd-label" data-i18n="chat.jd.fileLabel">Load a local PDF or DOCX</span>
-          <p class="chat-jd-hint" data-i18n="chat.jd.fileHint">Files are parsed locally and kept in memory only.</p>
+          <p class="chat-jd-hint" data-i18n="chat.jd.fileHint">Files are parsed locally. Once you analyze, the posting's wording is sent to AIMeer's secure cloud AI for scoring, with text that looks like a personal identifier withheld instead.</p>
         </div>
         <div class="chat-jd-file-row">
           <input class="sr-only" id="chat-jd-file" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
@@ -673,7 +671,7 @@
       <p class="chat-jd-status" id="chat-jd-status" role="status" aria-live="polite" data-i18n="chat.jd.status.idle">Paste a job description or choose a local PDF/DOCX to start.</p>
 
       <div class="chat-jd-result-wrap">
-        <h5 class="chat-jd-result-title" data-i18n="chat.jd.resultTitle">Estimated match result</h5>
+        <p class="chat-jd-result-title" data-i18n="chat.jd.resultTitle">Estimated match result</p>
         <div class="chat-jd-result" id="chat-jd-result"></div>
       </div>
     </section>
