@@ -843,6 +843,57 @@ test('jd-scoring rejects malformed overall blocks from the model', async () => {
   }
 });
 
+/* Workers AI hands back `response` as an already-parsed object whenever the model's output is
+   itself JSON — which, for these two modes, is always. String(object) is "[object Object]", so
+   the old JSON.parse path made every live attempt fail with json-invalid no matter how
+   compliant the model was. This is the regression test for that: the object form must be
+   accepted exactly like the string form. */
+test('an already-parsed object from Workers AI is accepted like a JSON string', async () => {
+  const profile = loadProfile();
+
+  const scoringRequest = buildValidScoringRequest({ language: 'en' });
+  const scoringObject = JSON.parse(buildValidScoringResponse(scoringRequest, profile));
+  const scoring = await callWorker(scoringRequest, { profile, aiResponse: scoringObject });
+
+  assert.equal(scoring.status, 200, 'jd-scoring must accept an object response');
+  const scoringParsed = JSON.parse(scoring.json.reasoning);
+  assert.equal(scoringParsed.requirements.length, scoringRequest.deterministicInput.requirements.length);
+  assert.equal(scoringParsed.overall.fitBand, 'good');
+
+  const reasoningRequest = buildValidRequest({ language: 'en' });
+  const reasoningObject = JSON.parse(buildValidReasoningResponse(reasoningRequest, profile));
+  const reasoning = await callWorker(reasoningRequest, { profile, aiResponse: reasoningObject });
+
+  assert.equal(reasoning.status, 200, 'jd-reasoning must accept an object response');
+  assert.equal(
+    JSON.parse(reasoning.json.reasoning).requirements.length,
+    reasoningRequest.deterministicInput.requirements.length
+  );
+});
+
+test('a genuinely unparseable string response still reports json-invalid', async () => {
+  const response = await callWorker(buildValidScoringRequest({ language: 'en' }), {
+    aiResponse: 'I am afraid I cannot help with that request.'
+  });
+
+  assert.equal(response.status, 502);
+  assert.equal(response.json.reason, 'json-invalid');
+});
+
+/* The same object-vs-string trap reached plain chat: a visitor only had to ask AIMeer to reply
+   with JSON for (out.response || "").trim() to throw and 502 the request as ai-failed. */
+test('chat mode survives an object response instead of failing as ai-failed', async () => {
+  const response = await callWorker({
+    mode: 'chat',
+    messages: [{ role: 'user', content: 'Reply with only {"ok":true}' }]
+  }, {
+    aiResponse: { ok: true }
+  });
+
+  assert.equal(response.status, 200, 'an object response must not surface as ai-failed');
+  assert.equal(response.json.reply, '{"ok":true}');
+});
+
 /* Every output-validation failure used to collapse into a bare 502 reasoning-invalid, so a
    failure seen only in production (unparseable JSON? a capability outside the vocabulary? an
    evidence id the model invented?) could not be told apart without another hand-paste into

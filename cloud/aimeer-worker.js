@@ -364,7 +364,7 @@ export default {
         max_tokens: mode === "summary" ? 160 : mode === "jd-explanation" ? 320 : 300,
         temperature: 0.2,
       });
-      return json({ reply: (out.response || "").trim() }, 200, cors);
+      return json({ reply: modelText(out) }, 200, cors);
     } catch (e) {
       return json({ error: "ai-failed", detail: String((e && e.message) || e).slice(0, 200) }, 502, cors);
     }
@@ -985,13 +985,8 @@ function buildJdReasoningMessage(reasoningInput, scoreNote) {
 }
 
 function validateJdReasoningModelOutput(rawOutput, input, extraRootKeys) {
-  const stripped = stripJsonFence(rawOutput);
-  let parsed;
-  try {
-    parsed = JSON.parse(stripped);
-  } catch {
-    return { ok: false, error: "json-invalid" };
-  }
+  const parsed = parseModelJson(rawOutput);
+  if (parsed === null) return { ok: false, error: "json-invalid" };
   if (!isPlainObject(parsed)) return { ok: false, error: "root-invalid" };
   const rootKeys = extraRootKeys && extraRootKeys.length
     ? JD_REASONING_ROOT_KEYS.concat(extraRootKeys)
@@ -1150,6 +1145,41 @@ function stripJsonFence(rawOutput) {
   const text = String(rawOutput || "").trim();
   const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   return fenced ? fenced[1].trim() : text;
+}
+
+/* Workers AI does not always hand back `response` as a string: when the model's output is
+   itself JSON, the runtime parses it and `response` arrives as an object. This was the live
+   failure that made both JD modes return 502 on every single attempt — String(object) is
+   "[object Object]", JSON.parse throws, and every request reported json-invalid regardless of
+   what the model actually produced. The model's schema compliance was never the problem.
+   An object is therefore taken as-is; the string path still handles a fenced or bare JSON
+   reply. Returns null when there is nothing parseable, which the caller maps to json-invalid. */
+function parseModelJson(rawOutput) {
+  if (isPlainObject(rawOutput)) return rawOutput;
+  try {
+    const parsed = JSON.parse(stripJsonFence(rawOutput));
+    return parsed === null ? null : parsed;
+  } catch {
+    return null;
+  }
+}
+
+/* The sibling of parseModelJson for the free-text modes (chat, summary, jd-explanation).
+   `(out.response || "").trim()` throws "trim is not a function" the moment the runtime parses
+   the model's output into an object — reachable from plain chat just by asking AIMeer to reply
+   with JSON, which 502s the whole request as ai-failed. */
+function modelText(out) {
+  const response = out && out.response;
+  if (typeof response === "string") return response.trim();
+  if (response === undefined || response === null) return "";
+  if (typeof response === "object") {
+    try {
+      return JSON.stringify(response);
+    } catch {
+      return "";
+    }
+  }
+  return String(response).trim();
 }
 
 /* The offending key name is part of the reason string: "an unknown key somewhere in a
