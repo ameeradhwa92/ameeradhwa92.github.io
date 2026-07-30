@@ -157,6 +157,25 @@ function buildRequestWithNestedMatchMutation(baseRequest, listKey, mutation) {
   return request;
 }
 
+/* Pulls the `overall` block out of a jd-scoring fixture for the second model call. Anything that is
+   not a parseable object carrying an overall block is passed through untouched, so the json-invalid
+   and malformed-overall fixtures still reach the validator exactly as written. */
+function overallFixtureFor(fixture) {
+  if (fixture && typeof fixture === 'object' && !Array.isArray(fixture)) {
+    return fixture.overall !== undefined ? fixture.overall : fixture;
+  }
+  if (typeof fixture !== 'string') return fixture;
+  try {
+    const parsed = JSON.parse(fixture);
+    if (parsed && typeof parsed === 'object' && parsed.overall !== undefined) {
+      return JSON.stringify(parsed.overall);
+    }
+  } catch {
+    /* not JSON — the fixture is testing the parser itself */
+  }
+  return fixture;
+}
+
 async function callWorker(body, options = {}) {
   const worker = await loadWorker();
   const fetchCalls = [];
@@ -203,11 +222,19 @@ async function callWorker(body, options = {}) {
       async run(model, payload) {
         aiCalls.push({ model, payload });
         if (options.aiError) throw options.aiError;
-        return {
-          response: options.aiResponse !== undefined
-            ? options.aiResponse
-            : buildValidReasoningResponse(body, profile)
-        };
+        const fixture = options.aiResponse !== undefined
+          ? options.aiResponse
+          : buildValidReasoningResponse(body, profile);
+        /* jd-scoring answers with two model calls: the per-requirement reasoning, then the overall
+           score on its own three-key schema. Tests supply one fixture in the jd-scoring output
+           shape, so the second call is served the `overall` block out of that same fixture. This
+           keeps every existing jd-scoring test meaningful without each one having to know the call
+           split — and a fixture with no `overall` still reaches the overall validator intact, so
+           the malformed-overall cases keep exercising it. */
+        if (body && body.mode === 'jd-scoring' && aiCalls.length === 2) {
+          return { response: overallFixtureFor(fixture) };
+        }
+        return { response: fixture };
       }
     };
   }
@@ -378,7 +405,9 @@ Application Questions:
     aiResponse: buildValidScoringResponse(scoringRequest, profile)
   });
   assert.equal(scoringResponse.status, 200, 'the same payload should be valid for jd-scoring');
-  const jdBlock = scoringResponse.aiCalls[0].payload.messages[1].content.split('===JD-START===\n')[1];
+  /* aiCalls[1] is the scoring call — the one that carries the JD prose. aiCalls[0] is the
+     per-requirement call, which deliberately does not (see runJdScoringMode). */
+  const jdBlock = scoringResponse.aiCalls[1].payload.messages[1].content.split('===JD-START===\n')[1];
   assert.ok(jdBlock, 'the JD prose should be handed over inside the data delimiters');
   assert.match(jdBlock, /^Required Skills:$/m, 'the model should see headings on their own line');
   assert.match(jdBlock, /^- Kubernetes$/m, 'the model should see bullets on their own line');
@@ -784,11 +813,23 @@ test('jd-scoring accepts a bounded valid request and returns strict JSON reasoni
   assert.equal(typeof parsed.overall.narrative, 'string');
   assert.ok(parsed.overall.narrative.trim().length > 0);
 
-  assert.equal(response.aiCalls.length, 1, 'bounded scoring should invoke Workers AI exactly once');
+  /* Two calls, deliberately: the per-requirement reasoning and the overall score are asked for
+     separately because one 8B call could not hold both a job description and a ten-field-per
+     -requirement contract — six live revisions of evidence. See runJdScoringMode. */
+  assert.equal(response.aiCalls.length, 2, 'scoring splits into a reasoning call and a scoring call');
+  for (const call of response.aiCalls) {
+    assert.equal(
+      call.payload.messages.filter((message) => message.role === 'system').length,
+      1,
+      'the worker should assemble its own single system prompt on every call'
+    );
+    assert.equal(call.model, '@cf/meta/llama-3.1-8b-instruct-fast');
+    assert.equal(call.payload.temperature <= 0.2, true);
+  }
   assert.equal(
-    response.aiCalls[0].payload.messages.filter((message) => message.role === 'system').length,
-    1,
-    'the worker should assemble its own single system prompt'
+    response.aiCalls[1].payload.max_tokens <= 400,
+    true,
+    'the scoring call answers three fields and should stay small'
   );
 });
 
@@ -857,7 +898,8 @@ test('jd-scoring rejects malformed overall blocks from the model', async () => {
 
     assert.equal(response.status, 502, `${label} should be rejected`);
     assert.equal(response.json.error, 'reasoning-invalid', `${label} should map to reasoning-invalid`);
-    assert.equal(response.aiCalls.length, 1, `${label} should be rejected after a single AI response is validated`);
+    assert.equal(response.json.stage, 'overall', `${label} should be attributed to the scoring call`);
+    assert.equal(response.aiCalls.length, 2, `${label} should be caught on the second call, after the first succeeded`);
   }
 });
 
@@ -1016,7 +1058,9 @@ test('a rejected model output names which validation rule it broke', async () =>
 
   const cases = [
     ['not JSON at all', 'I cannot produce JSON for this request.', 'json-invalid:len=39:leads-prose:no-obj'],
-    ['a missing overall block', JSON.stringify({ narrative: base.narrative, requirements: base.requirements }), 'overall-missing'],
+    /* With the call split the scoring call answers a three-key schema, so a response carrying no
+       score at all fails on the score rather than on a missing wrapper. */
+    ['a missing overall block', JSON.stringify({ narrative: base.narrative, requirements: base.requirements }), 'overall-score-invalid:unnamed'],
     ['an unknown fitBand', JSON.stringify({ ...base, overall: { ...base.overall, fitBand: 'excellent' } }), 'overall-fitband-invalid:excellent'],
     ['an unknown matchLevel', withFirstRequirement({ matchLevel: 'pretty-good' }), 'match-level-invalid:pretty-good'],
     ['an evidence id outside the registry', withFirstRequirement({ matchLevel: 'direct-professional', evidenceRefs: ['ev-invented-by-the-model'] }), 'evidence-invalid'],
@@ -1331,32 +1375,37 @@ test('a blank per-requirement field is accepted and an overlong one is clipped',
   assert.equal(first.recruiterIntent.length, 320, 'an overlong field must still arrive clipped');
 });
 
-/* jd-scoring's prompt points the model at overall.narrative, and the live model writes it there and
-   leaves the root narrative out — which was rejecting reports over a duplicated field. The root
-   narrative is backfilled from overall.narrative instead. jd-reasoning has no overall block to
-   backfill from, so an empty narrative there still means there is no report to show. */
-test('jd-scoring backfills a missing root narrative from overall.narrative', async () => {
+/* The relayed report is composed from both calls: the narrative and per-requirement reasoning from
+   the first, the score block from the second. Each half is attributed to its own stage on failure. */
+test('the relayed report composes both calls, and each failure names its stage', async () => {
   const request = buildValidScoringRequest({ language: 'en' });
   const profile = loadProfile();
   const base = JSON.parse(buildValidScoringResponse(request, profile));
-  const { narrative, ...withoutRootNarrative } = base;
 
-  const missing = await callWorker(request, { profile, aiResponse: JSON.stringify(withoutRootNarrative) });
-  assert.equal(missing.status, 200, 'a missing root narrative must not discard the report');
-  assert.equal(JSON.parse(missing.json.reasoning).narrative, base.overall.narrative,
-    'the headline must come from the paragraph the model was actually asked to write');
+  const composed = await callWorker(request, { profile, aiResponse: JSON.stringify(base) });
+  assert.equal(composed.status, 200);
+  const parsed = JSON.parse(composed.json.reasoning);
+  assert.equal(parsed.narrative, base.narrative, 'the headline comes from the per-requirement call');
+  assert.equal(parsed.requirements.length, request.deterministicInput.requirements.length);
+  assert.equal(parsed.overall.score, base.overall.score, 'the score comes from the scoring call');
+  assert.equal(parsed.overall.narrative, base.overall.narrative);
 
-  const blank = await callWorker(request, { profile, aiResponse: JSON.stringify({ ...base, narrative: '  ' }) });
-  assert.equal(blank.status, 200, 'a blank root narrative is treated the same as a missing one');
-  assert.equal(JSON.parse(blank.json.reasoning).narrative, base.overall.narrative);
-
-  /* Nothing to backfill from: overall.narrative is the report's only headline, so it must carry text. */
-  const noneAtAll = await callWorker(request, {
+  const reasoningBroken = await callWorker(request, {
     profile,
-    aiResponse: JSON.stringify({ ...withoutRootNarrative, overall: { ...base.overall, narrative: ' ' } })
+    aiResponse: JSON.stringify({ ...base, narrative: '  ' })
   });
-  assert.equal(noneAtAll.status, 502);
-  assert.equal(noneAtAll.json.reason, 'overall-narrative-invalid');
+  assert.equal(reasoningBroken.status, 502);
+  assert.equal(reasoningBroken.json.stage, 'reasoning', 'a narrative failure belongs to the first call');
+  assert.equal(reasoningBroken.json.reason, 'narrative-invalid');
+  assert.equal(reasoningBroken.aiCalls.length, 1, 'a failed first call must not spend the second');
+
+  const overallBroken = await callWorker(request, {
+    profile,
+    aiResponse: JSON.stringify({ ...base, overall: { ...base.overall, narrative: ' ' } })
+  });
+  assert.equal(overallBroken.status, 502);
+  assert.equal(overallBroken.json.stage, 'overall');
+  assert.equal(overallBroken.json.reason, 'overall-narrative-invalid');
 });
 
 test('an empty jd-reasoning narrative is still rejected, and markup still is too', async () => {
@@ -1561,39 +1610,42 @@ test('the requirement count and the list to judge are stated in the user message
     'the live model was enumerating the job description bullets instead of the supplied list');
 });
 
-/* jd-scoring returned nothing but invented ids on every live request while jd-reasoning — same
-   schema, same model, no JD prose — returned all of them correctly. Reading the job description
-   last, the model enumerated the job description. Order is the fix, so order is what this pins. */
-test('jd-scoring reads the JD first and the requirement ids last', async () => {
+/* THE central property of the split. Every live jd-scoring failure traced to one model call holding
+   the JD prose AND the per-requirement contract; jd-reasoning, identical but without the prose,
+   never failed. So the prose must reach the scoring call and must not reach the reasoning call. */
+test('only the scoring call sees the JD prose; the reasoning call is the proven jd-reasoning message', async () => {
   const request = buildValidScoringRequest({ language: 'en' });
   const profile = loadProfile();
   const response = await callWorker(request, {
     profile,
     aiResponse: buildValidScoringResponse(request, profile)
   });
-
   assert.equal(response.status, 200);
-  const user = response.aiCalls[0].payload.messages.find((message) => message.role === 'user').content;
-  const ids = request.deterministicInput.requirements.map((requirement) => requirement.id);
 
+  const reasoningUser = response.aiCalls[0].payload.messages.find((message) => message.role === 'user').content;
+  const scoringUser = response.aiCalls[1].payload.messages.find((message) => message.role === 'user').content;
+
+  assert.equal(reasoningUser.includes(request.jdText), false, 'the reasoning call must not carry the JD prose');
+  assert.equal(reasoningUser.includes('===JD-START==='), false, 'nor the delimiters');
+  assert.match(reasoningUser, /Reasoning input JSON:/, 'it is the jd-reasoning message, unchanged');
+
+  assert.equal(scoringUser.split(request.jdText).length - 1, 1, 'the scoring call carries the prose exactly once');
   assert.equal(
-    user.indexOf('===JD-END===') < user.indexOf('Reasoning input JSON:'),
+    scoringUser.split('===JD-START===')[1].split('===JD-END===')[0].includes(request.jdText),
     true,
-    'the JD is background and must come before the requirement list, not after it'
+    'and only inside the treat-as-data delimiters'
   );
-  for (const id of ids) {
-    assert.equal(user.includes('- ' + id), true, `the directive must spell out ${id} verbatim`);
-  }
   assert.equal(
-    user.lastIndexOf('- ' + ids[ids.length - 1]) > user.indexOf('===JD-END==='),
-    true,
-    'the id list must be the last thing the model reads'
+    scoringUser.includes('requirementId'),
+    false,
+    'the scoring call answers three fields — it is never asked about requirement ids'
   );
-  assert.match(user, /inventing none/, 'naming the count alone was not enough — the ids must be copyable');
-  assert.match(user, /Do not enumerate the job description's own bullet list/);
 });
 
-test('the JD prose still appears exactly once, inside the delimiters', async () => {
+/* Both calls must reach the model with a server-assembled system prompt and no requirement that the
+   reasoning half be re-derived from the JD. This pins the reasoning call to the same jd-reasoning
+   system prompt that works live. */
+test('both calls use a server-assembled prompt, and the reasoning call reuses jd-reasoning s', async () => {
   const request = buildValidScoringRequest({ language: 'en' });
   const profile = loadProfile();
   const response = await callWorker(request, {
@@ -1601,13 +1653,13 @@ test('the JD prose still appears exactly once, inside the delimiters', async () 
     aiResponse: buildValidScoringResponse(request, profile)
   });
 
-  const user = response.aiCalls[0].payload.messages.find((message) => message.role === 'user').content;
-  assert.equal(user.split(request.jdText).length - 1, 1, 'reordering must not duplicate the JD prose');
-  assert.equal(
-    user.split('===JD-START===')[1].split('===JD-END===')[0].includes(request.jdText),
-    true,
-    'the prose must stay inside the treat-as-data delimiters'
-  );
+  const reasoningSystem = response.aiCalls[0].payload.messages[0].content;
+  const scoringSystem = response.aiCalls[1].payload.messages[0].content;
+
+  assert.match(reasoningSystem, /bounded recruiter reasoning/i, 'the reasoning call keeps the jd-reasoning prompt');
+  assert.match(scoringSystem, /exactly three keys/i, 'the scoring call asks for three keys and nothing more');
+  assert.equal(scoringSystem.includes('matchLevel must be exactly one of'), false,
+    'the scoring call must not be handed the per-requirement vocabulary it has no use for');
 });
 
 /* An evidence-based level citing nothing is the model claiming evidence it never named. That used
@@ -1703,9 +1755,10 @@ test('jd-scoring passes an injected jdText through as delimited data instead of 
   });
 
   assert.equal(response.status, 200, 'an injection attempt inside the JD text is not a privacy violation and should not be rejected');
-  assert.equal(response.aiCalls.length, 1);
+  assert.equal(response.aiCalls.length, 2);
 
-  const userMessage = response.aiCalls[0].payload.messages.find((message) => message.role === 'user');
+  /* The scoring call is the one that carries the JD, so it is the one an injection has to survive. */
+  const userMessage = response.aiCalls[1].payload.messages.find((message) => message.role === 'user');
   assert.match(userMessage.content, /===JD-START===/);
   assert.match(userMessage.content, /===JD-END===/);
   assert.equal(
@@ -1723,16 +1776,19 @@ test('jd-scoring tells the model to judge its own score instead of preserving th
     aiResponse: buildValidScoringResponse(request, profile)
   });
   assert.equal(response.status, 200);
-  const userMessage = response.aiCalls[0].payload.messages.find((message) => message.role === 'user');
+  /* The SCORING call is where this matters. Its sibling never reports a score, so it keeps
+     jd-reasoning's client-authoritative note; if the scoring call were told the same thing, an 8B
+     model could just echo deterministicResult.score and silently defeat the mode. */
+  const userMessage = response.aiCalls[1].payload.messages.find((message) => message.role === 'user');
   assert.doesNotMatch(
     userMessage.content,
     /must not be changed/i,
-    'jd-scoring must not tell the model the deterministic score is authoritative — that contradicts JD_SCORING_PROMPT\'s own instruction and risks an 8B model just echoing deterministicResult.score, silently defeating the mode'
+    'the scoring call must never be told the deterministic score is authoritative'
   );
   assert.match(
     userMessage.content,
     /report your own overall\.score/i,
-    'jd-scoring should explicitly tell the model the baseline is context only and it must judge and report its own score'
+    'it should be told the baseline is context only and that it must judge and report its own score'
   );
 });
 
@@ -1760,12 +1816,12 @@ test('jd-scoring sends the JD prose exactly once, inside the delimited block onl
     aiResponse: buildValidScoringResponse(request, profile)
   });
   assert.equal(response.status, 200);
-  const userMessage = response.aiCalls[0].payload.messages.find((message) => message.role === 'user');
+  const userMessage = response.aiCalls[1].payload.messages.find((message) => message.role === 'user');
   const occurrences = userMessage.content.split(request.jdText).length - 1;
   assert.equal(
     occurrences,
     1,
-    'the JD prose should appear exactly once in the outgoing payload — doubling it (once un-delimited inside JSON.stringify(reasoningInput), once inside the markers) roughly doubles input tokens and weakens the delimiters\' treat-as-data defense for the un-framed copy'
+    'the JD prose should appear exactly once in the outgoing payload — doubling it (once un-delimited inside the context JSON, once inside the markers) roughly doubles input tokens and weakens the delimiters\' treat-as-data defense for the un-framed copy'
   );
   const beforeDelimiter = userMessage.content.split('===JD-START===')[0];
   assert.equal(
