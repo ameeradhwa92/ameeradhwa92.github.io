@@ -1022,7 +1022,8 @@ test('a rejected model output names which validation rule it broke', async () =>
     ['an evidence id outside the registry', withFirstRequirement({ matchLevel: 'direct-professional', evidenceRefs: ['ev-invented-by-the-model'] }), 'evidence-invalid'],
     ['transferableCapabilities not an array', withFirstRequirement({ transferableCapabilities: 'Azure DevOps' }), 'capability-invalid:not-array'],
     ['the wrong requirement count', JSON.stringify({ ...base, requirements: base.requirements.slice(1) }),
-      `requirements-invalid:got=${base.requirements.length - 1},want=${base.requirements.length}`]
+      `requirements-invalid:got=${base.requirements.length - 1},want=${base.requirements.length}` +
+      ',keys=requirementId.recruiterIntent.expectedOutcome.matchLevel.evidenceRefs.transferableCapabilities']
   ];
 
   const seenReasons = new Set();
@@ -1426,11 +1427,89 @@ test('duplicate and unknown requirement ids are dropped, and the count is report
     aiResponse: JSON.stringify({ ...base, requirements: base.requirements.slice(2) })
   });
   assert.equal(short.status, 502, 'partial coverage is still refused');
-  assert.equal(
+  assert.match(
     short.json.reason,
-    `requirements-invalid:got=${base.requirements.length - 2},want=${base.requirements.length}`,
+    new RegExp(`^requirements-invalid:got=${base.requirements.length - 2},want=${base.requirements.length},keys=`),
     'the reason must report both counts'
   );
+  assert.match(short.json.reason, /keys=requirementId\./,
+    'and the keys the entries carried — got=0 looks the same whether ids are wrong or merely elsewhere');
+});
+
+/* A flat got=0 on every live request looks identical whether the model invented the ids or put them
+   under a field name this validator was not reading. Both alias keys and the single-key wrapper
+   shape resolve to the same requirement; neither invents anything, since the id still has to match
+   one that was supplied. */
+test('requirement ids are found under an alias key or a single-key wrapper', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const base = JSON.parse(buildValidScoringResponse(request, profile));
+  const expectedIds = base.requirements.map((requirement) => requirement.requirementId).sort();
+
+  const aliased = await callWorker(request, {
+    profile,
+    aiResponse: JSON.stringify({
+      ...base,
+      requirements: base.requirements.map(({ requirementId, ...rest }) => ({ id: requirementId, ...rest }))
+    })
+  });
+  assert.equal(aliased.status, 200, 'an id under `id` must resolve');
+  assert.deepEqual(
+    JSON.parse(aliased.json.reasoning).requirements.map((requirement) => requirement.requirementId).sort(),
+    expectedIds
+  );
+
+  const wrapped = await callWorker(request, {
+    profile,
+    aiResponse: JSON.stringify({
+      ...base,
+      requirements: base.requirements.map(({ requirementId, ...rest }) => ({ [requirementId]: rest }))
+    })
+  });
+  assert.equal(wrapped.status, 200, 'a single-key wrapper must resolve');
+  assert.deepEqual(
+    JSON.parse(wrapped.json.reasoning).requirements.map((requirement) => requirement.requirementId).sort(),
+    expectedIds
+  );
+});
+
+/* The model sometimes labels an entry with the requirement's term where the id belongs. A term
+   resolves only when it is unique across the supplied requirements — an ambiguous label is left
+   unresolved rather than attached to a guess. */
+test('a unique requirement term resolves to its id, an invented label does not', async () => {
+  const request = buildValidScoringRequest({ language: 'en' });
+  const profile = loadProfile();
+  const base = JSON.parse(buildValidScoringResponse(request, profile));
+  const byId = new Map(request.deterministicInput.requirements.map((requirement) => [requirement.id, requirement]));
+
+  const byTerm = await callWorker(request, {
+    profile,
+    aiResponse: JSON.stringify({
+      ...base,
+      requirements: base.requirements.map((requirement) => ({
+        ...requirement,
+        requirementId: byId.get(requirement.requirementId).term
+      }))
+    })
+  });
+  assert.equal(byTerm.status, 200, 'a unique term must resolve to its requirement');
+  assert.deepEqual(
+    JSON.parse(byTerm.json.reasoning).requirements.map((requirement) => requirement.requirementId).sort(),
+    base.requirements.map((requirement) => requirement.requirementId).sort()
+  );
+
+  const invented = await callWorker(request, {
+    profile,
+    aiResponse: JSON.stringify({
+      ...base,
+      requirements: base.requirements.map((requirement, index) => ({
+        ...requirement,
+        requirementId: 'req-invented-' + index
+      }))
+    })
+  });
+  assert.equal(invented.status, 502, 'a label matching nothing supplied must not be guessed at');
+  assert.match(invented.json.reason, /^requirements-invalid:got=0,/);
 });
 
 /* This file is deployed by hand, and a paste that silently does not take effect looks exactly like

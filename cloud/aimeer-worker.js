@@ -19,7 +19,7 @@
    deployed by hand, and a paste that silently does not take effect looks exactly like a fix that
    did not work. That cost several rounds of debugging: the same failures kept coming back because
    the revision under test was never the revision deployed. */
-const WORKER_REVISION = "2026-07-30-jd-8";
+const WORKER_REVISION = "2026-07-30-jd-9";
 
 const SITE = "https://ameeradhwa92.github.io";
 const KB_URL = SITE + "/assets/data/aimeer-kb.txt";
@@ -1188,10 +1188,27 @@ function validateJdReasoningModelOutput(rawOutput, input, options) {
     };
   }
 
+  /* Terms as well as ids, because the model sometimes labels an entry with the requirement's term
+     ("Strong SQL") where the id belongs. A term only resolves when it is unique across the supplied
+     requirements — an ambiguous label is left unresolved rather than attached to a guess. */
   const requirementIndex = Object.create(null);
+  const requirementTermIndex = Object.create(null);
+  const ambiguousTerms = Object.create(null);
   for (const requirement of input.requirements) {
     requirementIndex[requirement.id] = true;
+    const term = normalizeText(requirement.term).toLowerCase();
+    if (!term) continue;
+    if (requirementTermIndex[term]) ambiguousTerms[term] = true;
+    else requirementTermIndex[term] = requirement.id;
   }
+  const resolveRequirementId = (entry) => {
+    if (requirementIndex[entry.id]) return entry.id;
+    for (const candidate of [entry.id, entry.fields.term, entry.fields.requirement]) {
+      const term = normalizeText(candidate).toLowerCase();
+      if (term && requirementTermIndex[term] && !ambiguousTerms[term]) return requirementTermIndex[term];
+    }
+    return "";
+  };
   const evidenceIndex = Object.create(null);
   for (const record of input.evidenceRegistry) {
     evidenceIndex[record.id] = record;
@@ -1203,8 +1220,10 @@ function validateJdReasoningModelOutput(rawOutput, input, options) {
 
   const seenRequirementIds = Object.create(null);
   const requirements = [];
-  for (const item of requirementList) {
-    if (!isPlainObject(item)) return { ok: false, error: "requirement-object-invalid" };
+  for (const rawItem of requirementList) {
+    const entry = normalizeRequirementEntry(rawItem);
+    if (!entry) continue;
+    const item = entry.fields;
     const keyError = allowModelScoreKeys
       ? ""
       : rejectScoreKeys(item, JD_REASONING_REQUIREMENT_KEYS, "reasoning requirement");
@@ -1213,9 +1232,10 @@ function validateJdReasoningModelOutput(rawOutput, input, options) {
     /* A stray or repeated id is skipped rather than fatal. The model sometimes returns an id it
        invented, or the same requirement twice; discarding those entries costs nothing, while
        rejecting the response cost every other requirement in it. Full coverage is still required —
-       the count check after this loop is what enforces it, and it now reports both numbers. */
-    const requirementId = clipText(item.requirementId, 96);
-    if (!requirementIndex[requirementId] || seenRequirementIds[requirementId]) continue;
+       the count check after this loop is what enforces it, and it reports both numbers plus the
+       keys the entries actually carried. */
+    const requirementId = resolveRequirementId(entry);
+    if (!requirementId || seenRequirementIds[requirementId]) continue;
     seenRequirementIds[requirementId] = true;
 
     /* The rejected value is part of the reason: "match-level-invalid" alone gave no way to tell
@@ -1304,9 +1324,18 @@ function validateJdReasoningModelOutput(rawOutput, input, options) {
      whether the model returned too few (it enumerated the job description's own bullets instead of
      the supplied list) or too many. */
   if (requirements.length !== input.requirements.length) {
+    /* The key names of the first entry, because got=0 looks the same whether the model invented the
+       ids or simply put them under a field name this validator was not reading — and those have
+       completely different fixes. Bounded by safeKeyLabel and capped at six, so no model prose can
+       ride out on this. */
+    const sample = requirementList.find(isPlainObject);
+    const shape = sample
+      ? Object.keys(sample).slice(0, 6).map(safeKeyLabel).join(".")
+      : "type-" + safeKeyLabel(typeof requirementList[0]);
     return {
       ok: false,
-      error: "requirements-invalid:got=" + requirements.length + ",want=" + input.requirements.length
+      error: "requirements-invalid:got=" + requirements.length +
+        ",want=" + input.requirements.length + ",keys=" + shape
     };
   }
 
@@ -1458,6 +1487,31 @@ function repairTrailingCommas(text) {
    which the ids face the same known-and-unique check every array entry does.
    Returns null when the value is neither an array nor an object, which the caller reports with the
    type it actually got. */
+/* Where the id actually lives. `requirementId` is what the prompt asks for, but a model naming a
+   field it has just been shown a list of ids for will reach for `id` about as often, and this cost
+   a full round of live debugging: coverage came back as a flat got=0 on every request, which looks
+   identical whether the ids are wrong or merely somewhere else. Reading the aliases costs nothing —
+   the value found still has to match a supplied id (or an unambiguous term) to be used at all. */
+const JD_REASONING_REQUIREMENT_ID_KEYS = ["requirementId", "id", "requirement_id", "requirementID"];
+
+/* One entry, normalized to {id, fields}. Two shapes beyond the plain object are understood:
+   an entry that names its id under an alias, and a single-key wrapper — {"req-x": {...}} — which is
+   what an array of per-id objects looks like when the model keys each one instead of adding a
+   field. Neither invents anything: the id still faces resolveRequirementId. */
+function normalizeRequirementEntry(item) {
+  if (!isPlainObject(item)) return null;
+  for (const key of JD_REASONING_REQUIREMENT_ID_KEYS) {
+    if (typeof item[key] === "string" && normalizeText(item[key])) {
+      return { id: clipText(item[key], 96), fields: item };
+    }
+  }
+  const keys = Object.keys(item);
+  if (keys.length === 1 && isPlainObject(item[keys[0]])) {
+    return { id: clipText(keys[0], 96), fields: item[keys[0]] };
+  }
+  return { id: "", fields: item };
+}
+
 function normalizeRequirementList(value) {
   if (Array.isArray(value)) return value;
   if (!isPlainObject(value)) return null;
