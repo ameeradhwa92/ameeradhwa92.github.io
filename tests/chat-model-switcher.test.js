@@ -762,12 +762,18 @@ test('JD scoring runs automatically on the cloud without a click, keeping the de
   assert.equal(realMergedResult.requirementReasoning[1].evidenceRecords[0].claim, 'Owns release pipelines and cloud delivery workflows.');
   assert.ok(realMergedResult.sections.verifiedStrengths.length, 'the merge should emit verifiedStrengths');
   assert.ok(realMergedResult.sections.transferableAdvantages.length, 'the merge should emit transferableAdvantages');
-  assert.match(afterScoring, /Deterministic compatibility/i, 'the report should keep the deterministic baseline audit card');
-  assert.match(afterScoring, /Calibrated fit/i);
+  assert.match(afterScoring, /Strong fit/i, 'the report should lead with the fit band headline derived from the clamped finalScore');
+  assert.doesNotMatch(afterScoring, /Calibrated against published evidence/i, 'the calibrated note must not appear when the AI score was not clamped');
   assert.match(afterScoring, /Owns release pipelines and cloud delivery workflows./i, 'the report should surface the resolved evidence claim');
   assert.match(afterScoring, /production Kubernetes rollout/i, 'the report should keep the recruiter-safe limitation text');
   assert.match(afterScoring, /What hands-on Kubernetes rollout, if any, has he completed directly\?/i);
   assert.match(afterScoring, /secure cloud AI/i, 'the report should state that scoring used secure cloud AI');
+  assert.match(afterScoring, /Boundary: Published work does not yet confirm a production Kubernetes rollout\./i, 'the per-requirement detail card should still label the limitation as a boundary');
+  assert.match(afterScoring, /Verification question: What hands-on Kubernetes rollout/i, 'the per-requirement detail card should still label the verification question');
+  assert.match(afterScoring, /Azure DevOps release ownership/i, 'the resolved evidence record should surface its published source label');
+  assert.match(afterScoring, /Verified strengths/i, 'the report should render the verified-strengths heading');
+  assert.match(afterScoring, /Transferable advantages/i, 'the report should render the transferable-advantages heading');
+  assert.match(afterScoring, /Verification questions/i, 'the report should render the deduped interview-question heading');
   assert.equal(
     elements['chat-jd-status'].textContent,
     'Deterministic match ready from pasted text.',
@@ -776,11 +782,12 @@ test('JD scoring runs automatically on the cloud without a click, keeping the de
 
   setLanguage('ms');
   const localized = collectText(elements['chat-jd-result']);
-  assert.match(localized, /Padanan disahkan/i);
+  assert.match(localized, /Padanan kukuh/i, 'the fit band headline should localize into formal Bahasa Melayu');
+  assert.match(localized, /Kekuatan yang disahkan/i, 'the verified-strengths heading should localize into formal Bahasa Melayu');
   assert.match(localized, /awan selamat/i, 'the cloud scoring status should localize into formal Bahasa Melayu');
 });
 
-test('completed AI scoring keeps a single partial matches section after the real merge renders', async () => {
+test('completed AI scoring renders each report section exactly once and drops the legacy deterministic-only heading', async () => {
   const deterministicResult = buildDeterministicResult();
   const { context, elements } = createChatContext({
     saveData: true,
@@ -821,24 +828,108 @@ test('completed AI scoring keeps a single partial matches section after the real
   elements['chat-jd-analyze'].dispatch('click');
   await flushAsync();
 
+  const rendered = collectText(elements['chat-jd-result']);
   assert.match(
-    collectText(elements['chat-jd-result']),
+    rendered,
     /Adjacent cloud delivery shortens the ramp/i,
     'the merged AI reasoning should have rendered'
   );
   assert.equal(
     countNodes(
       elements['chat-jd-result'],
-      (node) => node.tagName === 'H6' && node.textContent === 'Partial or transferable matches'
+      (node) => node.tagName === 'H6' && node.textContent === 'Transferable advantages'
     ),
     1,
-    'completed AI scoring should keep only the deterministic partial matches heading'
+    'the AI-scored report should render the transferable advantages heading exactly once'
   );
   assert.doesNotMatch(
-    collectText(elements['chat-jd-result']),
-    /Partial or transferable matches No items in this section\./i,
-    'completed AI scoring should not append an empty duplicate partial matches block'
+    rendered,
+    /Partial or transferable matches/i,
+    'the legacy deterministic-only "partial matches" heading must not appear in the AI-led report'
   );
+});
+
+test('a settled AI-scored report leads with the fit band, shows the calibrated note when the score was clamped, and the WhatsApp handoff is prefilled with the band, score, and top strengths', async () => {
+  const deterministicResult = buildDeterministicResult();
+  let openedUrl = null;
+  const { context, elements } = createChatContext({
+    saveData: true,
+    fetchImpl(url) {
+      const target = String(url);
+      if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
+      if (target.includes('workers.dev')) return Promise.resolve(makeJsonResponse({ reasoning: '{}' }));
+      return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
+    }
+  });
+  context.window.JDExtractor = {
+    extract() {
+      return Promise.resolve({ text: '', source: 'pdf', warnings: [] });
+    },
+    normalize(text) {
+      return { normalizedText: text, warnings: [] };
+    }
+  };
+  context.window.JDMatcher = {
+    scoreJobDescription() {
+      return clone(deterministicResult);
+    }
+  };
+  context.window.JDReasoning = {
+    buildInput(normalized, result, profile, language) {
+      return { language, jdText: normalized.normalizedText, requirements: result.requirements || [], evidenceRegistry: profile.recruiterEvidence || [] };
+    },
+    validateModelOutput() {
+      return { ok: true, reasoning: {} };
+    },
+    mergeResult(result) {
+      return buildMergedResult(result, {
+        finalScore: 65,
+        aiScore: 90,
+        adjusted: true,
+        fitBand: 'good',
+        reasoningNarrative: 'Adjacent cloud delivery narrows the gap on container operations.',
+        sections: {
+          verifiedStrengths: [
+            { term: 'ASP.NET Core MVC', recruiterFraming: 'Directly published production evidence.' },
+            { term: 'Azure DevOps', recruiterFraming: 'Owns release pipelines directly.' },
+            { term: 'SQL Server', recruiterFraming: 'Published database design ownership.' }
+          ],
+          transferableAdvantages: [],
+          explicitGaps: [],
+          unverifiedRequirements: [],
+          interviewQuestions: []
+        }
+      });
+    }
+  };
+  context.window.open = (url) => { openedUrl = url; };
+
+  await loadChat(context);
+  await flushAsync();
+  elements['chat-launcher'].dispatch('click');
+  await flushAsync();
+  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC ownership.';
+  elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+
+  const rendered = collectText(elements['chat-jd-result']);
+  assert.match(rendered, /Good fit/i, 'the report should lead with the fit band headline');
+  assert.match(rendered, /Adjacent cloud delivery narrows the gap on container operations/i, 'the narrative should render');
+  assert.match(rendered, /65%/, 'the clamped final score should render, not the raw AI score or the deterministic baseline');
+  assert.doesNotMatch(rendered, /90%/, 'the unclamped AI score must never render');
+  assert.match(rendered, /Calibrated against published evidence/i, 'the calibrated note should render when the AI score was clamped');
+
+  const handoffCards = elements['chat-log'].children.filter((child) => child.className && child.className.indexOf('chat-handoff') !== -1);
+  assert.ok(handoffCards.length > 0, 'a settled AI-scored report should surface the WhatsApp/email handoff card');
+
+  const waButton = handoffCards[handoffCards.length - 1].children[1].children[0];
+  waButton.dispatch('click');
+  await flushAsync();
+
+  assert.ok(openedUrl, 'clicking WhatsApp should open a prefilled chat URL');
+  const decoded = decodeURIComponent(openedUrl.split('text=')[1]);
+  assert.match(decoded, /AIMeer match report — Good fit \(65%\)\./, 'the handoff prefill should lead with the fit band and the clamped score');
+  assert.match(decoded, /Strengths: ASP\.NET Core MVC, Azure DevOps, SQL Server\./, 'the handoff prefill should list up to three verified strengths');
 });
 
 test('in-flight AI scoring keeps its secure-cloud status after the visitor switches to on-device AI', async () => {
@@ -982,9 +1073,15 @@ test('two failed cloud scoring attempts fall back to the deterministic estimate 
     assert.equal('capabilityVocabulary' in call, false);
   });
   assert.match(rendered, /72%/, 'the deterministic score must remain visible after scoring fails');
+  assert.match(rendered, /Anggaran kata kunci/i, 'the report should show the keyword-estimate headline instead of a fit band when scoring falls back');
   assert.match(rendered, /Ringkasan deterministik digunakan/i, 'the UI should show the localized fallback status');
   assert.match(rendered, /awan selamat/i, 'the cloud scoring status should be localized in Bahasa Melayu');
   assert.doesNotMatch(rendered, /Penaakulan mengikut keperluan/i, 'no AI reasoning sections should render on the fallback path');
+  assert.doesNotMatch(rendered, /Kekuatan yang disahkan/i, 'the fallback path has no AI sections, so no verified-strengths heading should render');
+  assert.ok(
+    elements['chat-log'].children.some((child) => child.className && child.className.indexOf('chat-handoff') !== -1),
+    'a settled fallback report should still surface the WhatsApp/email handoff card'
+  );
 });
 
 /* Builds a chat context whose only variable is how the cloud endpoint fails, so the retry
@@ -1126,7 +1223,14 @@ test('a stale recruiter reasoning response cannot replace a newer JD result', as
     verifiedScore: 54,
     transferableScore: 63,
     compositeScore: 63,
-    reasoningNarrative: 'Second reasoning placeholder.'
+    reasoningNarrative: 'Second reasoning placeholder.',
+    sections: {
+      verifiedStrengths: [{ term: 'React', recruiterFraming: 'Newer JD strengths must take priority over the stale analysis.' }],
+      transferableAdvantages: [],
+      explicitGaps: [],
+      unverifiedRequirements: [],
+      interviewQuestions: []
+    }
   });
   let requestCount = 0;
   const { context, elements } = createChatContext({

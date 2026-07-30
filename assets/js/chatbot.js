@@ -322,8 +322,6 @@
       jdCategoryMobile: "Mobile delivery",
       jdCategoryEducationCoursework: "Education and coursework",
       jdCategoryLanguagesCommunication: "Communication and collaboration",
-      jdReasonAction: "Add recruiter reasoning",
-      jdReasonLoading: "Generating recruiter reasoning…",
       jdReasonTitle: "Recruiter reasoning",
       jdReasonStatusLocal: "Recruiter reasoning ran on this device. Only the bounded normalized JD, deterministic result, and recruiter-safe evidence map were used.",
       jdReasonStatusCloud: "Recruiter reasoning used secure cloud AI. Only the bounded normalized JD, deterministic result, and recruiter-safe evidence map were sent.",
@@ -331,11 +329,9 @@
       jdReasonStatusUnavailable: "Recruiter reasoning is unavailable right now. The deterministic score above remains the authoritative result.",
       jdReasonStatusFallback: "Deterministic fallback is active because recruiter reasoning could not be validated. The baseline score remains authoritative.",
       jdReasonError: "AIMeer could not validate recruiter reasoning right now. The deterministic score above remains the authoritative result.",
-      jdReasonDeterministicScore: "Deterministic compatibility",
-      jdReasonVerifiedScore: "Verified match",
-      jdReasonTransferableScore: "Transferable opportunity",
-      jdReasonCompositeScore: "Calibrated fit",
       jdReasonRequirements: "Requirement-by-requirement reasoning",
+      jdHandoffSummary: "AIMeer match report — {band} ({score}%).",
+      jdHandoffStrengths: "Strengths: {terms}.",
       jdReasonNarrativeTitle: "Recruiter narrative",
       jdReasonVerifiedStrengths: "Verified strengths",
       jdReasonTransferableAdvantages: "Transferable advantages",
@@ -455,8 +451,6 @@
       jdCategoryMobile: "Penyampaian mudah alih",
       jdCategoryEducationCoursework: "Pendidikan dan kerja kursus",
       jdCategoryLanguagesCommunication: "Komunikasi dan kolaborasi",
-      jdReasonAction: "Tambah penaakulan perekrut",
-      jdReasonLoading: "Sedang menjana penaakulan perekrut…",
       jdReasonTitle: "Penaakulan perekrut",
       jdReasonStatusLocal: "Penaakulan perekrut dijalankan pada peranti ini. Hanya JD ternormal terhad, keputusan deterministik, dan peta bukti selamat perekrut digunakan.",
       jdReasonStatusCloud: "Penaakulan perekrut menggunakan AI awan selamat. Hanya JD ternormal terhad, keputusan deterministik, dan peta bukti selamat perekrut dihantar.",
@@ -464,11 +458,9 @@
       jdReasonStatusUnavailable: "Penaakulan perekrut tidak tersedia sekarang. Skor deterministik di atas kekal sebagai keputusan autoritatif.",
       jdReasonStatusFallback: "Ringkasan deterministik digunakan kerana penaakulan perekrut tidak dapat disahkan. Skor asas kekal autoritatif.",
       jdReasonError: "AIMeer tidak dapat mengesahkan penaakulan perekrut sekarang. Skor deterministik di atas kekal sebagai keputusan autoritatif.",
-      jdReasonDeterministicScore: "Keserasian deterministik",
-      jdReasonVerifiedScore: "Padanan disahkan",
-      jdReasonTransferableScore: "Peluang boleh dipindahkan",
-      jdReasonCompositeScore: "Kesesuaian terkalibrasi",
       jdReasonRequirements: "Penaakulan mengikut keperluan",
+      jdHandoffSummary: "Laporan padanan AIMeer — {band} ({score}%).",
+      jdHandoffStrengths: "Kekuatan: {terms}.",
       jdReasonNarrativeTitle: "Naratif perekrut",
       jdReasonVerifiedStrengths: "Kekuatan yang disahkan",
       jdReasonTransferableAdvantages: "Kelebihan boleh dipindahkan",
@@ -709,16 +701,6 @@
         : t("jdSourcePaste");
   }
 
-  function categoryLabel(key) {
-    return key === "coreTechnologies" ? t("jdCategoryCoreTechnologies")
-      : key === "professionalExperience" ? t("jdCategoryProfessionalExperience")
-        : key === "architectureDeliveryCloud" ? t("jdCategoryArchitectureDeliveryCloud")
-          : key === "domainIntegrations" ? t("jdCategoryDomainIntegrations")
-            : key === "mobile" ? t("jdCategoryMobile")
-              : key === "educationCoursework" ? t("jdCategoryEducationCoursework")
-                : t("jdCategoryLanguagesCommunication");
-  }
-
   function confidenceLabel(level) {
     return level === "high" ? t("jdResultConfidenceHigh")
       : level === "medium" ? t("jdResultConfidenceMedium")
@@ -882,64 +864,6 @@
     parent.appendChild(list);
   }
 
-  function renderMatchItems(titleKey, items, modeClass) {
-    var section = createJdNode("section", "chat-jd-section");
-    section.appendChild(createJdNode("h6", "", t(titleKey)));
-    if (!items.length) {
-      section.appendChild(createJdNode("p", "chat-jd-empty", t("jdNoMatches")));
-      return section;
-    }
-    var list = createJdNode("ul", "chat-jd-match-list");
-    items.forEach(function (item) {
-      var li = createJdNode("li", "chat-jd-match-item");
-      var head = createJdNode("div", "chat-jd-match-head");
-      head.appendChild(createJdNode("span", "chat-jd-term", item.term));
-      if (modeClass === "gap") head.appendChild(createJdBadge(t("jdEvidenceGap"), "is-gap"));
-      else if (modeClass === "unverified") head.appendChild(createJdBadge(t("jdEvidenceUnverified"), "is-unverified"));
-      else if (item.evidenceType === "academic") head.appendChild(createJdBadge(t("jdEvidenceAcademic"), "is-academic"));
-      else if (item.evidenceType === "user-provided") head.appendChild(createJdBadge(t("jdEvidenceUser"), "is-user"));
-      else head.appendChild(createJdBadge(t("jdEvidenceProfessional"), "is-professional"));
-      li.appendChild(head);
-      appendEvidenceList(li, item.evidence);
-      list.appendChild(li);
-    });
-    section.appendChild(list);
-    return section;
-  }
-
-  function renderInterviewTopics(items) {
-    var section = createJdNode("section", "chat-jd-section");
-    section.appendChild(createJdNode("h6", "", t("jdResultInterview")));
-    if (!items.length) {
-      section.appendChild(createJdNode("p", "chat-jd-empty", t("jdNoMatches")));
-      return section;
-    }
-    var list = createJdNode("ul", "chat-jd-topic-list");
-    items.forEach(function (item) {
-      list.appendChild(createJdNode("li", "", formatT("jdInterviewPrompt", { term: item.term })));
-    });
-    section.appendChild(list);
-    return section;
-  }
-
-  function renderScoreMeasureList(result) {
-    if (!result || typeof result.deterministicScore !== "number") return null;
-    var section = createJdNode("section", "chat-jd-score-measures");
-    [
-      { key: "jdReasonDeterministicScore", value: result.deterministicScore },
-      { key: "jdReasonVerifiedScore", value: result.verifiedScore },
-      { key: "jdReasonTransferableScore", value: result.transferableScore },
-      { key: "jdReasonCompositeScore", value: result.compositeScore }
-    ].forEach(function (item) {
-      if (typeof item.value !== "number") return;
-      var card = createJdNode("article", "chat-jd-measure-card");
-      card.appendChild(createJdNode("div", "chat-jd-measure-label", t(item.key)));
-      card.appendChild(createJdNode("div", "chat-jd-measure-value", formatScore(item.value) + "%"));
-      section.appendChild(card);
-    });
-    return section.children.length ? section : null;
-  }
-
   function renderReasoningTextRow(parent, labelKey, text) {
     var value = String(text || "").replace(/\s+/g, " ").trim();
     if (!value) return;
@@ -989,23 +913,70 @@
     return section;
   }
 
+  /* Renders one recruiter-report list (Strong / Transferable / Gaps): each item
+     shows its term, the canonical evidence claim(s) resolved from evidenceRecords,
+     and a one-line recruiter framing (or, for gaps, the limitation). All model-
+     supplied text goes through createJdNode/appendEvidenceList, which only ever
+     assign .textContent — never innerHTML. */
   function renderReasoningSection(titleKey, items, valueKey) {
-    var section = createJdNode("section", "chat-jd-section");
+    var section = createJdNode("section", "chat-jd-section jd-report-list");
     section.appendChild(createJdNode("h6", "", t(titleKey)));
     if (!items.length) {
       section.appendChild(createJdNode("p", "chat-jd-empty", t("jdNoMatches")));
       return section;
     }
-    var list = createJdNode("ul", "chat-jd-topic-list");
+    var list = createJdNode("ul", "chat-jd-match-list");
     items.forEach(function (item) {
-      var value = item && (item[valueKey] || item.note || item.limitation || item.question) || "";
-      var text = item && item.term ? item.term + ": " + String(value).trim() : String(value).trim();
-      list.appendChild(createJdNode("li", "", text));
+      var li = createJdNode("li", "chat-jd-match-item");
+      li.appendChild(createJdNode("div", "chat-jd-term", (item && item.term) || ""));
+      var evidenceClaims = Array.isArray(item && item.evidenceRecords)
+        ? item.evidenceRecords.map(function (entry) { return entry && entry.claim; }).filter(Boolean)
+        : [];
+      appendEvidenceList(li, evidenceClaims);
+      var value = String((item && (item[valueKey] || item.note || item.limitation || item.question)) || "").trim();
+      if (value) li.appendChild(createJdNode("p", "chat-jd-framing", value));
+      list.appendChild(li);
     });
     section.appendChild(list);
     return section;
   }
 
+  /* .jd-report-interview: the first 5 unique, non-empty verification questions
+     drawn from result.sections.interviewQuestions (each item's `question` field). */
+  function renderReportInterview(items) {
+    var section = createJdNode("section", "chat-jd-section jd-report-interview");
+    section.appendChild(createJdNode("h6", "", t("jdReasonInterviewQuestions")));
+    var seen = {};
+    var questions = [];
+    (items || []).forEach(function (item) {
+      var question = String((item && (item.question || item.verificationQuestion)) || "").trim();
+      if (!question || seen[question]) return;
+      seen[question] = true;
+      questions.push(question);
+    });
+    questions = questions.slice(0, 5);
+    if (!questions.length) {
+      section.appendChild(createJdNode("p", "chat-jd-empty", t("jdNoMatches")));
+      return section;
+    }
+    var list = createJdNode("ul", "chat-jd-topic-list");
+    questions.forEach(function (question) {
+      list.appendChild(createJdNode("li", "", question));
+    });
+    section.appendChild(list);
+    return section;
+  }
+
+  function fitBandKey(band) {
+    return band === "strong" ? "jdFitStrong"
+      : band === "good" ? "jdFitGood"
+        : band === "partial" ? "jdFitPartial"
+          : "jdFitLimited";
+  }
+
+  /* Scoring is automatic (Task 3) — there is no manual trigger left, so this only
+     renders where the reasoning came from (local/cloud/waiting/unavailable/fallback)
+     and its privacy note. */
   function renderJdReasoning(section) {
     /* Once a request starts, keep its captured route visible even if the
        general AIMeer route changes while the model is working. */
@@ -1015,14 +986,6 @@
     reasonSection.appendChild(createJdNode("p", "chat-jd-hint", t(reasoningStatusKey(mode))));
     reasonSection.appendChild(createJdNode("p", "chat-jd-meta", t(mode === "cloud" ? "jdReasonPrivacyCloud" : "jdReasonPrivacyLocal")));
 
-    var button = document.createElement("button");
-    button.type = "button";
-    button.className = "chat-jd-action" + (mode === "local" ? " chat-jd-action-primary" : "");
-    button.textContent = jdState.reasoningBusy ? t("jdReasonLoading") : t("jdReasonAction");
-    button.disabled = jdState.reasoningBusy || mode === "waiting" || mode === "unavailable";
-    button.addEventListener("click", requestJdReasoning);
-    reasonSection.appendChild(button);
-
     if (jdState.reasoningError) {
       reasonSection.appendChild(createJdNode("p", "chat-jd-status is-error", jdState.reasoningError));
     }
@@ -1030,6 +993,11 @@
     section.appendChild(reasonSection);
   }
 
+  /* Recruiter match report. Leads with the qualitative verdict (fit band + narrative)
+     and treats the percentage as supporting detail, not the headline — see
+     docs/superpowers/specs/2026-07-30-recruiter-copilot-ai-scoring-design.md. Every
+     field below can originate from the model, so every value is written via
+     .textContent (through createJdNode/appendEvidenceList), never innerHTML. */
   function renderJdResult() {
     if (!recruiterUI) return;
     jdResult.innerHTML = "";
@@ -1037,82 +1005,62 @@
 
     var result = jdState.result;
     var baseline = jdState.deterministicResult || result;
-    jdResult.appendChild(createJdNode("p", "chat-jd-result-disclaimer", t("jdDisclaimer")));
+    var isFallback = jdState.scoringMode === "fallback";
+    var report = createJdNode("section", "jd-report");
 
-    var summary = createJdNode("section", "chat-jd-result-card");
-    var scoreRow = createJdNode("div", "chat-jd-score-row");
-    var scoreBlock = createJdNode("div", "");
-    scoreBlock.appendChild(createJdNode("div", "chat-jd-score-label", t("jdResultScoreLabel")));
-    scoreBlock.appendChild(createJdNode("div", "chat-jd-score", formatScore(baseline.score) + "%"));
-    scoreRow.appendChild(scoreBlock);
-    var meta = createJdNode("div", "chat-jd-meta");
-    meta.textContent = t("jdResultSourceLabel") + ": " + sourceLabel(jdState.resultSource || "paste");
-    scoreRow.appendChild(meta);
-    summary.appendChild(scoreRow);
-    summary.appendChild(createJdNode("p", "chat-jd-confidence",
-      t("jdResultConfidenceLabel") + ": " + confidenceLabel(baseline.confidence && baseline.confidence.label)));
-    jdResult.appendChild(summary);
-
-    var measures = renderScoreMeasureList(result);
-    if (measures) jdResult.appendChild(measures);
-
-    var categories = createJdNode("section", "chat-jd-category-list");
-    categories.appendChild(createJdNode("h6", "", t("jdResultCategories")));
-    [
-      "coreTechnologies",
-      "professionalExperience",
-      "architectureDeliveryCloud",
-      "domainIntegrations",
-      "mobile",
-      "educationCoursework",
-      "languagesCommunication"
-    ].forEach(function (key) {
-      var item = baseline.categories && baseline.categories[key];
-      if (!item) return;
-      var card = createJdNode("div", "chat-jd-category-item");
-      var row = createJdNode("div", "chat-jd-category-row");
-      row.appendChild(createJdNode("span", "chat-jd-category-label", categoryLabel(key)));
-      row.appendChild(createJdNode("span", "chat-jd-category-score",
-        item.active ? formatScore(item.score) + " / " + formatScore(item.weight) : t("jdResultNotSpecified")));
-      card.appendChild(row);
-      var bar = createJdNode("div", "chat-jd-category-bar");
-      var fill = createJdNode("span", "", "");
-      fill.style.width = (item.active && item.weight ? Math.max(0, Math.min(100, (item.score / item.weight) * 100)) : 0) + "%";
-      bar.appendChild(fill);
-      card.appendChild(bar);
-      categories.appendChild(card);
-    });
-    jdResult.appendChild(categories);
-
-    jdResult.appendChild(renderMatchItems("jdResultStrong", baseline.strongMatches || [], "strong"));
-    jdResult.appendChild(renderMatchItems("jdResultPartial", baseline.partialMatches || [], "partial"));
-    jdResult.appendChild(renderMatchItems("jdResultGaps", baseline.gaps || [], "gap"));
-    jdResult.appendChild(renderMatchItems("jdResultUnverified", baseline.unverified || [], "unverified"));
-    jdResult.appendChild(renderInterviewTopics(baseline.interviewTopics || []));
-    renderJdReasoning(jdResult);
-    if (result.reasoningNarrative) {
-      var narrative = createJdNode("section", "chat-jd-section");
-      narrative.appendChild(createJdNode("h6", "", t("jdReasonNarrativeTitle")));
-      narrative.appendChild(createJdNode("p", "", result.reasoningNarrative));
-      jdResult.appendChild(narrative);
+    /* 1. Fit band headline (or the keyword-estimate label when AI scoring never
+       settled). Skip the headline entirely while scoring is still pending — there
+       is no band to show yet, and the deterministic score alone would be misleading. */
+    if (isFallback) {
+      report.appendChild(createJdNode("h5", "jd-report-band", t("jdFallbackLabel")));
+    } else if (result.fitBand) {
+      report.appendChild(createJdNode("h5", "jd-report-band", t(fitBandKey(result.fitBand))));
     }
-    if (Array.isArray(result.requirementReasoning) && result.requirementReasoning.length) {
-      jdResult.appendChild(renderRequirementReasoning(result));
+
+    /* 2. Recruiter narrative (model-authored, may be empty). */
+    var narrativeText = String(result.reasoningNarrative || "").trim();
+    if (narrativeText) {
+      report.appendChild(createJdNode("p", "jd-report-narrative", narrativeText));
     }
+
+    /* 3. Percentage + confidence, de-emphasized on purpose — supporting detail,
+       not the headline. finalScore only exists once AI scoring has merged; before
+       that (pending) or if it never did (fallback), fall back to the deterministic
+       baseline score. */
+    var scoreValue = typeof result.finalScore === "number" ? result.finalScore : baseline.score;
+    report.appendChild(createJdNode("p", "jd-report-score",
+      formatScore(scoreValue) + "% · " + t("jdResultConfidenceLabel") + ": " +
+      confidenceLabel(baseline.confidence && baseline.confidence.label)));
+    if (result.adjusted) {
+      report.appendChild(createJdNode("p", "jd-report-calibrated", t("jdCalibratedNote")));
+    }
+
+    renderJdReasoning(report);
+
+    /* 4 & 5. Strong / Transferable / Gaps and the interview questions only exist
+       once AI reasoning has merged (result.sections); pending and fallback states
+       have no sections to show. */
     if (result.sections && typeof result.sections === "object") {
-      var verifiedStrengths = result.sections.verifiedStrengths || result.sections.strengths || [];
-      var transferableAdvantages = result.sections.transferableAdvantages || result.sections.transferable || [];
-      var learningBridges = result.sections.learningBridges && result.sections.learningBridges.length
-        ? result.sections.learningBridges
-        : (result.sections.limitations || []);
-      var explicitGaps = result.sections.explicitGaps || result.sections.gaps || [];
-      var unverifiedRequirements = result.sections.unverifiedRequirements || result.sections.unverified || [];
-      jdResult.appendChild(renderReasoningSection("jdReasonVerifiedStrengths", verifiedStrengths, "recruiterFraming"));
-      jdResult.appendChild(renderReasoningSection("jdReasonTransferableAdvantages", transferableAdvantages, "recruiterFraming"));
-      jdResult.appendChild(renderReasoningSection("jdReasonPriorityGaps", explicitGaps, "limitation"));
-      jdResult.appendChild(renderReasoningSection("jdResultUnverified", unverifiedRequirements, "limitation"));
-      jdResult.appendChild(renderReasoningSection("jdReasonLearningBridges", learningBridges, "limitation"));
-      jdResult.appendChild(renderReasoningSection("jdReasonInterviewQuestions", result.sections.interviewQuestions || [], "question"));
+      var verifiedStrengths = result.sections.verifiedStrengths || [];
+      var transferableAdvantages = result.sections.transferableAdvantages || [];
+      var gaps = [].concat(result.sections.explicitGaps || [], result.sections.unverifiedRequirements || []);
+      report.appendChild(renderReasoningSection("jdReasonVerifiedStrengths", verifiedStrengths, "recruiterFraming"));
+      report.appendChild(renderReasoningSection("jdReasonTransferableAdvantages", transferableAdvantages, "recruiterFraming"));
+      report.appendChild(renderReasoningSection("jdReasonPriorityGaps", gaps, "limitation"));
+      report.appendChild(renderReportInterview(result.sections.interviewQuestions || []));
+    }
+
+    if (Array.isArray(result.requirementReasoning) && result.requirementReasoning.length) {
+      report.appendChild(renderRequirementReasoning(result));
+    }
+
+    jdResult.appendChild(report);
+
+    /* 6. Disclaimer, unchanged, then the WhatsApp/mailto handoff — only once
+       scoring has actually settled (ai or fallback), never mid-flight. */
+    jdResult.appendChild(createJdNode("p", "chat-jd-result-disclaimer", t("jdDisclaimer")));
+    if (jdState.scoringMode === "ai" || isFallback) {
+      offerHandoff();
     }
   }
 
@@ -1772,20 +1720,45 @@
   }
 
   /* ---------------- whatsapp / email handoff ---------------- */
+  /* When a JD match report has settled (ai or fallback), lead the handoff summary
+     with the fit band, score, and up to three verified strengths — so a recruiter
+     forwarding the chat gets the report headline, not just a raw transcript. */
+  function jdHandoffPrefixText() {
+    if (!jdState.result || (jdState.scoringMode !== "ai" && jdState.scoringMode !== "fallback")) return "";
+    var result = jdState.result;
+    var baseline = jdState.deterministicResult || result;
+    var scoreValue = typeof result.finalScore === "number" ? result.finalScore : baseline.score;
+    var bandLabel = jdState.scoringMode === "fallback" ? t("jdFallbackLabel") : t(fitBandKey(result.fitBand));
+    var strengths = (result.sections && Array.isArray(result.sections.verifiedStrengths))
+      ? result.sections.verifiedStrengths
+      : [];
+    var terms = [];
+    strengths.forEach(function (item) {
+      var term = item && String(item.term || "").trim();
+      if (term && terms.indexOf(term) === -1) terms.push(term);
+    });
+    terms = terms.slice(0, 3);
+    var line = formatT("jdHandoffSummary", { band: bandLabel, score: formatScore(scoreValue) });
+    if (terms.length) line += " " + formatT("jdHandoffStrengths", { terms: terms.join(", ") });
+    return line;
+  }
+
   function mechanicalSummary() {
     var qs = [];
     transcript.forEach(function (m) {
       if (m.role === "user") qs.push(m.content.slice(0, 120));
     });
     qs = qs.slice(-6);
-    var s = t("sumIntro") + "\n\n" + t("sumAsked") + "\n" +
+    var jdLine = jdHandoffPrefixText();
+    var s = t("sumIntro") + "\n\n" + (jdLine ? jdLine + "\n\n" : "") + t("sumAsked") + "\n" +
       qs.map(function (q) { return "• " + q; }).join("\n");
     if (lastUnanswered) s += "\n\n" + t("sumOpen") + ' "' + lastUnanswered.slice(0, 200) + '"';
     return s + "\n\n— " + t("sumVia");
   }
 
   function decorateSummary(body) {
-    var s = t("sumIntro") + "\n\n" + body.trim();
+    var jdLine = jdHandoffPrefixText();
+    var s = t("sumIntro") + "\n\n" + (jdLine ? jdLine + "\n\n" : "") + body.trim();
     if (lastUnanswered) s += "\n\n" + t("sumOpen") + ' "' + lastUnanswered.slice(0, 200) + '"';
     return s + "\n\n— " + t("sumVia");
   }
