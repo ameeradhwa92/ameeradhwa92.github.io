@@ -2195,6 +2195,19 @@ test('the progress bar animation is disabled under reduced motion', () => {
     'a reduced-motion block must set animation: none on .chat-jd-progress-bar');
 });
 
+/* The settle fade is a transition now, not an animation — reduced-motion must disable it too,
+   or the bubble still visibly fades when a reply settles. Both halves of the mechanism need
+   neutralizing: .chat-msg's transition (or the fade never plays) and .chat-msg-settle's opacity
+   (or a settle that lands mid-transition would still render at 0.4). */
+test('the settle fade is disabled under reduced motion', () => {
+  const block = /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\n\}/g;
+  const blocks = css.match(block) || [];
+  assert.ok(blocks.some((rule) => /\.chat-msg\b[^{]*\{[^}]*transition:\s*none/.test(rule)),
+    'a reduced-motion block must set transition: none on .chat-msg');
+  assert.ok(blocks.some((rule) => /\.chat-msg-settle\b[^{]*\{[^}]*opacity:\s*1\b/.test(rule)),
+    'a reduced-motion block must neutralize .chat-msg-settle back to opacity: 1');
+});
+
 /* The chat read as dated because nothing moved at the moments a conversation has beats: addMsg
    appended a bubble and set scrollTop directly, so bubbles appeared instantly and the log jumped.
    A restrained ease-out was chosen over an iMessage-style overshoot — next to the site's editorial
@@ -2208,6 +2221,31 @@ test('chat bubbles animate in from their own corner', () => {
     'bot bubbles should grow from the bottom-left');
   assert.match(css, /\.chat-msg-user\b[^{]*\{[^}]*transform-origin:\s*bottom right/,
     'user bubbles should grow from the bottom-right');
+});
+
+/* .chat-msg-settle used to be its own `animation`. Equal specificity, later in source, and
+   `animation` is a shorthand, so applying the settle class cancelled the entrance mid-flight
+   the moment a reply resolved fast enough (e.g. WebLLM's .catch running instantAnswer
+   synchronously). The fix moved the settle fade to a transition on .chat-msg instead, so this
+   asserts the clobber can no longer happen: .chat-msg-settle must not set the animation shorthand
+   on the same element. */
+test('the settle fade cannot clobber the bubble entrance animation', () => {
+  assert.match(css, /\.chat-msg\b[^{]*\{[^}]*transition:\s*opacity/,
+    '.chat-msg should carry the opacity transition the settle fade rides on');
+  const rule = css.match(/\.chat-msg-settle\s*\{[^}]*\}/);
+  assert.ok(rule, '.chat-msg-settle rule should exist');
+  assert.doesNotMatch(rule[0], /animation\s*:/,
+    '.chat-msg-settle must not set the animation shorthand — that is what cancelled the entrance');
+});
+
+/* .chat-jd-progress[hidden] used to be display: none, which drops the 3px bar out of flow inside
+   a `flex; gap: 10px` column and shifts the status line and the whole report below it by 13px
+   every time the bar toggles. It must stay in flow and merely be invisible instead. */
+test('hiding the JD progress bar reserves its space instead of collapsing the layout', () => {
+  assert.match(css, /\.chat-jd-progress\[hidden\]\s*\{[^}]*visibility:\s*hidden/,
+    '.chat-jd-progress[hidden] should hide via visibility, not remove itself from flow');
+  assert.doesNotMatch(css.match(/\.chat-jd-progress\[hidden\]\s*\{[^}]*\}/)[0], /display\s*:\s*none/,
+    '.chat-jd-progress[hidden] must not collapse the element with display: none');
 });
 
 /* Done in CSS so the existing log.scrollTop = log.scrollHeight calls ease instead of jumping —

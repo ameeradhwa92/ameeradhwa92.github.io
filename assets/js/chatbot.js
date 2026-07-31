@@ -685,11 +685,14 @@
     bubble.classList.remove("thinking");
     bubble.textContent = text;
     if (!wasThinking) return;
-    bubble.classList.remove("chat-msg-settle");
-    /* Reading offsetWidth restarts the animation; without it the class is removed and re-added in
-       the same frame and the browser never sees a change. */
-    void bubble.offsetWidth;
+    /* chat-msg-settle now sets a plain low opacity; .chat-msg carries the opacity transition.
+       Adding the class here is batched with the textContent write above (no reflow between them),
+       so it drops straight to the low opacity with no visible step. Reading offsetWidth forces
+       the browser to commit that as the current style; removing the class right after is what
+       then transitions opacity back to 1. */
     bubble.classList.add("chat-msg-settle");
+    void bubble.offsetWidth;
+    bubble.classList.remove("chat-msg-settle");
   }
 
   /* Token streaming writes to the log many times a second. With scroll-behavior: smooth every one

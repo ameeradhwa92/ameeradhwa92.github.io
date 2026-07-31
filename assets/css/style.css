@@ -794,7 +794,12 @@ body.modal-open { overflow: hidden; }
 .chat-msg {
   max-width: 86%; padding: 10px 14px; border-radius: 14px;
   font-size: 0.88rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
-  animation: chat-msg-in 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* backwards, not both: the entrance's `to` state is already the element's natural resting
+     style, so holding it forever would buy nothing. backwards only holds the `from` state
+     before the animation starts; once it finishes, base styles (and the settle transition
+     below) govern again instead of the animation's final keyframe permanently outranking them. */
+  animation: chat-msg-in 180ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  transition: opacity 180ms ease-out;
 }
 /* Safe on every .chat-msg: the first open of a session appends up to three bubbles in one task
    (greeting, optionally the cloud-fallback notice, then the JD promo), which animate together and
@@ -844,11 +849,15 @@ body.modal-open { overflow: hidden; }
   0%, 60%, 100% { transform: translateY(0); opacity: 0.45; }
   30% { transform: translateY(-4px); opacity: 1; }
 }
-.chat-msg-settle { animation: chat-msg-settle 180ms ease-out both; }
-@keyframes chat-msg-settle {
-  from { opacity: 0.4; }
-  to   { opacity: 1; }
-}
+/* Transition-driven, not a second animation: the shorthand `animation` property on .chat-msg
+   above is what plays the entrance, and any animation declared here on the same element would
+   either cancel it (equal specificity, later in source) or restart it from zero (if both were
+   listed together). Adding this class instantly drops opacity with no visible step (batched with
+   the textContent swap in the same task, before any reflow commits it); removing it is what
+   transitions opacity back to 1 via .chat-msg's transition. If the entrance animation is still
+   running when this fires, its keyframed opacity outranks this plain declaration, so the fade is
+   simply skipped and the entrance plays through uninterrupted — that is intended, not a bug. */
+.chat-msg-settle { opacity: 0.4; }
 
 .chat-handoff { border-color: var(--teal-deep); }
 .chat-handoff p { margin: 0; }
@@ -973,7 +982,13 @@ body.modal-open { overflow: hidden; }
   height: 3px; border-radius: 999px; overflow: hidden;
   background: rgba(var(--teal-rgb), 0.15);
 }
-.chat-jd-progress[hidden] { display: none; }
+/* visibility, not display: none — the bar is 3px tall inside a `flex; gap: 10px` column, so
+   collapsing it out of flow would shift the status line and the whole report below it by 13px
+   every time the bar toggles. Staying in flow (just invisible) reserves that space instead.
+   display: block is needed here too, or the UA's own `[hidden] { display: none }` rule (same
+   cascade origin, lower specificity, but the only rule touching `display`) would still collapse
+   it regardless of the visibility declared below. */
+.chat-jd-progress[hidden] { display: block; visibility: hidden; }
 .chat-jd-progress-bar {
   display: block; width: 40%; height: 100%; border-radius: inherit;
   background: linear-gradient(90deg, rgba(var(--teal-rgb), 0.2), var(--teal), rgba(var(--teal-rgb), 0.2));
@@ -1150,8 +1165,8 @@ body.modal-open { overflow: hidden; }
   .chat-jd-promo-action:active { transform: none; }
   .chat-jd-requirement-summary { scroll-behavior: auto; }
   .chat-jd-progress-bar { animation: none; width: 100%; opacity: 0.55; }
-  .chat-msg { animation: none; }
+  .chat-msg { animation: none; transition: none; }
   .chat-log { scroll-behavior: auto; }
   .chat-typing i { animation: none; opacity: 1; }
-  .chat-msg-settle { animation: none; }
+  .chat-msg-settle { opacity: 1; }
 }
