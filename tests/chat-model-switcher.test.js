@@ -39,7 +39,7 @@ function createElement(tagName = 'div') {
     setAttribute(name, value) { this.attributes.set(name, String(value)); },
     getAttribute(name) { return this.attributes.get(name) || null; },
     addEventListener(type, listener) { listeners.set(type, listener); },
-    dispatch(type, target = this) { const listener = listeners.get(type); if (listener) listener({ key: type, target }); },
+    dispatch(type, target = this) { const listener = listeners.get(type); if (listener) listener({ key: type, target, preventDefault() {} }); },
     closest(selector) { return selector === 'button' ? this : null; },
     querySelector() { return null; },
     appendChild(child) { child.parentNode = this; this.children.push(child); return child; },
@@ -112,7 +112,7 @@ function createChatContext(options = {}) {
     'chat-model-local', 'chat-model-tooltip', 'chat-callout', 'chat-jd-toggle',
     'chat-jd-panel', 'chat-jd-input', 'chat-jd-file', 'chat-jd-file-trigger',
     'chat-jd-file-name', 'chat-jd-analyze', 'chat-jd-clear', 'chat-jd-disclaimer',
-    'chat-jd-status', 'chat-jd-result'
+    'chat-jd-status', 'chat-jd-progress', 'chat-jd-result'
   ].forEach((id) => { elements[id] = createElement(); elements[id].id = id; });
   const statusText = createElement();
   const aiPitch = createElement();
@@ -2034,4 +2034,261 @@ test('reduced motion removes chat model choice press scale', () => {
     /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*?\.chat-model-choice:active[\s\S]*?\{[^}]*transform:\s*none;/,
     'the global reduced-motion active override should include chat model choices'
   );
+});
+
+/* The score and its confidence must describe the same pass. On the AI path the label comes from
+   the model's own per-requirement confidence; on the fallback path the keyword ratio IS what the
+   displayed number means, so it stays. */
+test('recruiter report takes confidence from whichever pass produced the score', async () => {
+  const { context } = createChatContext({ saveData: false });
+  await loadChat(context);
+  const resolve = context.window.AIMeerRecruiter.resolveConfidenceLevel;
+
+  const aiResult = { finalScore: 82, aiConfidence: 'medium' };
+  const baseline = { score: 48, confidence: { label: 'low' } };
+
+  assert.equal(resolve('ai', aiResult, baseline), 'medium',
+    'a merged AI report should report the AI confidence');
+  assert.equal(resolve('fallback', { score: 48 }, baseline), 'low',
+    'the keyword estimate should keep the keyword confidence');
+  assert.equal(resolve('pending', { score: 48 }, baseline), 'low',
+    'before the AI settles there is no AI confidence to show');
+
+  /* A merged report whose requirements carried no usable confidence has no aiConfidence at all.
+     Falling back beats inventing one. */
+  assert.equal(resolve('ai', { finalScore: 82 }, baseline), 'low');
+  assert.equal(resolve('ai', { finalScore: 82, aiConfidence: '' }, baseline), 'low');
+  assert.equal(resolve('ai', null, null), '');
+});
+
+/* Analyze match starts a cloud round trip that can run ten seconds or more — two model calls
+   server-side plus one silent retry. A line of text alone made a slow analysis indistinguishable
+   from a hang. The bar is derived from statusKind rather than tracked separately, so there is no
+   second piece of state to fall out of sync. */
+test('the recruiter progress bar is visible exactly while the matcher is working', async () => {
+  const { context } = createChatContext({ saveData: false });
+  await loadChat(context);
+  const visible = context.window.AIMeerRecruiter.isJdProgressVisible;
+
+  for (const working of ['reading', 'scoring', 'aiScoring', 'aiRetrying']) {
+    assert.equal(visible(working), true, `${working} is an in-flight phase`);
+  }
+  for (const settled of ['idle', 'loaded', 'pasted', 'scored', 'error', '', undefined]) {
+    assert.equal(visible(settled), false, `${settled} is not an in-flight phase`);
+  }
+});
+
+/* The two tests above only exercise the pure helpers. Neither asserts they are actually wired
+   into the real render path — deleting the renderJdProgress() call in renderJdStatus, or
+   reverting the confidence line back to the unconditional baseline label, would leave both
+   helper-level tests green while the visible behaviour regressed. This test drives the real
+   click-through flow (extractor/matcher/JDReasoning wired up, a deferred cloud fetch) so it fails
+   if either call site is removed. */
+test('the recruiter progress bar call site shows it during AI scoring and hides it once settled, and the merged AI confidence call site overrides the keyword estimate', async () => {
+  const deterministicResult = buildDeterministicResult({
+    confidence: { label: 'low', reasons: ['Published evidence covers core requirements.'] }
+  });
+  const pendingScoring = deferred();
+  const { context, elements } = createChatContext({
+    saveData: true,
+    fetchImpl(url) {
+      const target = String(url);
+      if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
+      if (target.includes('workers.dev')) return pendingScoring.promise;
+      return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
+    }
+  });
+  context.window.JDExtractor = {
+    extract() {
+      return Promise.resolve({ text: '', source: 'pdf', warnings: [] });
+    },
+    normalize(text) {
+      return { normalizedText: text, warnings: [] };
+    }
+  };
+  context.window.JDMatcher = {
+    scoreJobDescription() {
+      return clone(deterministicResult);
+    }
+  };
+  vm.runInNewContext(jdReasoning, context);
+
+  await loadChat(context);
+  await flushAsync();
+
+  /* Idle, before the panel is even used: not an in-flight phase, so the call site must hide it. */
+  assert.equal(elements['chat-jd-progress'].hidden, true,
+    'the progress bar must be hidden while the matcher is idle');
+
+  elements['chat-launcher'].dispatch('click');
+  await flushAsync();
+
+  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC and Kubernetes ownership.';
+  elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+
+  assert.equal(elements['chat-jd-progress'].hidden, false,
+    'the progress bar must be visible while AI scoring is in flight — call-site coverage for isJdProgressVisible');
+  const whileScoring = collectText(elements['chat-jd-result']);
+  assert.match(whileScoring, /Confidence: Low/,
+    'before the AI result merges, the report should still show the keyword-pass confidence');
+
+  /* Both requirements report "medium" so aggregateAiConfidence's mean lands at exactly 0.5 —
+     comfortably inside the "medium" band and unambiguously different from the deterministic
+     baseline's "low", so the assertion below can only pass if the AI value actually replaced it. */
+  const scoringOutput = buildScoringModelOutput({
+    requirements: [
+      {
+        requirementId: 'req-aspnet-core',
+        recruiterIntent: 'Own production-grade web delivery on the current stack.',
+        expectedOutcome: 'Sustain and extend the current ASP.NET Core platform.',
+        matchLevel: 'direct-professional',
+        evidenceRefs: ['ev-retailaim-plus'],
+        transferableCapabilities: [],
+        limitation: 'Published evidence confirms the current stack but not every future module.',
+        recruiterFraming: 'Direct published production evidence is already available.',
+        verificationQuestion: 'Which high-scale production modules did he own directly?',
+        confidence: 'medium'
+      },
+      {
+        requirementId: 'req-kubernetes',
+        recruiterIntent: 'Support containerized deployment and operations.',
+        expectedOutcome: 'Ramp into Kubernetes-backed delivery with adjacent cloud ownership.',
+        matchLevel: 'adjacent-professional',
+        evidenceRefs: ['ev-azure-devops'],
+        transferableCapabilities: ['Azure DevOps', 'Release automation'],
+        limitation: 'Published work does not yet confirm a production Kubernetes rollout.',
+        recruiterFraming: 'Adjacent cloud delivery shortens the ramp, but screening should confirm direct cluster experience.',
+        verificationQuestion: 'What hands-on Kubernetes rollout, if any, has he completed directly?',
+        confidence: 'medium'
+      }
+    ]
+  });
+  pendingScoring.resolve(makeJsonResponse({ reasoning: scoringOutput }));
+  await flushAsync();
+
+  assert.equal(elements['chat-jd-progress'].hidden, true,
+    'the progress bar must hide once AI scoring settles — call-site coverage for isJdProgressVisible');
+  const afterScoring = collectText(elements['chat-jd-result']);
+  assert.match(afterScoring, /Confidence: Medium/,
+    'the merged AI confidence must override the keyword-pass confidence — call-site coverage for resolveConfidenceLevel');
+  assert.doesNotMatch(afterScoring, /Confidence: Low/,
+    'the stale keyword-pass confidence must not remain once the AI result has merged');
+});
+
+/* The retry is a second full round trip that previously only reached console.warn. Leaving it
+   unlabelled is what made a slow run look like a dead one. */
+test('the retry phase has copy in both languages', () => {
+  /* Counting definitions rather than slicing the T table by indentation: a missing MS key leaves
+     English on screen silently, and one definition means exactly that happened. The `: "` suffix
+     keeps the t("jdAiStatusRetrying") call site out of the count. */
+  const definitions = chatbot.match(/jdAiStatusRetrying:\s*"/g) || [];
+  assert.equal(definitions.length, 2,
+    'jdAiStatusRetrying needs an entry in both the en and ms branches of T');
+});
+
+/* Project rule: prefers-reduced-motion must disable animation everywhere. */
+test('the progress bar animation is disabled under reduced motion', () => {
+  const block = /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\n\}/g;
+  const blocks = css.match(block) || [];
+  assert.ok(blocks.some((rule) => /\.chat-jd-progress-bar[^{]*\{[^}]*animation:\s*none/.test(rule)),
+    'a reduced-motion block must set animation: none on .chat-jd-progress-bar');
+});
+
+/* The settle fade is a transition now, not an animation — reduced-motion must disable it too,
+   or the bubble still visibly fades when a reply settles. Both halves of the mechanism need
+   neutralizing: .chat-msg's transition (or the fade never plays) and .chat-msg-settle's opacity
+   (or a settle that lands mid-transition would still render at 0.4). */
+test('the settle fade is disabled under reduced motion', () => {
+  const block = /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\n\}/g;
+  const blocks = css.match(block) || [];
+  assert.ok(blocks.some((rule) => /\.chat-msg\b[^{]*\{[^}]*transition:\s*none/.test(rule)),
+    'a reduced-motion block must set transition: none on .chat-msg');
+  assert.ok(blocks.some((rule) => /\.chat-msg-settle\b[^{]*\{[^}]*opacity:\s*1\b/.test(rule)),
+    'a reduced-motion block must neutralize .chat-msg-settle back to opacity: 1');
+});
+
+/* The chat read as dated because nothing moved at the moments a conversation has beats: addMsg
+   appended a bubble and set scrollTop directly, so bubbles appeared instantly and the log jumped.
+   A restrained ease-out was chosen over an iMessage-style overshoot — next to the site's editorial
+   typography a bounce reads as toy-like. */
+test('chat bubbles animate in from their own corner', () => {
+  assert.match(css, /@keyframes chat-msg-in\s*\{[\s\S]*?scale\(0\.96\)/,
+    'chat-msg-in should scale up from 0.96');
+  assert.match(css, /\.chat-msg\b[^{]*\{[^}]*animation:\s*chat-msg-in/,
+    '.chat-msg should use the entrance animation');
+  assert.match(css, /\.chat-msg-bot\b[^{]*\{[^}]*transform-origin:\s*bottom left/,
+    'bot bubbles should grow from the bottom-left');
+  assert.match(css, /\.chat-msg-user\b[^{]*\{[^}]*transform-origin:\s*bottom right/,
+    'user bubbles should grow from the bottom-right');
+});
+
+/* .chat-msg-settle used to be its own `animation`. Equal specificity, later in source, and
+   `animation` is a shorthand, so applying the settle class cancelled the entrance mid-flight
+   the moment a reply resolved fast enough (e.g. WebLLM's .catch running instantAnswer
+   synchronously). The fix moved the settle fade to a transition on .chat-msg instead, so this
+   asserts the clobber can no longer happen: .chat-msg-settle must not set the animation shorthand
+   on the same element. */
+test('the settle fade cannot clobber the bubble entrance animation', () => {
+  assert.match(css, /\.chat-msg\b[^{]*\{[^}]*transition:\s*opacity/,
+    '.chat-msg should carry the opacity transition the settle fade rides on');
+  const rule = css.match(/\.chat-msg-settle\s*\{[^}]*\}/);
+  assert.ok(rule, '.chat-msg-settle rule should exist');
+  assert.doesNotMatch(rule[0], /animation\s*:/,
+    '.chat-msg-settle must not set the animation shorthand — that is what cancelled the entrance');
+});
+
+/* .chat-jd-progress[hidden] used to be display: none, which drops the 3px bar out of flow inside
+   a `flex; gap: 10px` column and shifts the status line and the whole report below it by 13px
+   every time the bar toggles. It must stay in flow and merely be invisible instead. */
+test('hiding the JD progress bar reserves its space instead of collapsing the layout', () => {
+  assert.match(css, /\.chat-jd-progress\[hidden\]\s*\{[^}]*visibility:\s*hidden/,
+    '.chat-jd-progress[hidden] should hide via visibility, not remove itself from flow');
+  assert.doesNotMatch(css.match(/\.chat-jd-progress\[hidden\]\s*\{[^}]*\}/)[0], /display\s*:\s*none/,
+    '.chat-jd-progress[hidden] must not collapse the element with display: none');
+});
+
+/* Done in CSS so the existing log.scrollTop = log.scrollHeight calls ease instead of jumping —
+   no JS change, and no reduced-motion branch in JS either. */
+test('the chat log scrolls smoothly', () => {
+  assert.match(css, /\.chat-log\b[^{]*\{[^}]*scroll-behavior:\s*smooth/,
+    '.chat-log should scroll smoothly');
+});
+
+/* The wait state was the literal string "Thinking…". Dots replace it visually, but the string is
+   NOT deleted — it moves to aria-label, so the wait state is still announced. Dropping it would
+   make waiting silent to assistive technology: a regression dressed as a visual upgrade. */
+test('the waiting bubble shows three dots and still announces itself', async () => {
+  const { context, elements } = createChatContext({ saveData: false });
+  await loadChat(context);
+  elements['chat-launcher'].dispatch('click');
+
+  elements['chat-input'].value = 'What did he build at Abbott?';
+  elements['chat-form'].dispatch('submit');
+
+  const bubbles = elements['chat-log'].children;
+  const waiting = bubbles[bubbles.length - 1];
+  assert.equal(waiting.classList.contains('thinking'), true, 'the last bubble should be the waiting one');
+
+  const dots = waiting.children.find((child) => child.className === 'chat-typing');
+  assert.ok(dots, 'the waiting bubble should contain a .chat-typing group');
+  assert.equal(dots.children.length, 3, 'three dots');
+  assert.equal(dots.getAttribute('aria-label'), 'Thinking…',
+    'the dots must carry the thinking string for screen readers');
+  assert.equal(waiting.textContent, '', 'the literal Thinking… text should be gone');
+});
+
+test('the typing dots are styled and staggered', () => {
+  assert.match(css, /@keyframes chat-typing-bounce/, 'the dots need a bounce keyframe');
+  assert.match(css, /\.chat-typing i\b[^{]*\{[^}]*animation:\s*chat-typing-bounce/,
+    'each dot should run the bounce');
+  assert.match(css, /\.chat-typing i:nth-child\(2\)[^{]*\{[^}]*animation-delay/,
+    'the second dot should be offset');
+  assert.match(css, /\.chat-typing i:nth-child\(3\)[^{]*\{[^}]*animation-delay/,
+    'the third dot should be offset');
+
+  /* The old whole-bubble pulse is removed: the dots carry the motion now, and pulsing the
+     container as well would double it. */
+  assert.equal(/\.chat-msg\.thinking\b[^{]*\{[^}]*animation:\s*pulse/.test(css), false,
+    'the whole-bubble pulse should be gone');
 });

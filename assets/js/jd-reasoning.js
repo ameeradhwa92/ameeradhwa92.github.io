@@ -106,6 +106,10 @@
      as valid confidence levels, since those are truthy Object.prototype members. Matches
      the FIT_BANDS array pattern already used above and cloud/aimeer-worker.js's sibling fix. */
   var CONFIDENCE_LEVELS = ["low", "medium", "high"];
+  /* Weights for aggregating the model's per-requirement confidence into one headline label.
+     Read only after CONFIDENCE_LEVELS.indexOf has confirmed the value is a real level — the array
+     check is what keeps Object.prototype members out, exactly as the comment above explains. */
+  var CONFIDENCE_WEIGHTS = { low: 0, medium: 0.5, high: 1 };
   var STRENGTH_FACTORS = {
     required: 1,
     neutral: 0.75,
@@ -752,6 +756,28 @@
     };
   }
 
+  /* The report's headline confidence. It used to come from the keyword pass even when the score
+     came from the model, so "82% · Confidence: Low" could appear with neither number wrong and the
+     pair still misleading. Thresholds mirror buildConfidence's three bands in jd-matcher.js so the
+     AI and fallback paths stay comparable.
+     Returns "" when nothing valid was supplied; mergeResult then leaves the property off entirely
+     rather than defaulting, so the renderer can tell "the model said low" from "the model said
+     nothing" and fall back to the keyword label for the latter. */
+  function aggregateAiConfidence(requirementReasoning) {
+    var entries = Array.isArray(requirementReasoning) ? requirementReasoning : [];
+    var total = 0;
+    var counted = 0;
+    for (var index = 0; index < entries.length; index += 1) {
+      var confidence = entries[index] && entries[index].confidence;
+      if (CONFIDENCE_LEVELS.indexOf(confidence) === -1) continue;
+      total += CONFIDENCE_WEIGHTS[confidence];
+      counted += 1;
+    }
+    if (!counted) return "";
+    var mean = total / counted;
+    return mean >= 0.67 ? "high" : mean >= 0.34 ? "medium" : "low";
+  }
+
   function mergeResult(deterministicResult, reasoning, input) {
     var result = isPlainObject(deterministicResult) ? JSON.parse(JSON.stringify(deterministicResult)) : {};
     var inputRequirements = Array.isArray(input && input.requirements) ? input.requirements : [];
@@ -837,6 +863,8 @@
       ? clipText(reasoning.overall.narrative, FIELD_LIMITS.narrative)
       : clipText(reasoning && reasoning.narrative, FIELD_LIMITS.narrative);
     result.sections = buildSections(requirementReasoning);
+    var aiConfidence = aggregateAiConfidence(requirementReasoning);
+    if (aiConfidence) result.aiConfidence = aiConfidence;
     return result;
   }
 

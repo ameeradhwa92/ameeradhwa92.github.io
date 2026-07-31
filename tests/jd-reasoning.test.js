@@ -994,3 +994,99 @@ test('JDReasoning task 6 fixtures preserve deterministic scores and keep every s
     fixture.assertions({ before, after, input, validation });
   }
 });
+
+/* The report used to print the AI's score beside the KEYWORD pass's confidence, which read as
+   self-contradiction ("82% · Confidence: Low"). The model already returns a per-requirement
+   confidence that both validators check; this aggregates it so the headline describes the same
+   judgement the score came from. */
+test('mergeResult aggregates per-requirement confidence into result.aiConfidence', () => {
+  const harness = loadHarness();
+
+  function mergeWithConfidences(confidences) {
+    const input = {
+      requirements: confidences.map((_, index) => ({
+        id: 'req-core-technologies-term-' + index,
+        term: 'Term ' + index,
+        strength: 'required',
+        category: 'coreTechnologies',
+        yearsRequired: null,
+        specificHandsOn: false,
+        classification: 'unverified',
+        evidenceType: 'unverified',
+        evidenceRefs: []
+      })),
+      evidenceRegistry: []
+    };
+    const reasoning = {
+      narrative: 'Bounded recruiter reasoning.',
+      requirements: confidences.map((confidence, index) => ({
+        requirementId: 'req-core-technologies-term-' + index,
+        recruiterIntent: '',
+        expectedOutcome: '',
+        matchLevel: 'unverified',
+        evidenceRefs: [],
+        transferableCapabilities: [],
+        limitation: '',
+        recruiterFraming: '',
+        verificationQuestion: '',
+        confidence
+      })),
+      overall: { score: 70, fitBand: 'good', narrative: 'Overall.' }
+    };
+    return harness.JDReasoning.mergeResult({ score: 50, categories: {} }, reasoning, input);
+  }
+
+  assert.equal(mergeWithConfidences(['high', 'high', 'high']).aiConfidence, 'high');
+  assert.equal(mergeWithConfidences(['high', 'low']).aiConfidence, 'medium');
+  assert.equal(mergeWithConfidences(['low', 'low', 'low']).aiConfidence, 'low');
+  assert.equal(mergeWithConfidences(['medium', 'medium']).aiConfidence, 'medium');
+
+  /* Band edges: 0.833 sits above the 0.67 high threshold, 0.167 below the 0.34 medium one, and
+     0.625 is the near-miss that must NOT round up to high. */
+  assert.equal(mergeWithConfidences(['high', 'high', 'medium']).aiConfidence, 'high');
+  assert.equal(mergeWithConfidences(['medium', 'low', 'low']).aiConfidence, 'low');
+  assert.equal(mergeWithConfidences(['high', 'medium', 'medium', 'medium']).aiConfidence, 'medium');
+
+  /* No requirements means nothing to aggregate. Absent, not defaulted — Task 2 falls through to
+     the keyword label rather than inventing a confidence the model never expressed. */
+  assert.equal('aiConfidence' in mergeWithConfidences([]), false);
+});
+
+/* A model-supplied confidence is untrusted input. An object-literal weight map would let
+   Object.prototype members through as valid levels — the same trap CONFIDENCE_LEVELS documents. */
+test('mergeResult ignores prototype-member confidence values', () => {
+  const harness = loadHarness();
+  const input = {
+    requirements: [{
+      id: 'req-core-technologies-term-0',
+      term: 'Term 0',
+      strength: 'required',
+      category: 'coreTechnologies',
+      yearsRequired: null,
+      specificHandsOn: false,
+      classification: 'unverified',
+      evidenceType: 'unverified',
+      evidenceRefs: []
+    }],
+    evidenceRegistry: []
+  };
+  const reasoning = {
+    narrative: 'Bounded recruiter reasoning.',
+    requirements: [{
+      requirementId: 'req-core-technologies-term-0',
+      recruiterIntent: '',
+      expectedOutcome: '',
+      matchLevel: 'unverified',
+      evidenceRefs: [],
+      transferableCapabilities: [],
+      limitation: '',
+      recruiterFraming: '',
+      verificationQuestion: '',
+      confidence: 'constructor'
+    }],
+    overall: { score: 70, fitBand: 'good', narrative: 'Overall.' }
+  };
+
+  const merged = harness.JDReasoning.mergeResult({ score: 50, categories: {} }, reasoning, input);
+  assert.equal('aiConfidence' in merged, false);
+});

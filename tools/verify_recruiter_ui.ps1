@@ -5,6 +5,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $indexPath = Join-Path $repoRoot 'index.html'
 $i18nPath = Join-Path $repoRoot 'assets/js/i18n.js'
 $chatbotPath = Join-Path $repoRoot 'assets/js/chatbot.js'
+$cssPath = Join-Path $repoRoot 'assets/css/style.css'
 
 function Assert-True {
   param(
@@ -40,10 +41,12 @@ function Assert-Contains {
 Assert-True (Test-Path $indexPath) "Missing index.html: $indexPath"
 Assert-True (Test-Path $i18nPath) "Missing i18n.js: $i18nPath"
 Assert-True (Test-Path $chatbotPath) "Missing chatbot.js: $chatbotPath"
+Assert-True (Test-Path $cssPath) "Missing style.css: $cssPath"
 
 $index = Get-Content -Raw -Encoding UTF8 $indexPath
 $i18n = Get-Content -Raw -Encoding UTF8 $i18nPath
 $chatbot = Get-Content -Raw -Encoding UTF8 $chatbotPath
+$css = Get-Content -Raw -Encoding UTF8 $cssPath
 
 $stableIds = @(
   'chat-jd-toggle',
@@ -55,6 +58,7 @@ $stableIds = @(
   'chat-jd-clear',
   'chat-jd-disclaimer',
   'chat-jd-status',
+  'chat-jd-progress',
   'chat-jd-result'
 )
 
@@ -116,5 +120,38 @@ $unversioned = @([regex]::Matches($index, '(?:href|src)="(assets/(?:css|js)/[^"?
   ForEach-Object { $_.Groups[1].Value })
 Assert-True ($versionTags.Count -eq 1) "index.html must carry exactly one ?v= cache-busting tag value across its CSS and JS assets; found: $($versionTags -join ', ')"
 Assert-True ($unversioned.Count -eq 0) "Every CSS and JS asset must carry the ?v= tag, or a deploy refreshes some files and serves others stale; un-versioned: $($unversioned -join ', ')"
+
+# The bar is decorative and aria-hidden on purpose: chat-jd-status is already role="status"
+# aria-live="polite", so a second live region would announce every phase twice.
+Assert-Match $index 'id="chat-jd-progress"[^>]*aria-hidden="true"' 'The recruiter progress bar must stay aria-hidden so the existing status live region is the only announcer.'
+
+# Project rule: prefers-reduced-motion disables animation. A progress bar that keeps sliding is
+# exactly the kind of motion that rule exists to stop.
+# Extract the blocks first, then test containment. A single regex cannot do this: the media block
+# holds many rules, so any [^}] run stops at the first inner closing brace, and [\s\S]*? would
+# happily match a .chat-jd-progress-bar rule sitting outside the block entirely.
+$reducedMotionBlocks = @([regex]::Matches($css, '@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\n\}'))
+Assert-True ($reducedMotionBlocks.Count -gt 0) 'style.css must carry at least one prefers-reduced-motion block.'
+
+$motionSelectors = @{
+  '.chat-jd-progress-bar' = 'the recruiter progress bar'
+  '.chat-msg'             = 'the chat bubble entrance'
+  '.chat-typing i'        = 'the typing dots'
+}
+foreach ($selector in $motionSelectors.Keys) {
+  $pattern = [regex]::Escape($selector) + '[^}]*animation:\s*none'
+  $disabled = $false
+  foreach ($block in $reducedMotionBlocks) {
+    if ($block.Value -match $pattern) { $disabled = $true }
+  }
+  Assert-True $disabled "The reduced-motion block must disable $($motionSelectors[$selector]) animation ($selector)."
+}
+
+# Smooth scrolling is motion too: a log that eases under prefers-reduced-motion still moves.
+$scrollDisabled = $false
+foreach ($block in $reducedMotionBlocks) {
+  if ($block.Value -match '\.chat-log[^}]*scroll-behavior:\s*auto') { $scrollDisabled = $true }
+}
+Assert-True $scrollDisabled 'The reduced-motion block must set scroll-behavior: auto on .chat-log.'
 
 Write-Host 'Recruiter UI verification passed.'

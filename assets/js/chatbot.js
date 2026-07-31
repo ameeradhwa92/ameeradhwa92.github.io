@@ -227,6 +227,25 @@
     return "unavailable";
   }
 
+  /* Which pass's confidence belongs beside the displayed score. renderJdResult shows
+     result.finalScore once AI scoring merges, but used to print the deterministic
+     baseline.confidence.label unconditionally — so an AI score of 82% sat next to the keyword
+     pass's "Low", computed in jd-matcher.js from strongCount/total and never told what the model
+     concluded. Neither value was wrong; printing them adjacent implied they measured the same
+     thing. On the fallback path the keyword confidence is exactly right, so it stays. */
+  function resolveConfidenceLevel(scoringMode, result, baseline) {
+    if (scoringMode === "ai" && result && result.aiConfidence) return result.aiConfidence;
+    return baseline && baseline.confidence ? baseline.confidence.label || "" : "";
+  }
+
+  /* Array + indexOf rather than an object-literal lookup, matching the convention in
+     jd-reasoning.js: a plain-object map would report "constructor" and "toString" as in-flight. */
+  var JD_PROGRESS_STATUS_KINDS = ["reading", "scoring", "aiScoring", "aiRetrying"];
+
+  function isJdProgressVisible(statusKind) {
+    return JD_PROGRESS_STATUS_KINDS.indexOf(String(statusKind || "")) !== -1;
+  }
+
   if (!window.AIMeerRecruiter) window.AIMeerRecruiter = {};
   window.AIMeerRecruiter.buildExplanationPayload = buildJdExplanationPayload;
   window.AIMeerRecruiter.getExplanationMode = computeJdReasoningMode;
@@ -235,6 +254,8 @@
   window.AIMeerRecruiter.canApplyExplanationToken = canApplyExplanationToken;
   window.AIMeerRecruiter.nextAnalysisToken = nextAnalysisToken;
   window.AIMeerRecruiter.canApplyAnalysisToken = canApplyAnalysisToken;
+  window.AIMeerRecruiter.resolveConfidenceLevel = resolveConfidenceLevel;
+  window.AIMeerRecruiter.isJdProgressVisible = isJdProgressVisible;
   window.AIMeerRecruiter.jdExplanationLimits = {
     jdText: JD_EXPLANATION_JD_MAX,
     resultChars: JD_EXPLANATION_RESULT_MAX
@@ -288,6 +309,7 @@
       jdStatusReading: "Reading the local document…",
       jdStatusScoring: "Preparing the match locally…",
       jdAiStatusScoring: "AIMeer is analyzing the match with AI…",
+      jdAiStatusRetrying: "The first AI attempt did not come back cleanly — AIMeer is trying once more…",
       jdStatusLoaded: "Local document ready: {source}.",
       jdStatusLoadedWithWarnings: "Local document ready: {source}. Warnings: {warnings}",
       jdStatusPasted: "Using the pasted job description text.",
@@ -392,6 +414,7 @@
       jdStatusReading: "Sedang membaca dokumen setempat…",
       jdStatusScoring: "Sedang menyediakan padanan secara setempat…",
       jdAiStatusScoring: "AIMeer sedang menganalisis padanan dengan AI…",
+      jdAiStatusRetrying: "Percubaan AI pertama tidak menjadi — AIMeer sedang mencuba sekali lagi…",
       jdStatusLoaded: "Dokumen setempat sedia digunakan: {source}.",
       jdStatusLoadedWithWarnings: "Dokumen setempat sedia digunakan: {source}. Amaran: {warnings}",
       jdStatusPasted: "Menggunakan teks huraian jawatan yang ditampal.",
@@ -576,6 +599,7 @@
   var jdClear = document.getElementById("chat-jd-clear");
   var jdDisclaimer = document.getElementById("chat-jd-disclaimer");
   var jdStatus = document.getElementById("chat-jd-status");
+  var jdProgress = document.getElementById("chat-jd-progress");
   var jdResult = document.getElementById("chat-jd-result");
   var recruiterUI = !!(jdToggle && jdPanel && jdInput && jdFile && jdFileTrigger && jdFileName &&
     jdAnalyze && jdClear && jdDisclaimer && jdStatus && jdResult);
@@ -627,6 +651,58 @@
     log.appendChild(el);
     log.scrollTop = log.scrollHeight;
     return el;
+  }
+
+  /* Three dots instead of the literal "Thinking…" string. The string is not dropped — it becomes
+     the group's aria-label, so the wait state stays audible to screen readers while sighted users
+     see dots. See docs/superpowers/specs/2026-07-30-chat-message-motion-design.md. */
+  function setThinkingDots(bubble) {
+    bubble.textContent = "";
+    bubble.classList.add("thinking");
+    var dots = document.createElement("span");
+    dots.className = "chat-typing";
+    /* role="img" is required here: a bare <span> maps to ARIA role "generic", and ARIA 1.2
+       PROHIBITS aria-label on generic elements — browsers silently expose no accessible name for
+       it (or its <i> children), so #chat-log's aria-live="polite" region would announce nothing
+       while a reply is in flight. role="img" is name-required, so aria-label is legal here and
+       is included in the ancestor text-alternative computation, keeping the wait state audible.
+       Do not remove this role as "redundant" decoration. */
+    dots.setAttribute("role", "img");
+    dots.setAttribute("aria-label", t("thinking"));
+    for (var index = 0; index < 3; index += 1) {
+      dots.appendChild(document.createElement("i"));
+    }
+    bubble.appendChild(dots);
+    return bubble;
+  }
+
+  /* The reply lands in the element the dots occupied, so the bubble itself is continuous — it does
+     not exit and re-enter. Only the content changes, faded so the swap is not a hard cut.
+     The fade fires ONLY on the dots-to-text transition. The streaming path calls this once per
+     token and finishReply calls it again at the end; animating every time would strobe. */
+  function settleBubbleContent(bubble, text) {
+    var wasThinking = bubble.classList.contains("thinking");
+    bubble.classList.remove("thinking");
+    bubble.textContent = text;
+    if (!wasThinking) return;
+    /* chat-msg-settle now sets a plain low opacity; .chat-msg carries the opacity transition.
+       Adding the class here is batched with the textContent write above (no reflow between them),
+       so it drops straight to the low opacity with no visible step. Reading offsetWidth forces
+       the browser to commit that as the current style; removing the class right after is what
+       then transitions opacity back to 1. */
+    bubble.classList.add("chat-msg-settle");
+    void bubble.offsetWidth;
+    bubble.classList.remove("chat-msg-settle");
+  }
+
+  /* Token streaming writes to the log many times a second. With scroll-behavior: smooth every one
+     of those would retarget an in-flight scroll animation, which lags behind the text instead of
+     following it. Streaming jumps; message boundaries ease. */
+  function scrollLogToEndNow() {
+    var previous = log.style.scrollBehavior;
+    log.style.scrollBehavior = "auto";
+    log.scrollTop = log.scrollHeight;
+    log.style.scrollBehavior = previous;
   }
 
   function addJdPromo() {
@@ -754,6 +830,9 @@
     else if (jdState.statusKind === "aiScoring") {
       message = t("jdAiStatusScoring");
       if (jdState.statusWarnings.length) message += " " + jdState.statusWarnings.join(" ");
+    } else if (jdState.statusKind === "aiRetrying") {
+      message = t("jdAiStatusRetrying");
+      if (jdState.statusWarnings.length) message += " " + jdState.statusWarnings.join(" ");
     } else if (jdState.statusKind === "loaded") {
       message = formatT(
         jdState.statusWarnings.length ? "jdStatusLoadedWithWarnings" : "jdStatusLoaded",
@@ -772,12 +851,26 @@
     jdStatus.className = "chat-jd-status" +
       (jdState.statusLevel === "error" ? " is-error" : jdState.statusLevel === "success" ? " is-success" : "");
     jdStatus.textContent = message;
+    renderJdProgress();
+  }
+
+  /* Driven from statusKind so the bar cannot disagree with the message above it. */
+  function renderJdProgress() {
+    if (!jdProgress) return;
+    jdProgress.hidden = !isJdProgressVisible(jdState.statusKind);
   }
 
   /* The status line's source and extractor warnings belong to the deterministic pass;
      automatic AI scoring only swaps the headline while its request is in flight. */
   function markJdScoringInFlight() {
     setJdStatus("aiScoring", {
+      source: jdState.statusSource,
+      warnings: jdState.statusWarnings.slice()
+    });
+  }
+
+  function markJdScoringRetrying() {
+    setJdStatus("aiRetrying", {
       source: jdState.statusSource,
       warnings: jdState.statusWarnings.slice()
     });
@@ -1004,7 +1097,7 @@
     var scoreValue = typeof result.finalScore === "number" ? result.finalScore : baseline.score;
     report.appendChild(createJdNode("p", "jd-report-score",
       formatScore(scoreValue) + "% · " + t("jdResultConfidenceLabel") + ": " +
-      confidenceLabel(baseline.confidence && baseline.confidence.label)));
+      confidenceLabel(resolveConfidenceLevel(jdState.scoringMode, result, baseline))));
     if (result.adjusted) {
       report.appendChild(createJdNode("p", "jd-report-calibrated", t("jdCalibratedNote")));
     }
@@ -1241,6 +1334,10 @@
       markJdScoringSettled();
     }
     input.placeholder = t("placeholder");
+    /* setThinkingDots snapshots t("thinking") into the dots group's aria-label when it builds it;
+       a reply in flight during an EN/BM switch would otherwise keep announcing the old language. */
+    var typing = log.querySelector(".chat-typing");
+    if (typing) typing.setAttribute("aria-label", t("thinking"));
     refreshStatus();
     applyAiBox();
     if (jdPromoCopy) jdPromoCopy.textContent = t("jdPromo");
@@ -1532,9 +1629,8 @@
       var delta = chunk.choices && chunk.choices[0] && chunk.choices[0].delta;
       if (delta && delta.content) {
         reply += delta.content;
-        bubble.textContent = reply;
-        bubble.classList.remove("thinking");
-        log.scrollTop = log.scrollHeight;
+        settleBubbleContent(bubble, reply);
+        scrollLogToEndNow();
       }
     }
     history.push({ role: "assistant", content: reply });
@@ -1695,6 +1791,7 @@
            refused, including one it refused on privacy grounds. */
         if (/^cloud-4\d\d(?::|$)/.test(String(firstError && firstError.message))) throw firstError;
         if (window.console && console.warn) console.warn("JD scoring retry after:", firstError);
+        markJdScoringRetrying();
         return requestScoringAttempt();
       });
     }).then(function (reasoning) {
@@ -1855,8 +1952,7 @@
 
   /* ---------------- send ---------------- */
   function finishReply(bubble, reply, unanswered, question) {
-    bubble.classList.remove("thinking");
-    bubble.textContent = reply;
+    settleBubbleContent(bubble, reply);
     transcript.push({ role: "assistant", content: reply });
     if (transcript.length > 24) transcript = transcript.slice(-24);
     if (unanswered) {
@@ -1875,8 +1971,7 @@
     transcript.push({ role: "user", content: text });
     input.value = "";
     busy = true;
-    var bubble = addMsg("bot", t("thinking"));
-    bubble.classList.add("thinking");
+    var bubble = setThinkingDots(addMsg("bot", ""));
 
     if (aiState === "ready" && engine) {
       askLLM(text, bubble).then(function (reply) {
