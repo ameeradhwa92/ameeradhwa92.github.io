@@ -221,7 +221,7 @@ test('resolvePose carries the bank and rests level at both ends of a hop', () =>
   const kf = keyframes();
   const seg = 1 / (kf.length - 1);
   assert.equal(core.resolvePose(0, kf).bank, 0);
-  assert.equal(core.resolvePose(seg * 1.5, kf).bank, 0, 'coincident Dungun stops: no hop, no bank');
+  assert.equal(core.resolvePose(seg * 0.5, kf).bank, 0, 'coincident Dungun stops (born → diploma): no hop, no bank');
   // stop 2 (kl) → stop 3 (ncs) is a 0.2° hop: level; stop 3 → stop 4 (sea) is ~9°: banked
   assert.equal(core.resolvePose(seg * 2.5, kf).bank, 0);
   assert.ok(Math.abs(core.resolvePose(seg * 3.5, kf).bank) > 0);
