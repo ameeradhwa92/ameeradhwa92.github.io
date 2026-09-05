@@ -15,9 +15,10 @@
   var DEG = Math.PI / 180;
   var KINDS = { place: true, remote: true, region: true, footprint: true };
   /* Camera distance from the globe centre (radius 1) per stop kind, unless the
-     stop carries its own data-zoom. A region is a pull-back framing, not a
-     marker. */
-  var DEFAULT_ZOOM = { place: 1.1, remote: 1.1, region: 2.6 };
+     stop carries its own data-zoom. Towns stop at 1.7 so the limb stays in
+     frame (see framing()); a region is a full-sphere pull-back, not a marker. */
+  var DEFAULT_ZOOM = { place: 1.7, remote: 1.7, region: 3.0 };
+  var LABEL_DIRS = { n: true, ne: true, e: true, se: true, s: true, sw: true, w: true, nw: true };
   /* Share of each scroll segment spent holding still at either end, so every
      stop is readable before the camera leaves it. */
   var DWELL = 0.28;
@@ -98,8 +99,13 @@
         if (item.zoom != null && !(zoom > 1)) warnings.push("stop " + index + ": zoom must exceed 1, using default");
         zoom = zoom > 1 ? zoom : DEFAULT_ZOOM[kind];
       }
+      var labelDir = "e";
+      if (item.labelDir != null) {
+        if (LABEL_DIRS[item.labelDir]) labelDir = item.labelDir;
+        else warnings.push("stop " + index + ": unknown label direction, using e");
+      }
       stops.push({
-        index: index, lat: lat, lng: lng, kind: kind, zoom: zoom,
+        index: index, lat: lat, lng: lng, kind: kind, zoom: zoom, labelDir: labelDir,
         key: item.key == null ? String(index) : String(item.key)
       });
     });
@@ -141,22 +147,34 @@
     return { from: from, to: from + 1, local: local, travel: travel };
   }
 
+  /* Roll the camera on long flights so the hop reads as banking, not a pan.
+     Zero below 2°, full 6° from 12°, sin-shaped so both ends rest level. */
+  function bankAngle(travel, hopAngle, direction) {
+    var hop = Number(hopAngle) || 0;
+    if (!(hop > 2 * DEG)) return 0;
+    var t = clamp(Number(travel) || 0, 0, 1);
+    if (t === 0 || t === 1) return 0;
+    var strength = clamp((hop - 2 * DEG) / (10 * DEG), 0, 1);
+    var sign = direction < 0 ? -1 : 1;
+    return sign * 6 * DEG * strength * Math.sin(Math.PI * t);
+  }
+
   function resolvePose(fraction, keyframes) {
     if (!keyframes || !keyframes.length) {
       return { activeIndex: 0, from: 0, to: 0, travel: 0, direction: { x: 0, y: 0, z: 1 },
-               distance: DEFAULT_ZOOM.region, position: { x: 0, y: 0, z: DEFAULT_ZOOM.region } };
+               distance: DEFAULT_ZOOM.region, position: { x: 0, y: 0, z: DEFAULT_ZOOM.region }, bank: 0 };
     }
     var seg = segmentFor(fraction, keyframes.length);
     var a = keyframes[seg.from], b = keyframes[seg.to];
     var dir = slerp(a.dir, b.dir, seg.travel);
-    /* A gentle hop on long flights: pull out a little mid-way so the route
-       reads as travel rather than a pan. */
-    var hop = Math.min(angleBetween(a.dir, b.dir) * 0.6, 0.35);
+    var hopAngle = angleBetween(a.dir, b.dir);
+    var hop = Math.min(hopAngle * 0.6, 0.35);
     var distance = a.distance + (b.distance - a.distance) * seg.travel + hop * Math.sin(Math.PI * seg.travel);
+    var bank = seg.travel <= 0 || seg.travel >= 1 ? 0 : bankAngle(seg.travel, hopAngle, cross(a.dir, b.dir).y);
     return {
       activeIndex: seg.travel < 0.5 ? seg.from : seg.to,
       from: seg.from, to: seg.to, travel: seg.travel,
-      direction: dir, distance: distance, position: scale(dir, distance)
+      direction: dir, distance: distance, position: scale(dir, distance), bank: bank
     };
   }
 
@@ -231,6 +249,29 @@
   function idleDriftOffset(elapsedMs) {
     var t = Math.max(0, Number(elapsedMs) || 0);
     return { yaw: 0.05 * Math.sin(t / 5200 * Math.PI * 2), pitch: 0.018 * Math.sin(t / 7900 * Math.PI * 2) };
+  }
+
+  /* A fixed starfield in a 6–9 shell around the globe, seeded so the sky is
+     the same on every visit (mulberry32). Dark theme only; the adapter hides it
+     on light. */
+  function starPositions(count, seed) {
+    var n = Math.max(0, count | 0);
+    var s = ((seed | 0) >>> 0) || 1;
+    function rand() {
+      s = (s + 0x6D2B79F5) >>> 0;
+      var t = s;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    }
+    var out = new Float32Array(n * 3);
+    for (var i = 0; i < n; i++) {
+      var z = rand() * 2 - 1, phi = rand() * Math.PI * 2, r = 6 + rand() * 3, c = Math.sqrt(1 - z * z);
+      out[i * 3] = r * c * Math.cos(phi);
+      out[i * 3 + 1] = r * z;
+      out[i * 3 + 2] = r * c * Math.sin(phi);
+    }
+    return out;
   }
 
   /* Marker radius that stays a near-constant size on screen as the camera zooms. */
@@ -380,6 +421,8 @@
     applyOrbitOffset: applyOrbitOffset,
     decayOffset: decayOffset,
     idleDriftOffset: idleDriftOffset,
+    bankAngle: bankAngle,
+    starPositions: starPositions,
     markerRadius: markerRadius,
     scrollFraction: scrollFraction,
     trackHeight: trackHeight,

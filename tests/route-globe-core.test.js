@@ -256,3 +256,57 @@ test('framing keeps the limb in frame for every distance and aspect, with a 2° 
   assert.ok(core.framing(2, 0.5, 'wide').offsetY < 0, 'portrait pushes the globe up so the caption sits below it');
   assert.equal(core.framing(2, 1.6, 'narrow').offsetX, 0, 'the narrow layout never shifts sideways');
 });
+
+test('DEFAULT_ZOOM stops short of street level and pulls back to a full sphere', () => {
+  assert.equal(core.DEFAULT_ZOOM.place, 1.7);
+  assert.equal(core.DEFAULT_ZOOM.remote, 1.7);
+  assert.equal(core.DEFAULT_ZOOM.region, 3.0);
+});
+
+test('parseStops reads the label direction, defaults to east and warns on nonsense', () => {
+  const { stops, warnings } = core.parseStops([
+    { lat: 3, lng: 101, kind: 'place', labelDir: 'ne' },
+    { lat: 3, lng: 101, kind: 'place' },
+    { lat: 3, lng: 101, kind: 'place', labelDir: 'up' },
+    { lat: 1, lng: 103, kind: 'footprint', labelDir: 's' }
+  ]);
+  assert.equal(stops[0].labelDir, 'ne');
+  assert.equal(stops[1].labelDir, 'e');
+  assert.equal(stops[2].labelDir, 'e');
+  assert.equal(stops[3].labelDir, 's', 'footprints carry a direction too');
+  assert.deepEqual(warnings, ['stop 2: unknown label direction, using e']);
+});
+
+test('bankAngle rolls only on long hops, peaks mid-travel and follows the hop direction', () => {
+  const DEG = Math.PI / 180;
+  assert.equal(core.bankAngle(0, 20 * DEG, 1), 0);
+  assert.equal(core.bankAngle(1, 20 * DEG, 1), 0);
+  assert.ok(near(core.bankAngle(0.5, 20 * DEG, 1), 6 * DEG), 'full 6° from 12° hops upward');
+  assert.ok(near(core.bankAngle(0.5, 20 * DEG, -1), -6 * DEG));
+  assert.equal(core.bankAngle(0.5, 1 * DEG, 1), 0, 'the Klang Valley hops do not wobble');
+  const partial = core.bankAngle(0.5, 7 * DEG, 1);
+  assert.ok(partial > 0 && partial < 6 * DEG, 'ramps between 2° and 12°');
+});
+
+test('resolvePose carries the bank and rests level at both ends of a hop', () => {
+  const kf = keyframes();
+  const seg = 1 / (kf.length - 1);
+  assert.equal(core.resolvePose(0, kf).bank, 0);
+  assert.equal(core.resolvePose(seg * 0.5, kf).bank, 0, 'coincident Dungun stops (born → diploma): no hop, no bank');
+  // stop 2 (kl) → stop 3 (ncs) is a 0.2° hop: level; stop 3 → stop 4 (sea) is ~9°: banked
+  assert.equal(core.resolvePose(seg * 2.5, kf).bank, 0);
+  assert.ok(Math.abs(core.resolvePose(seg * 3.5, kf).bank) > 0);
+  assert.equal(core.resolvePose(1, kf).bank, 0);
+});
+
+test('starPositions is deterministic and keeps every star in the 6–9 shell', () => {
+  const a = core.starPositions(50, 1992), b = core.starPositions(50, 1992), c = core.starPositions(50, 7);
+  assert.equal(a.length, 150);
+  assert.deepEqual(Array.from(a), Array.from(b));
+  assert.notDeepEqual(Array.from(a), Array.from(c));
+  for (let i = 0; i < a.length; i += 3) {
+    const r = Math.hypot(a[i], a[i + 1], a[i + 2]);
+    assert.ok(r >= 6 && r <= 9, `star ${i / 3} radius ${r}`);
+  }
+  assert.equal(core.starPositions(0, 1).length, 0);
+});
