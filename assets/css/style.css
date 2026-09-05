@@ -238,7 +238,10 @@ img { max-width: 100%; display: block; }
 :root[data-theme="dark"] .ic-moon { display: none; }
 
 /* ---------- hero ---------- */
-.hero { padding-top: 168px; padding-bottom: 80px; position: relative; }
+/* overflow-x: clip (not hidden — no scroll container) keeps the hero thread's deliberate
+   overspill out of the document's scrollable width. Without it a phone or tablet sizes
+   its layout viewport to the 1849–2959px-wide SVG and zooms the whole page out to fit. */
+.hero { padding-top: 168px; padding-bottom: 80px; position: relative; overflow-x: clip; }
 .hero-grid {
   display: grid; grid-template-columns: 1.6fr 1fr; gap: 56px; align-items: center;
 }
@@ -257,6 +260,11 @@ img { max-width: 100%; display: block; }
 }
 /* the journey thread behind the hero: draws once after the loader releases the page */
 .hero-thread {
+  /* Sized by height only, on purpose: the <svg> has a viewBox, so it is a replaced
+     element and its used width is the viewBox ratio × height (~1.6–2× the hero's width).
+     That wide, shallow curve is the approved shape; .hero's overflow-x: clip stops the
+     overspill reaching the viewport, and the 900px block hides the thread on phones.
+     tests/hero-thread.test.js guards all three. */
   position: absolute; left: 0; right: 0; top: 120px; height: 100%; z-index: -1; pointer-events: none;
 }
 .hero-thread path {
@@ -797,6 +805,7 @@ body.modal-open { overflow: hidden; }
   .stats-grid { grid-template-columns: 1fr 1fr; }
   .stat:nth-child(3) { border-left: none; }
   .stat:nth-child(1), .stat:nth-child(2) { border-bottom: 1px solid var(--line); }
+  .hero-thread { display: none; }   /* stacked hero: the thread would cut through the copy */
 }
 @media (max-width: 640px) {
   :root { --spine-x: 10px; }

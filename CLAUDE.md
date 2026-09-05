@@ -49,6 +49,15 @@ A green tree means the `tests/` suite **and** all five `tools/` harnesses pass �
 copy, so any change to that text must update the script's expectations in the same
 change, or it goes red unnoticed.
 
+There is no `node_modules`. Tests read the browser IIFEs into a `node:vm` context with a
+hand-rolled `document` stub (no jsdom); `route-globe-core.js` and `aimeer-device.js` are
+UMD and load with plain `require()`. A new script must stay a plain IIFE that tolerates
+that stub at load time, or split its pure half into a UMD file the way the globe does.
+
+`window.AIMEER_CLOUD_ENDPOINT` and `window.AIMEER_LOCAL_TIMEOUT`, set before `chatbot.js`
+runs, override the Worker URL and the 20 s local-model timeout — point a preview at a
+staging Worker without editing `chatbot.js`.
+
 Verification is manual: open in a browser, check 375 / 768 / 1440 widths, toggle
 dark/light and EN/BM, and `curl` every project URL before publishing a status change.
 
@@ -83,7 +92,7 @@ asset lacks one, and names the offending file. While iterating locally, tick
 | `assets/js/route-globe-core.js` | Route globe, pure half: sphere geometry, camera keyframes/scrub, coastline decoding, capability gate, load state machine. UMD, tested by plain `require()` |
 | `assets/js/route-globe.js` | Route globe, DOM/WebGL adapter: reads the stops `<ol>`, gates, lazy-imports vendored three.js, owns the canvas/scroll/drag/theme wiring |
 | `assets/data/route-globe-coastlines.json` | Generated country outlines for the globe (never hand-edited — see Regenerating the globe coastlines) |
-| `assets/vendor/three/` | Vendored three.js r185 (`three.module.min.js` + `three.core.min.js`, kept side by side) and its `lines/` fat-line addon, whose bare `three` import the `<head>` import map resolves |
+| `assets/vendor/` | Self-hosted libraries, pins and hashes recorded in `assets/vendor/README.md`: `pdfjs/` 4.10.38 and `jszip/` 3.10.1 (lazily `import()`ed by `jd-extractor.js` for PDF/DOCX), `three/` r185 (`three.module.min.js` + `three.core.min.js`, kept side by side) and its `lines/` fat-line addon, whose bare `three` import the `<head>` import map resolves |
 | `assets/data/aimeer-kb.txt` | Chatbot knowledge base — fetched by *both* the browser and the Worker |
 | `assets/data/aimeer-profile.json` | Recruiter evidence registry (`recruiterEvidence`, `privacyExclusions`) — the only allowlist of evidence the JD matcher's cloud reasoning may cite |
 | `cloud/aimeer-worker.js` | Cloudflare Worker relay — chat/summary/jd-explanation/jd-reasoning/jd-scoring/version modes (deployed manually, see below) |
@@ -92,6 +101,7 @@ asset lacks one, and names the offending file. While iterating locally, tick
 | `docs/resume-source/resume.html` | Source for the downloadable résumé PDF |
 | `tests/*.test.js` | `node --test` suite — run before anything ships (see Running locally) |
 | `tools/` | Five extra harnesses `tests/*.test.js` does not cover (JD extractor/matcher/cloud-payload contracts, recruiter profile/KB drift, recruiter UI exact copy) — see Running locally |
+| `docs/superpowers/plans/` | Implementation plans that pair with the specs; `docs/mockups/*.html` are the standalone proposals a spec was approved from (they pull Fraunces from Google Fonts for convenience — the live site never does); `.superpowers/sdd/` holds tracked per-task subagent reports |
 
 Scripts are plain IIFEs loaded with `defer` in the order `verify_recruiter_ui.ps1` asserts:
 `i18n.js` → `main.js` → `aimeer-device.js` → `jd-extractor.js` → `jd-matcher.js` →
@@ -156,6 +166,11 @@ card, which summarizes the chat and pre-fills WhatsApp or mailto for the *visito
 pasted into the Cloudflare dashboard editor by hand. Editing the file here changes nothing
 live — say so explicitly when handing back Worker changes. `cloud/README.md` has the setup
 steps; the `AI` binding variable name must be exactly `AI`.
+
+The Worker edge-caches `aimeer-kb.txt` and `aimeer-profile.json` for an hour
+(`loadCachedText`, tags `aimeer-kb-cache=v1` / `aimeer-profile-cache=v1`). A pushed KB
+change reaches the instant and on-device tiers on the next `?v=` bump but the cloud tier up
+to an hour later. Bumping a cache tag forces it, and that is a Worker change and a redeploy.
 
 **Bump `WORKER_REVISION` on every Worker change, and confirm the paste landed before
 believing any live behaviour.** `POST {"mode":"version"}` returns `{revision, aiBinding}`.
@@ -256,7 +271,10 @@ below 1.5 without re-running that test.
 `route-globe.js` upgrades the section in place only when `evaluateGate` passes (no
 `prefers-reduced-motion`, no `saveData`, WebGL2 present) and the section comes within
 600px of the viewport; then it dynamically imports the vendored three.js, the five
-`lines/` addon modules and the coastline JSON (with the same `?v=` tag). The addon is
+`lines/` addon modules and the coastline JSON. Only the JSON carries the `?v=` tag: the
+vendor imports are deliberately unversioned because the import map must resolve the
+addon's bare `three` to the identical URL, and a `?v=` on either side loads two copies of
+three.js. The addon is
 optional: if it fails the globe renders with 1px lines and `section.dataset.globe` reads
 `live-thin`. Everything else — no JS, reduced motion, no WebGL2, a failed load, a lost
 context — leaves the poster (`assets/img/route-globe-{dark,light}.jpg`) and the plain
