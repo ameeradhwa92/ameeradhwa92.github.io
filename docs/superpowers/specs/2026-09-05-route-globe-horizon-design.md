@@ -95,16 +95,18 @@ under the stage.
   rows sit at reduced opacity. A `.route-rail-progress` bar draws from the first node to the
   active node using the `.spine-progress` gradient. The rail is the existing `<ol
   id="route-stops">`; only CSS and the active class change.
-- **Globe**: rendered large and offset so its centre sits at about 66% of the viewport
-  width and 52% of its height; the right limb bleeds off the right edge, the left limb and
-  atmosphere stay in frame. See §4.6 for how the offset is computed.
+- **Globe**: rendered large and offset so its centre sits at about 72–80% of the viewport
+  width (narrower windows push it further right) and 52% of its height; the right limb
+  bleeds off the right edge, the left limb and atmosphere stay in frame. The offset relaxes
+  as the camera pulls back so the whole sphere is visible at the final reveal. See §4.6.
 - The drag hint moves to the bottom-right corner.
 
 ### 3.4 Composition (≤ 899px)
 
 The rail collapses to the current single crossfading caption at the bottom of the stage
-(one `.route-stop.is-active` at a time); the globe centre moves to 50% x, 40% y so the
-caption never covers Malaysia. Stage height `min(100dvh, 720px)`.
+(one `.route-stop.is-active` at a time); the globe centre moves to 50% x and about a
+third of the way down (FOV 66°, vertical offset −0.16) so the caption never covers
+Malaysia. Stage height `min(100dvh, 720px)`.
 
 ### 3.5 Fallback (no JS, gated off, load failure, context lost)
 
@@ -192,10 +194,11 @@ The route polyline and the three footprint arcs move to three.js's `Line2` addon
 
 ### 4.6 Camera: the limb is always in frame
 
-- Distances: `place`/`remote` default 1.6, `region` 3.0. The `data-zoom` values in the
-  markup are updated to the range 1.55–1.75 for towns and 3.0 for the region. Street-level
+- Distances: `place`/`remote` default 1.7, `region` 3.0. The `data-zoom` values in the
+  markup are updated to the range 1.65–1.8 for towns and 3.0 for the region. Street-level
   zoom is gone on purpose: the marker, pulse, label and caption identify the stop; the
-  sphere identifies the medium.
+  sphere identifies the medium. (1.7 rather than 1.6 keeps the left limb just right of the
+  caption rail at 1440px; at 1.6 the rail overlaps the atmosphere.)
 - `framing(distance, aspect, layout)` is a new pure core function returning `{fov,
   offsetX, offsetY}` (offsets as fractions of the frame, applied through
   `camera.setViewOffset`). `layout` is `wide` or `narrow`. It scales the horizontal offset
@@ -220,7 +223,7 @@ The route polyline and the three footprint arcs move to three.js's `Line2` addon
 
 | Item | Value |
 |---|---|
-| Draw calls | ≤ 14 |
+| Draw calls | ≤ 20 (sphere, atmosphere, coastlines, graticule, stars, three route copies, two arc copies, one mesh per marker) |
 | Extra script weight | ≈ 25 KB (the five Line2 files) |
 | DPR cap | 1.75 (down from 2; the stage is now full-bleed) |
 | Animation | time uniforms only advance while the stage is on screen, as today |
@@ -251,7 +254,8 @@ additions:
 - Light theme: stars off, atmosphere as haze, rim at 0.18, sphere shadow side `--panel-2`
   rather than `--ink` so a white globe does not go grey.
 - `prefers-reduced-motion` keeps gating the globe off entirely. The CSS block additionally
-  sets `.route-label`, `.route-rail li` and `.route-rail-progress` to `transition: none`.
+  sets `.route-label` and `.route-rail-progress` to `transition: none` (`.route-stop` is
+  already frozen there).
 
 ## 8. Files
 
