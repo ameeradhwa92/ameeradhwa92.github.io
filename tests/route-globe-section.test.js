@@ -93,3 +93,27 @@ test('the vendored three.js pair is present and pinned in the vendor README', ()
   const readme = fs.readFileSync(path.join(root, 'assets', 'vendor', 'README.md'), 'utf8');
   assert.match(readme, /three\.js `0\.185\.1`/);
 });
+
+test('the Line2 addon is vendored beside three.js and pinned in the README', () => {
+  const lines = path.join(root, 'assets', 'vendor', 'three', 'lines');
+  for (const name of ['Line2', 'LineSegments2', 'LineGeometry', 'LineSegmentsGeometry', 'LineMaterial']) {
+    const file = path.join(lines, `${name}.js`);
+    assert.ok(fs.existsSync(file), `${name}.js is vendored`);
+    const src = fs.readFileSync(file, 'utf8');
+    assert.ok(/from 'three'|from "three"|from '\.\/Line/.test(src), `${name}.js is the unmodified ESM addon`);
+    assert.doesNotMatch(src, /from '\.\.\/three\.module/, `${name}.js keeps the bare "three" specifier (the import map resolves it)`);
+  }
+  const readme = fs.readFileSync(path.join(root, 'assets', 'vendor', 'README.md'), 'utf8');
+  assert.match(readme, /three\/lines\//);
+  assert.match(readme, /examples\/jsm\/lines/);
+  assert.match(readme, /importmap/);
+});
+
+test('the import map maps "three" to the same file the adapter imports, before any script tag', () => {
+  const map = html.match(/<script type="importmap">\s*(\{[\s\S]*?\})\s*<\/script>/);
+  assert.ok(map, 'an inline import map is present');
+  const parsed = JSON.parse(map[1]);
+  assert.equal(parsed.imports.three, './assets/vendor/three/three.module.min.js');
+  assert.ok(html.indexOf('<script type="importmap">') < html.indexOf('<script src='), 'the import map precedes every external script');
+  assert.doesNotMatch(parsed.imports.three, /\?v=/, 'no cache tag: the adapter imports the bare path, and the two must be one module');
+});

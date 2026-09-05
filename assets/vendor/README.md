@@ -17,8 +17,18 @@ Pinned versions:
 - three.js `0.185.1` (r185) — `build/three.module.min.js` and `build/three.core.min.js`
   copied unmodified from the npm tarball `three-0.185.1.tgz`
   (sha512 `5aojFCXKwnjBRZvUnt3WFfEcvUJgkN5LlijRFN95hMy8WVkG4I0QNcJE+OuWvuJ0bOdStrbfXn0pkd6/QyiAlg==`).
-  The addons (`OrbitControls` etc.) are deliberately not vendored; the globe's
-  drag-to-orbit is a small additive offset in `route-globe-core.js`.
+  The fat-line addon is vendored alongside, unmodified, from the same tarball's
+  `examples/jsm/lines/`:
+
+  - `three/lines/Line2.js`, `three/lines/LineSegments2.js`, `three/lines/LineGeometry.js`,
+    `three/lines/LineSegmentsGeometry.js`, `three/lines/LineMaterial.js`
+
+  They import the bare specifier `three`, which `index.html` resolves with an inline
+  `<script type="importmap">` to `./assets/vendor/three/three.module.min.js` — the exact
+  URL `route-globe.js` imports itself, so only one copy of three.js ever loads. Do not
+  add `?v=` to either side of that mapping. `OrbitControls` and the other addons are
+  still deliberately not vendored; the globe's drag-to-orbit is a small additive offset
+  in `route-globe-core.js`.
 
 Upstream license notices recorded from the distributed files:
 
