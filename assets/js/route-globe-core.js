@@ -148,7 +148,9 @@
   }
 
   /* Roll the camera on long flights so the hop reads as banking, not a pan.
-     Zero below 2°, full 6° from 12°, sin-shaped so both ends rest level. */
+     Zero below 2°, full 6° from 12°, sin-shaped so both ends rest level.
+     The explicit zero at either end exists because `Math.sin(Math.PI)` is not
+     exactly 0. */
   function bankAngle(travel, hopAngle, direction) {
     var hop = Number(hopAngle) || 0;
     if (!(hop > 2 * DEG)) return 0;
@@ -293,7 +295,9 @@
     var halfH = Math.atan(Math.tan(halfV) * aspect);
     var ax = Math.atan(2 * Math.abs(Number(offsetX) || 0) * Math.tan(halfH));
     var ay = Math.atan(2 * Math.abs(Number(offsetY) || 0) * Math.tan(halfV));
-    return theta - ax < halfH - margin || theta - ay < halfV - margin;
+    var nearH = theta - ax < halfH - margin, nearV = theta - ay < halfV - margin;
+    var onScreenH = ax - theta < halfH, onScreenV = ay - theta < halfV; /* the offset has not pushed the whole sphere out */
+    return (nearH && onScreenH) || (nearV && onScreenV);
   }
 
   /* Wide (landscape) frames push the globe right so its left limb and

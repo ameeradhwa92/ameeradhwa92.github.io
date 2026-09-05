@@ -219,7 +219,9 @@ markup**: each `<li data-lat data-lng data-kind data-zoom [data-label-dir]>` in
 `#route-stops` is a camera keyframe in DOM order (`place` | `remote` | `region`) and the
 nested `data-kind="footprint"` items are the reveal's arc targets. `data-label-dir`
 (`n|ne|e|se|s|sw|w|nw`) fans the projected DOM label out from its marker; the three Klang
-Valley places must use three different directions or the labels stack. Town-level
+Valley places must use three different directions or the labels stack. One label per
+place: several stops share a marker (the Dungun years, the two Kuala Lumpur jobs), and the
+first stop at a place decides its direction and text. Town-level
 coordinates only — the profile's privacy exclusions rule out anything finer, and "Sura
 Gate" stays off the map. Adding a stop is an HTML + `i18n.js` edit;
 `tests/route-globe-section.test.js` checks ranges, kinds, zoom, directions and MS coverage.
@@ -250,9 +252,11 @@ mask fading its top and bottom edges; there is deliberately no border, radius, b
 or shadow — that box is what made the first version read as an embedded video. The
 posters are element screenshots of `#route-stage` at the final reveal (dark and light,
 1600×900, DPR 1) with the page chrome hidden first — `.nav, .progress, .chat-launcher,
-.chat-callout, .route-hint, #route-rail { visibility: hidden }` — because the fallback
-shows the real nav above the image and the plain stops list below it. Recapture them when
-the route, the framing or the palette changes.
+.chat-callout, .route-hint, #route-rail, .route-labels { visibility: hidden }` — because
+the fallback shows the real nav above the image and the plain stops list below it. Labels
+are hidden too because the poster is language-neutral: a Bahasa Melayu visitor on the
+fallback path must not see English place names. Recapture them when the route, the framing
+or the palette changes.
 
 #### Regenerating the globe coastlines
 

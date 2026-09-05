@@ -23,13 +23,14 @@
   var SEGMENT_SCROLL_SHARE = 0.42; /* viewport heights of scroll per stop-to-stop hop */
   var DPR_MAX = 1.75;              /* the stage is full-bleed now; 2 was fill-rate hungry */
   var IDLE_FRAME_MS = 32;          /* the breathing sway, pulses and the travelling light run at ~30 fps */
-  var NARROW_MAX_WIDTH = 899;      /* matches the CSS breakpoint for the caption layout */
+  /* One source of truth with style.css: the same query drives the caption
+     layout there and the camera framing here, so the two cannot disagree. */
+  var narrowQuery = window.matchMedia("(max-width: 899px), (max-aspect-ratio: 21/20)");
   var STAR_COUNT = 600;
   var STAR_SEED = 1992;
   var PULSE_MS = 1800;             /* active-marker ring period */
   var TRAVEL_MS = 2600;            /* one lap of the light along the drawn route */
   var MARKER_SCALE = 3.6;          /* plane half-size per unit of core.markerRadius() */
-  var RAIL_NODE_Y = 22;            /* node centre below the li top: 14px top + 8px radius (style.css) */
   var THREE_URL = "../vendor/three/three.module.min.js";
   var LINES_DIR = "../vendor/three/lines/";
   var LINE_MODULES = ["Line2", "LineSegments2", "LineGeometry", "LineSegmentsGeometry", "LineMaterial"];
@@ -94,7 +95,11 @@
   function probeWebGL2() {
     try {
       var probe = document.createElement("canvas");
-      return !!(window.WebGL2RenderingContext && probe.getContext("webgl2"));
+      var gl = window.WebGL2RenderingContext && probe.getContext("webgl2");
+      if (!gl) return false;
+      var lose = gl.getExtension("WEBGL_lose_context");
+      if (lose) lose.loseContext();
+      return true;
     } catch (e) { return false; }
   }
   function gate(withProbe) {
@@ -258,7 +263,8 @@
     try {
       renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true, powerPreference: "low-power" });
     } catch (e) {
-      transition("load-fail"); section.dataset.globe = "error"; warn("renderer", e && e.message); return;
+      warn("renderer", e && e.message);
+      throw e;                     /* start() wraps build() in fail(): one error path, not two */
     }
     renderer.setClearColor(0x000000, 0);
 
@@ -390,8 +396,16 @@
         setPulse: function (head) { if (pulse) pulse.material.dashOffset = -head; }
       };
     }
+    /* No footprints (a stops list without any) means no arc geometry at all:
+       an empty buffer is a degenerate draw call, so hand frame() a stub with
+       the same five methods instead. */
+    function noPolyline() {
+      return { setColor: function () {}, setOpacity: function () {}, setCount: function () {},
+               setResolution: function () {}, setPulse: function () {} };
+    }
     var route = LINES ? fatPolyline(path.positions, false) : thinPolyline(path.positions, THREE.Line);
-    var arcs = LINES ? fatPolyline(arcPairs, true) : thinPolyline(arcPairs, THREE.LineSegments);
+    var arcs = !arcPairs.length ? noPolyline()
+      : LINES ? fatPolyline(arcPairs, true) : thinPolyline(arcPairs, THREE.LineSegments);
     route.setCount(0);
     arcs.setOpacity(0);
 
@@ -441,7 +455,7 @@
       m.footprint = true;
       return m;
     });
-    var allMaterials = placeMarkers.concat(footprintMarkers).map(function (m) { return m.mat; });
+    var markerMaterials = placeMarkers.concat(footprintMarkers).map(function (m) { return m.mat; });
     /* The stop the arcs fan out of: the only place label kept at the region
        pull-back, where all four Malaysian places project into ~30px. */
     var hubIndex = timeline.footprints.length ? timeline.footprints[0].originIndex : -1;
@@ -474,7 +488,7 @@
       labels.forEach(function (l) {
         var m = l.marker;
         var hidden = !facingCamera(m, limit) || (m.footprint && reveal <= 0.02);
-        if (!m.footprint && regionActive && m.indices.indexOf(hubIndex) === -1) hidden = true;
+        if (!m.footprint && regionActive && hubIndex >= 0 && m.indices.indexOf(hubIndex) === -1) hidden = true;
         if (l.el.hidden !== hidden) l.el.hidden = hidden;
         if (hidden) return;
         projected.copy(l.world).project(camera);
@@ -520,7 +534,7 @@
 
       route.setColor(teal);        /* the route rhymes with the timeline spine */
       arcs.setColor(paper);        /* paper: teal arcs vanish against teal coastlines */
-      allMaterials.forEach(function (m) {
+      markerMaterials.forEach(function (m) {
         tint(m.uniforms.color.value, teal);
         m.blending = light ? THREE.NormalBlending : THREE.AdditiveBlending;
         m.needsUpdate = true;
@@ -529,7 +543,9 @@
     }
     new MutationObserver(function (mutations) {
       var lang = mutations.some(function (mu) { return mu.attributeName === "data-lang"; });
-      if (lang) refreshLabelText();
+      /* Malay captions are a different length, so the rail's node positions
+         move: re-measure rather than leave the progress bar on stale offsets. */
+      if (lang) { refreshLabelText(); layout(); }
       if (mutations.some(function (mu) { return mu.attributeName === "data-theme"; })) applyTheme();
     }).observe(root, { attributes: true, attributeFilter: ["data-theme", "data-lang"] });
     var scheme = window.matchMedia("(prefers-color-scheme: light)");
@@ -561,8 +577,17 @@
       if (activeEl) activeEl.classList.remove("is-active");
       activeEl = el;
       if (el) el.classList.add("is-active");
-      if (progressEl && el) progressEl.style.height = Math.max(0, el.offsetTop - keyframeEls[0].offsetTop) + "px";
+      measureProgress();
     }
+    function measureProgress() {
+      if (progressEl && activeEl) progressEl.style.height = Math.max(0, activeEl.offsetTop - keyframeEls[0].offsetTop) + "px";
+    }
+    /* setActive reads offsets while the outgoing description is still
+       collapsing (max-height animates for 0.4s), so the first measurement runs
+       ~50px long. Re-measure once the rail has settled. */
+    rail.addEventListener("transitionend", function (e) {
+      if (e.propertyName === "max-height") measureProgress();
+    });
 
     var camDir = { x: 0, y: 0, z: 1 };
     /* A surface point is hidden by the sphere below `limit`. The markers draw
@@ -639,14 +664,18 @@
       var w = stage.clientWidth, h = stage.clientHeight;
       if (!w || !h) return;
       viewW = w; viewH = h; aspect = w / h;
-      layoutMode = window.innerWidth <= NARROW_MAX_WIDTH ? "narrow" : "wide";
+      layoutMode = narrowQuery.matches ? "narrow" : "wide";
       renderer.setPixelRatio(core.capDevicePixelRatio(window.devicePixelRatio, DPR_MAX));
       renderer.setSize(w, h, false);
       camera.aspect = aspect;
       route.setResolution(w, h);
       arcs.setResolution(w, h);
-      if (progressEl) progressEl.style.top = (keyframeEls[0].offsetTop + RAIL_NODE_Y) + "px";
-      if (activeEl && progressEl) progressEl.style.height = Math.max(0, activeEl.offsetTop - keyframeEls[0].offsetTop) + "px";
+      /* The node centre comes from the CSS itself so a breakpoint that moves
+         the dot (the short-viewport rail) cannot drift from this constant. */
+      var nodeStyle = getComputedStyle(keyframeEls[0], "::before");
+      var nodeY = (parseFloat(nodeStyle.top) || 14) + (parseFloat(nodeStyle.height) || 16) / 2;
+      if (progressEl) progressEl.style.top = (keyframeEls[0].offsetTop + nodeY) + "px";
+      measureProgress();
       onScroll();
       requestRender();
     }

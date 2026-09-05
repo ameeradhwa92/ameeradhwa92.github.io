@@ -303,7 +303,7 @@ html[lang="ms"] .portrait::after { content: "SEJAK 2010 · DUNGUN → SHAH ALAM"
    sticky scrollytelling panel, the list into a caption rail on the timeline's
    spine line, and appends the projected place labels. The stage has no box of its
    own: the canvas clears to transparent and fades into the page atmosphere. */
-.route-globe { padding-bottom: 0; }
+.section.route-globe { padding-bottom: 0; }
 /* 100vw includes the vertical scrollbar; route-globe.js publishes its width as
    --route-gutter so the stage is exactly the visible viewport and the rail lands
    on the .wrap edge. Without JS the half-scrollbar overshoot is harmless. */
@@ -381,7 +381,8 @@ html[lang="ms"] .portrait::after { content: "SEJAK 2010 · DUNGUN → SHAH ALAM"
 .route-globe.is-live .route-rail {
   position: absolute; top: 50%; transform: translateY(-50%);
   left: max(28px, calc(50% - 550px + 28px)); width: min(400px, 42vw); max-width: none;
-  max-height: calc(100vh - 140px); margin: 0; padding: 0 0 0 calc(var(--spine-x) + 30px);
+  max-height: calc(100vh - 60px); max-height: calc(100dvh - 60px);
+  margin: 0; padding: 0 0 0 calc(var(--spine-x) + 30px);
   overflow: hidden; pointer-events: none;
 }
 .route-globe.is-live .route-rail::before {
@@ -442,7 +443,18 @@ html[lang="ms"] .portrait::after { content: "SEJAK 2010 · DUNGUN → SHAH ALAM"
 /* the timeline continues straight under the stage */
 .section.journey-continued { padding-top: 24px; }
 
-@media (max-width: 899px) {
+/* short laptop viewports: compact the rail so all nine stops stay readable */
+@media (min-width: 900px) and (max-height: 880px) and (min-aspect-ratio: 21/20) {
+  .route-globe.is-live .route-stop { padding: 6px 0 8px; font-size: 0.84rem; }
+  .route-globe.is-live .route-stop::before { top: 10px; }
+  .route-globe.is-live .route-stop-year { font-size: 0.66rem; }
+  .route-globe.is-live .route-stop-place { font-size: 0.98rem; margin-top: 2px; }
+  .route-globe.is-live .route-stop.is-active .route-stop-desc { max-height: 5em; margin-top: 4px; }
+}
+
+/* The same query drives layoutMode in route-globe.js: a squarish or narrow
+   frame gets the bottom caption and the lifted, centred globe. */
+@media (max-width: 899px), (max-aspect-ratio: 21/20) {
   .route-globe.is-live .route-stage { height: min(100vh, 720px); height: min(100dvh, 720px); }
   .route-globe.is-live .route-rail {
     top: auto; bottom: 16px; left: 12px; right: 12px; width: auto; transform: none;

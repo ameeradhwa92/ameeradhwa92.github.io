@@ -233,6 +233,7 @@ test('limbInFrame is the geometric predicate it claims to be', () => {
   assert.equal(core.limbInFrame(1.5, 38, 1.6, 0, 0, 0), false);
   assert.equal(core.limbInFrame(1.5, 38, 1.6, 0.3, 0, 0), true);
   assert.equal(core.limbInFrame(1, 38, 1.6, 0, 0, 0), false, 'on the surface there is no limb');
+  assert.equal(core.limbInFrame(2, 38, 1.6, 2.0, 0, 0), false, 'a huge offset pushes the sphere off screen entirely');
 });
 
 test('framing keeps the limb in frame for every distance and aspect, with a 2° margin', () => {

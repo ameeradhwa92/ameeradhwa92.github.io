@@ -173,6 +173,23 @@ test('the live stage is full-bleed, borderless and fades into the page', () => {
   assert.doesNotMatch(live[1], /border|box-shadow|border-radius|background/);
   assert.match(css, /\.route-fade \{[^}]*mask-image: linear-gradient\(to bottom, transparent, #000 10%, #000 90%, transparent\)/);
   assert.match(css, /\.journey-continued \{ padding-top: 24px; \}/);
+  // .section wins on specificity, so the padding reset has to carry it too.
+  assert.match(css, /\.section\.route-globe \{ padding-bottom: 0; \}/);
+});
+
+test('the caption breakpoint and the adapter framing switch use one query', () => {
+  assert.match(css, /@media \(max-width: 899px\), \(max-aspect-ratio: 21\/20\) \{/);
+  const adapter = fs.readFileSync(path.join(root, 'assets', 'js', 'route-globe.js'), 'utf8');
+  assert.match(adapter, /matchMedia\("\(max-width: 899px\), \(max-aspect-ratio: 21\/20\)"\)/);
+  // the short-viewport rail must never apply at the same time as the narrow one
+  assert.match(css, /@media \(min-width: 900px\) and \(max-height: 880px\) and \(min-aspect-ratio: 21\/20\) \{/);
+});
+
+test('adapter constants match the CSS and the spec budget', () => {
+  const adapter = fs.readFileSync(path.join(root, 'assets', 'js', 'route-globe.js'), 'utf8');
+  assert.match(adapter, /var DPR_MAX = 1\.75;/, 'spec §4.8 DPR cap');
+  assert.match(css, /\.route-globe\.is-live \.route-stop::before \{[^}]*top: 14px;[^}]*height: 16px/);
+  assert.doesNotMatch(adapter, /RAIL_NODE_Y/, 'the node centre is measured from CSS, not hard-coded');
 });
 
 test('the rail and labels are styled and frozen under reduced motion', () => {

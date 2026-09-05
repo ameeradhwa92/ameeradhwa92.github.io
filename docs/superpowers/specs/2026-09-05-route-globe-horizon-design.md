@@ -138,8 +138,10 @@ also drives the time uniforms below.
 
 ### 4.2 Atmosphere shell
 
-A second sphere, radius 1.09, `side: BackSide`, `depthWrite: false`, fresnel `pow(1 - dot,
-4.0)`:
+A second sphere, radius 1.09, `side: BackSide`, `depthWrite: false`, with the glow rising
+toward the globe's limb: on back faces the outward normal points away from the camera, so
+the shader uses `smoothstep(0, 0.45, -dot(n, view))²` (the `pow(1 - dot, 4)` form is for
+front faces and would be wrong here):
 
 - Dark: `--teal`, `AdditiveBlending`, peak alpha 0.55.
 - Light: `--teal-deep`, `NormalBlending`, peak alpha 0.16 (a haze, not a glow).
@@ -189,7 +191,8 @@ The route polyline and the three footprint arcs move to three.js's `Line2` addon
   instead of stacking. A 1px leader line from the label toward the marker is a CSS
   pseudo-element.
 - Per frame, the adapter projects each marker to CSS pixels and sets `transform`; a label is
-  hidden when its marker faces away (`dot(dir, cameraDir) < 0.12`). The active place's label
+  hidden — together with its marker, by one shared rule — when its surface point is
+  behind the horizon: `dot(dir, cameraDir) < 1/distance + 0.04`. The active place's label
   is `--paper` at full opacity; others are `--muted` mono at 0.7.
 
 ### 4.6 Camera: the limb is always in frame
@@ -209,15 +212,17 @@ The route polyline and the three footprint arcs move to three.js's `Line2` addon
   at least one axis. `framing()` must satisfy it for every distance in [1.5, 3.2] and every
   aspect in [0.45, 2.4]; the core test asserts this on a grid.
 - **Banking** on long hops: `bankAngle(travel, hopAngle)` returns a roll of up to 6°
-  (`sin(π·travel)` shaped, sign from the hop direction) applied through `camera.up`; zero
-  when the hop is under 2°, so the Klang Valley moves do not wobble.
+  (`sin(π·travel)` shaped, sign from the hop direction) applied as a roll
+  (`camera.rotateZ`) after `lookAt`; zero when the hop is under 2°, so the Klang
+  Valley moves do not wobble.
 - Idle drift, drag orbit and the settle decay are unchanged.
 
 ### 4.7 Starfield (dark theme only)
 
 `Points`: 600 unit vectors at radius 6–9, `size` 1.6px, `sizeAttenuation: false`, opacity
-0.35 dark / 0 light. The star group rotates by 0.3× the camera yaw for parallax.
-`starPositions(count, seed)` is a pure core function (deterministic, testable).
+0.35 dark / 0 light. The star group rotates by 0.3× the drag yaw offset for parallax
+while orbiting; the scroll flight leaves it fixed. `starPositions(count, seed)` is a
+pure core function (deterministic, testable).
 
 ### 4.8 Budget
 
