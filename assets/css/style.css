@@ -298,16 +298,23 @@ html[lang="ms"] .portrait::after { content: "SEJAK 2010 · DUNGUN → SHAH ALAM"
 }
 
 /* ---------- route globe ---------- */
-/* Static by default: a poster and a plain list of stops. route-globe.js adds
-   .is-live once three.js is drawing, which turns the stage into a sticky
-   scrollytelling panel and the list into a single crossfading caption. */
-.route-globe { padding-bottom: 20px; }
-.route-track { position: relative; }
+/* Static by default: a full-width poster and a plain list of stops. route-globe.js
+   adds .is-live once three.js is drawing, which turns the stage into a full-bleed
+   sticky scrollytelling panel, the list into a caption rail on the timeline's
+   spine line, and appends the projected place labels. The stage has no box of its
+   own: the canvas clears to transparent and fades into the page atmosphere. */
+.route-globe { padding-bottom: 0; }
+.route-track { position: relative; width: 100vw; margin-left: calc(50% - 50vw); }
 .route-stage { position: relative; }
 .route-canvas { display: none; width: 100%; height: 100%; touch-action: pan-y; }
+.route-fade {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 10%, #000 90%, transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 10%, #000 90%, transparent);
+}
 .route-poster {
   width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover;
-  border-radius: 18px; border: 1px solid var(--line); background: var(--panel);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 10%, #000 90%, transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 10%, #000 90%, transparent);
 }
 .route-poster-light { display: none; }
 @media (prefers-color-scheme: light) {
@@ -320,8 +327,10 @@ html[lang="ms"] .portrait::after { content: "SEJAK 2010 · DUNGUN → SHAH ALAM"
 :root[data-theme="dark"] .route-poster-light { display: none; }
 .route-hint { display: none; }
 
+.route-rail { max-width: 1100px; margin: 26px auto 0; padding: 0 28px; }
+.route-rail-progress { display: none; }
 .route-stops {
-  list-style: none; margin-top: 26px;
+  list-style: none;
   display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px;
 }
 .route-stop {
@@ -343,16 +352,14 @@ html[lang="ms"] .portrait::after { content: "SEJAK 2010 · DUNGUN → SHAH ALAM"
   color: var(--teal); border: 1px solid var(--teal-deep); border-radius: 999px; padding: 3px 9px;
 }
 
-/* live mode */
+/* live mode: the stage */
 .route-globe.is-live .route-stage {
-  position: sticky; top: 74px; height: min(78vh, 640px); z-index: 1;
-  border-radius: 18px; overflow: hidden; background: var(--panel); border: 1px solid var(--line);
-  box-shadow: 0 24px 60px var(--shadow);
+  position: sticky; top: 0; height: 100vh; height: 100dvh; z-index: 1; overflow: hidden;
 }
 .route-globe.is-live .route-canvas { display: block; position: absolute; inset: 0; }
 .route-globe.is-live .route-poster { display: none; }
 .route-globe.is-live .route-hint {
-  position: absolute; top: 16px; right: 18px; margin: 0;
+  position: absolute; right: 28px; bottom: 22px; margin: 0;
   font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.16em; text-transform: uppercase;
   color: var(--muted); opacity: 0.85; transition: opacity 0.4s;
 }
@@ -362,23 +369,96 @@ html[lang="ms"] .portrait::after { content: "SEJAK 2010 · DUNGUN → SHAH ALAM"
   .route-globe.is-live .route-canvas { cursor: grab; }
   .route-globe.is-live.is-dragging .route-canvas { cursor: grabbing; }
 }
-.route-globe.is-live .route-stops {
-  position: absolute; left: 22px; right: 22px; bottom: 22px; margin: 0;
-  display: block; max-width: 380px; min-height: 8.5em; pointer-events: none;
-}
-.route-globe.is-live .route-stop {
-  position: absolute; left: 0; right: 0; bottom: 0;
-  background: rgba(var(--teal-rgb), 0.06); backdrop-filter: blur(6px);
-  opacity: 0; transform: translateY(8px);
-  transition: opacity 0.35s ease, transform 0.35s ease;
-}
-.route-globe.is-live .route-stop.is-active { opacity: 1; transform: none; }
 
-@media (max-width: 640px) {
-  .route-globe.is-live .route-stage { height: 64vh; top: 68px; }
-  .route-globe.is-live .route-stops { left: 12px; right: 12px; bottom: 12px; max-width: none; }
-  .route-globe.is-live .route-stop { padding: 14px 16px; font-size: 0.86rem; }
-  .route-stop-place { font-size: 1.05rem; }
+/* live mode: the caption rail on the spine line */
+.route-globe.is-live .route-rail {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  left: max(28px, calc(50% - 550px + 28px)); width: min(400px, 42vw); max-width: none;
+  max-height: calc(100vh - 140px); margin: 0; padding: 0 0 0 calc(var(--spine-x) + 30px);
+  overflow: hidden; pointer-events: none;
+}
+.route-globe.is-live .route-rail::before {
+  content: ""; position: absolute; top: 22px; bottom: 22px; left: var(--spine-x);
+  width: 2px; background: var(--line);
+}
+.route-globe.is-live .route-rail-progress {
+  display: block; position: absolute; left: var(--spine-x); top: 22px; width: 2px; height: 0;
+  background: linear-gradient(180deg, var(--teal-deep), var(--teal));
+  box-shadow: 0 0 12px rgba(var(--teal-rgb), 0.55); z-index: 1;
+  transition: height 0.35s ease;
+}
+.route-globe.is-live .route-stops { display: block; }
+.route-globe.is-live .route-stop {
+  position: relative; background: none; border: none; border-radius: 0;
+  padding: 10px 0 12px; font-size: 0.9rem;
+  opacity: 0.42; transition: opacity 0.35s ease;
+}
+.route-globe.is-live .route-stop::before {
+  content: ""; position: absolute; left: -38px; top: 14px; z-index: 2;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--ink); border: 2px solid var(--line);
+  transition: border-color 0.5s, box-shadow 0.5s;
+}
+.route-globe.is-live .route-stop.is-active { opacity: 1; }
+.route-globe.is-live .route-stop.is-active::before {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 5px rgba(var(--teal-rgb), 0.14), 0 0 16px rgba(var(--teal-rgb), 0.6);
+}
+.route-globe.is-live .route-stop-place { font-size: 1.05rem; margin: 4px 0 0; }
+.route-globe.is-live .route-stop-desc,
+.route-globe.is-live .route-arcs {
+  max-height: 0; overflow: hidden; margin-top: 0;
+  transition: max-height 0.4s ease, margin-top 0.4s ease;
+}
+.route-globe.is-live .route-stop.is-active .route-stop-desc { max-height: 8em; margin-top: 6px; }
+.route-globe.is-live .route-stop.is-active .route-arcs { max-height: 4em; margin-top: 10px; }
+
+/* live mode: projected place labels */
+.route-labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.route-label {
+  position: absolute; left: 0; top: 0; margin: 0; white-space: nowrap; will-change: transform;
+  font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--muted); opacity: 0.7; transition: opacity 0.3s, color 0.3s;
+}
+.route-label.is-active { color: var(--paper); opacity: 1; }
+.route-label[hidden] { display: none; }
+.route-label::before { content: ""; position: absolute; background: currentColor; opacity: 0.55; }
+.route-label.dir-e::before  { right: 100%; top: 50%; width: 12px; height: 1px; margin-right: 4px; }
+.route-label.dir-w::before  { left: 100%; top: 50%; width: 12px; height: 1px; margin-left: 4px; }
+.route-label.dir-n::before  { left: 50%; top: 100%; width: 1px; height: 12px; margin-top: 4px; }
+.route-label.dir-s::before  { left: 50%; bottom: 100%; width: 1px; height: 12px; margin-bottom: 4px; }
+.route-label.dir-ne::before { right: 100%; top: 100%; width: 12px; height: 1px; transform: rotate(-45deg); transform-origin: right center; }
+.route-label.dir-nw::before { left: 100%; top: 100%; width: 12px; height: 1px; transform: rotate(45deg); transform-origin: left center; }
+.route-label.dir-se::before { right: 100%; bottom: 100%; width: 12px; height: 1px; transform: rotate(45deg); transform-origin: right center; }
+.route-label.dir-sw::before { left: 100%; bottom: 100%; width: 12px; height: 1px; transform: rotate(-45deg); transform-origin: left center; }
+
+/* the timeline continues straight under the stage */
+.journey-continued { padding-top: 24px; }
+
+@media (max-width: 899px) {
+  .route-globe.is-live .route-stage { height: min(100vh, 720px); height: min(100dvh, 720px); }
+  .route-globe.is-live .route-rail {
+    top: auto; bottom: 16px; left: 12px; right: 12px; width: auto; transform: none;
+    max-height: none; padding: 0; overflow: visible;
+  }
+  .route-globe.is-live .route-rail::before,
+  .route-globe.is-live .route-rail-progress { display: none; }
+  .route-globe.is-live .route-stops { position: relative; min-height: 8.5em; }
+  .route-globe.is-live .route-stop {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding: 14px 16px; font-size: 0.86rem;
+    background: rgba(var(--teal-rgb), 0.06); backdrop-filter: blur(6px);
+    border: 1px solid var(--line); border-radius: 14px;
+    opacity: 0; transform: translateY(8px);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+  }
+  .route-globe.is-live .route-stop::before { display: none; }
+  .route-globe.is-live .route-stop.is-active { opacity: 1; transform: none; }
+  .route-globe.is-live .route-stop-desc,
+  .route-globe.is-live .route-arcs { max-height: none; overflow: visible; }
+  .route-globe.is-live .route-stop-desc { margin-top: 6px; }
+  .route-globe.is-live .route-arcs { margin-top: 10px; }
+  .route-label { font-size: 0.6rem; }
 }
 
 /* ---------- section headers ---------- */
@@ -645,6 +725,7 @@ body.modal-open { overflow: hidden; }
   .badge .dot, .card:hover, .card:hover .shot img, .btn:hover { animation: none; transform: none; transition: none; }
   .spine-progress { box-shadow: none; }
   .route-stop { transition: none; transform: none; }
+  .route-label, .route-rail-progress { transition: none; }
   .atmosphere::before { animation: none; }
   .cursor-glow { display: none; }
   .card::after, .skill-group::after, .edu-card::after { display: none; }

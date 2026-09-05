@@ -162,3 +162,26 @@ test('zooms sit between the limb floor and the pull-back', () => {
   for (const z of zooms) assert.ok(z >= 1.5 && z <= 3.2, `zoom ${z} in [1.5, 3.2]`);
   assert.equal(zooms[zooms.length - 1], 3);
 });
+
+test('the live stage is full-bleed, borderless and fades into the page', () => {
+  assert.match(css, /\.route-track \{[^}]*width: 100vw;[^}]*margin-left: calc\(50% - 50vw\)/);
+  const live = css.match(/\.route-globe\.is-live \.route-stage \{([^}]*)\}/);
+  assert.ok(live, 'live stage rule exists');
+  assert.match(live[1], /position: sticky/);
+  assert.match(live[1], /top: 0/);
+  assert.match(live[1], /height: 100dvh/);
+  assert.doesNotMatch(live[1], /border|box-shadow|border-radius|background/);
+  assert.match(css, /\.route-fade \{[^}]*mask-image: linear-gradient\(to bottom, transparent, #000 10%, #000 90%, transparent\)/);
+  assert.match(css, /\.journey-continued \{ padding-top: 24px; \}/);
+});
+
+test('the rail and labels are styled and frozen under reduced motion', () => {
+  assert.match(css, /\.route-globe\.is-live \.route-stop::before \{[^}]*border-radius: 50%/);
+  assert.match(css, /\.route-globe\.is-live \.route-stop\.is-active::before \{[^}]*border-color: var\(--teal\)/);
+  assert.match(css, /\.route-rail-progress \{[^}]*linear-gradient\(180deg, var\(--teal-deep\), var\(--teal\)\)/);
+  for (const dir of ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']) {
+    assert.match(css, new RegExp(`\\.route-label\\.dir-${dir}::before`), `leader line for ${dir}`);
+  }
+  const block = css.match(/@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)\n\}/);
+  assert.match(block[1], /\.route-label, \.route-rail-progress \{ transition: none; \}/);
+});
