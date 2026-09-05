@@ -81,7 +81,7 @@ asset lacks one, and names the offending file. While iterating locally, tick
 | `assets/js/route-globe-core.js` | Route globe, pure half: sphere geometry, camera keyframes/scrub, coastline decoding, capability gate, load state machine. UMD, tested by plain `require()` |
 | `assets/js/route-globe.js` | Route globe, DOM/WebGL adapter: reads the stops `<ol>`, gates, lazy-imports vendored three.js, owns the canvas/scroll/drag/theme wiring |
 | `assets/data/route-globe-coastlines.json` | Generated country outlines for the globe (never hand-edited — see Regenerating the globe coastlines) |
-| `assets/vendor/three/` | Vendored three.js r185 (`three.module.min.js` + `three.core.min.js`, kept side by side) |
+| `assets/vendor/three/` | Vendored three.js r185 (`three.module.min.js` + `three.core.min.js`, kept side by side) and its `lines/` fat-line addon, whose bare `three` import the `<head>` import map resolves |
 | `assets/data/aimeer-kb.txt` | Chatbot knowledge base — fetched by *both* the browser and the Worker |
 | `assets/data/aimeer-profile.json` | Recruiter evidence registry (`recruiterEvidence`, `privacyExclusions`) — the only allowlist of evidence the JD matcher's cloud reasoning may cite |
 | `cloud/aimeer-worker.js` | Cloudflare Worker relay — chat/summary/jd-explanation/jd-reasoning/jd-scoring/version modes (deployed manually, see below) |
@@ -213,27 +213,43 @@ Hard-coded facts also live in the `TOPICS` answers in `chatbot.js` — grep ther
 
 ### Route globe (three.js)
 
-The section `#route` between the stats strip and the timeline is a scroll-scrubbed
-line-art globe. Its **data is the markup**: each `<li data-lat data-lng data-kind data-zoom>`
-in `#route-stops` is a camera keyframe in DOM order (`place` | `remote` | `region`) and the
-nested `data-kind="footprint"` items are the reveal's arc targets. Town-level coordinates
-only — the profile's privacy exclusions rule out anything finer, and "Sura Gate" stays off
-the map. Adding a stop is an HTML + `i18n.js` edit; `tests/route-globe-section.test.js`
-checks ranges, kinds, zoom and MS coverage.
+The section `#route` between the stats strip and the timeline is a scroll-scrubbed globe
+that also carries the journey's only heading (`#journey` has none). Its **data is the
+markup**: each `<li data-lat data-lng data-kind data-zoom [data-label-dir]>` in
+`#route-stops` is a camera keyframe in DOM order (`place` | `remote` | `region`) and the
+nested `data-kind="footprint"` items are the reveal's arc targets. `data-label-dir`
+(`n|ne|e|se|s|sw|w|nw`) fans the projected DOM label out from its marker; the three Klang
+Valley places must use three different directions or the labels stack. Town-level
+coordinates only — the profile's privacy exclusions rule out anything finer, and "Sura
+Gate" stays off the map. Adding a stop is an HTML + `i18n.js` edit;
+`tests/route-globe-section.test.js` checks ranges, kinds, zoom, directions and MS coverage.
+
+**Zooms stay between 1.5 and 3.2, and the limb is always in frame.** `core.framing()`
+picks the FOV and a view offset per distance, aspect and layout, and
+`core.limbInFrame()` is the invariant the core test checks on a grid. There is no
+street-level zoom on purpose: the marker, pulse, label and rail caption identify the
+stop; the sphere identifies the medium. Don't lower `DEFAULT_ZOOM` or a `data-zoom`
+below 1.5 without re-running that test.
 
 `route-globe.js` upgrades the section in place only when `evaluateGate` passes (no
 `prefers-reduced-motion`, no `saveData`, WebGL2 present) and the section comes within
-600px of the viewport; then it dynamically imports the vendored three.js and fetches the
-coastline JSON with the same `?v=` tag. Everything else — no JS, reduced motion, no WebGL2,
-a failed load, a lost context — leaves the poster (`assets/img/route-globe-{dark,light}.jpg`)
-and the plain stops list, and writes the reason to `section.dataset.globe`. Read that
-attribute before guessing why the globe is static. Rendering is on demand: frames draw on
-scroll, drag and theme change, plus a 30 fps breathing sway only while the stage is on
-screen. Colours are read from the palette custom properties, so a theme change needs no
-globe code.
+600px of the viewport; then it dynamically imports the vendored three.js, the five
+`lines/` addon modules and the coastline JSON (with the same `?v=` tag). The addon is
+optional: if it fails the globe renders with 1px lines and `section.dataset.globe` reads
+`live-thin`. Everything else — no JS, reduced motion, no WebGL2, a failed load, a lost
+context — leaves the poster (`assets/img/route-globe-{dark,light}.jpg`) and the plain
+stops list, and writes the reason to `section.dataset.globe`. Read that attribute before
+guessing why the globe is static. Rendering is on demand: frames draw on scroll, drag and
+theme change, plus a ~30 fps loop (breathing sway, marker pulse, travelling light) only
+while the stage is on screen. Colours are read from the palette custom properties, so a
+theme change needs no globe code; the light theme swaps additive blending for normal and
+hides the stars.
 
-The posters are screenshots of the finished scene at the final reveal (dark and light,
-1600×900). Recapture them when the route or the palette changes.
+The stage is full-bleed and transparent (the page atmosphere shows through) with a CSS
+mask fading its top and bottom edges; there is deliberately no border, radius, background
+or shadow — that box is what made the first version read as an embedded video. The
+posters are node screenshots of the finished scene at the final reveal (dark and light,
+1600×900). Recapture them when the route, the framing or the palette changes.
 
 #### Regenerating the globe coastlines
 
