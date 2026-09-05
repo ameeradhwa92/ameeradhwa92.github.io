@@ -928,7 +928,7 @@ git commit -m "style(globe): full-bleed stage, caption rail on the spine line, p
 
 **Interfaces:**
 - Consumes: `core.framing`, `core.limbInFrame` (Task 1); `core.bankAngle`, `resolvePose().bank`, `core.starPositions`, `stop.labelDir`, `DEFAULT_ZOOM` (Task 2); the five addon modules and the import map (Task 3); `#route-rail`, `.route-rail-progress`, `data-label-dir` (Task 4); every class in Task 5.
-- Produces: `section.dataset.globe` ∈ `live | live-thin | loading | error | <gate reason>`; `.route-fade` on the canvas; `.route-labels` container with `.route-label` children; inline `top`/`height` on `.route-rail-progress`.
+- Produces: `section.dataset.globe` ∈ `live | live-thin | loading | error | <gate reason>`; `.route-fade` on the canvas; `.route-labels` container with `.route-label` children; inline `top`/`height` on `.route-rail-progress`; the `--route-gutter` custom property on `<html>` (vertical scrollbar width, consumed by `.route-track` in Task 5's CSS).
 
 - [ ] **Step 1: Replace the file**
 
@@ -985,6 +985,15 @@ Write `assets/js/route-globe.js` with exactly this content:
     if (window.console && console.warn) console.warn("[route-globe] " + where + ": " + reason);
   }
   function transition(event) { state = core.nextState(state, event); return state; }
+
+  /* 100vw includes the vertical scrollbar; publish its width so the CSS
+     full-bleed track can subtract it (see .route-track in style.css). This
+     runs before the gate so the poster fallback is exact too. */
+  function publishGutter() {
+    root.style.setProperty("--route-gutter", Math.max(0, window.innerWidth - root.clientWidth) + "px");
+  }
+  publishGutter();
+  window.addEventListener("resize", publishGutter);
 
   /* Same cache-busting discipline as chatbot.js: forward our own ?v= to the
      coastline fetch. The vendored three.js and its addon are pinned by path
