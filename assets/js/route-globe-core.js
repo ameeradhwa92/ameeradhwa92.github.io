@@ -238,6 +238,41 @@
     return clamp((distance - 1) * MARKER_RADIUS_PER_UNIT, 0.0004, 0.03);
   }
 
+  /* ---- framing: the limb must be in frame at every stop ---- */
+  /* True when at least one edge of the sphere's silhouette lies inside the
+     frame. The sphere subtends asin(1/distance); a view offset of a fraction
+     of the frame moves the centre by atan(2 * offset * tan(halfFov)), so the
+     near limb sits at (theta - offsetAngle) from the frame centre. marginDeg
+     demands that much clearance from the frame edge. */
+  function limbInFrame(distance, fovDeg, aspect, offsetX, offsetY, marginDeg) {
+    if (!(distance > 1) || !(fovDeg > 0) || !(aspect > 0)) return false;
+    var margin = (Number(marginDeg) || 0) * DEG;
+    var theta = Math.asin(1 / distance);
+    var halfV = fovDeg * DEG / 2;
+    var halfH = Math.atan(Math.tan(halfV) * aspect);
+    var ax = Math.atan(2 * Math.abs(Number(offsetX) || 0) * Math.tan(halfH));
+    var ay = Math.atan(2 * Math.abs(Number(offsetY) || 0) * Math.tan(halfV));
+    return theta - ax < halfH - margin || theta - ay < halfV - margin;
+  }
+
+  /* Wide (landscape) frames push the globe right so its left limb and
+     atmosphere stay on screen beside the caption rail; the push relaxes as the
+     camera pulls back so the final reveal shows the whole sphere. Narrow or
+     portrait frames widen the FOV and lift the globe so the caption sits
+     beneath it. Values are tuned so limbInFrame holds with a 2° margin for
+     every distance in [1.5, 3.2] and aspect in [0.45, 2.4]. */
+  function framing(distance, aspect, layout) {
+    var a = aspect > 0 ? aspect : 1;
+    if (layout === "narrow" || a < 1.05) return { fov: 66, offsetX: 0, offsetY: -0.16 };
+    var t = clamp(1.7 - a, -0.7, 0.65);
+    var relax = Math.pow(1.7 / Math.max(Number(distance) || 1.7, 1.7), 1.5);
+    return {
+      fov: clamp(38 + t * 22, 38, 60),
+      offsetX: clamp(0.22 + t * 0.12, 0.14, 0.30) * relax,
+      offsetY: 0.02
+    };
+  }
+
   /* ---- layout ---- */
   function scrollFraction(trackTop, trackHeight, stageHeight, stickyTop) {
     var travel = trackHeight - stageHeight;
@@ -349,6 +384,8 @@
     scrollFraction: scrollFraction,
     trackHeight: trackHeight,
     capDevicePixelRatio: capDevicePixelRatio,
+    limbInFrame: limbInFrame,
+    framing: framing,
     parseCssColor: parseCssColor,
     buildLinePositions: buildLinePositions,
     graticulePositions: graticulePositions,

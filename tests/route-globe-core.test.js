@@ -220,3 +220,39 @@ test('nextState follows the load state machine and ignores illegal events', () =
   assert.equal(core.nextState('gated-off', 'enter-viewport'), 'gated-off');
   assert.equal(core.nextState('nonsense', 'load-success'), 'nonsense');
 });
+
+test('limbInFrame is the geometric predicate it claims to be', () => {
+  // distance 3 → angular radius 19.5°; half-FOV horizontal at 38°/1.6 is 30.3°: visible
+  assert.equal(core.limbInFrame(3, 38, 1.6, 0, 0, 0), true);
+  // distance 1.1 → 65°: the sphere overflows every edge
+  assert.equal(core.limbInFrame(1.1, 38, 1.6, 0, 0, 0), false);
+  assert.equal(core.limbInFrame(1.1, 38, 1.6, 0.45, 0, 0), false);
+  // a 12° margin turns the first case false (19.5 > 30.3 - 12)
+  assert.equal(core.limbInFrame(3, 38, 1.6, 0, 0, 12), false);
+  // shifting the globe right brings the left limb in
+  assert.equal(core.limbInFrame(1.5, 38, 1.6, 0, 0, 0), false);
+  assert.equal(core.limbInFrame(1.5, 38, 1.6, 0.3, 0, 0), true);
+  assert.equal(core.limbInFrame(1, 38, 1.6, 0, 0, 0), false, 'on the surface there is no limb');
+});
+
+test('framing keeps the limb in frame for every distance and aspect, with a 2° margin', () => {
+  for (let d = 1.5; d <= 3.2001; d += 0.05) {
+    for (let a = 0.45; a <= 2.4001; a += 0.05) {
+      for (const layout of ['wide', 'narrow']) {
+        const f = core.framing(d, a, layout);
+        assert.ok(f.fov >= 38 && f.fov <= 66, `fov in range at d=${d} a=${a}`);
+        assert.ok(Math.abs(f.offsetX) <= 0.3 && Math.abs(f.offsetY) <= 0.2, 'offsets stay modest');
+        assert.ok(
+          core.limbInFrame(d, f.fov, a, f.offsetX, f.offsetY, 2),
+          `limb visible at d=${d.toFixed(2)} aspect=${a.toFixed(2)} ${layout}`
+        );
+      }
+    }
+  }
+  const close = core.framing(1.7, 1.6, 'wide'), far = core.framing(3, 1.6, 'wide');
+  assert.ok(close.offsetX > far.offsetX, 'the offset relaxes as the camera pulls back');
+  assert.ok(close.offsetX > 0.2 && close.offsetX <= 0.3);
+  assert.equal(core.framing(2, 0.5, 'wide').offsetX, 0, 'portrait windows use the vertical strategy even in the wide layout');
+  assert.ok(core.framing(2, 0.5, 'wide').offsetY < 0, 'portrait pushes the globe up so the caption sits below it');
+  assert.equal(core.framing(2, 1.6, 'narrow').offsetX, 0, 'the narrow layout never shifts sideways');
+});
