@@ -164,7 +164,7 @@ test('zooms sit between the limb floor and the pull-back', () => {
 });
 
 test('the live stage is full-bleed, borderless and fades into the page', () => {
-  assert.match(css, /\.route-track \{[^}]*width: 100vw;[^}]*margin-left: calc\(50% - 50vw\)/);
+  assert.match(css, /\.route-track \{[^}]*width: calc\(100vw - var\(--route-gutter, 0px\)\);[^}]*margin-left: calc\(50% - 50vw \+ var\(--route-gutter, 0px\) \/ 2\)/);
   const live = css.match(/\.route-globe\.is-live \.route-stage \{([^}]*)\}/);
   assert.ok(live, 'live stage rule exists');
   assert.match(live[1], /position: sticky/);

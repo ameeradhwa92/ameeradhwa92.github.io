@@ -304,7 +304,14 @@ html[lang="ms"] .portrait::after { content: "SEJAK 2010 · DUNGUN → SHAH ALAM"
    spine line, and appends the projected place labels. The stage has no box of its
    own: the canvas clears to transparent and fades into the page atmosphere. */
 .route-globe { padding-bottom: 0; }
-.route-track { position: relative; width: 100vw; margin-left: calc(50% - 50vw); }
+/* 100vw includes the vertical scrollbar; route-globe.js publishes its width as
+   --route-gutter so the stage is exactly the visible viewport and the rail lands
+   on the .wrap edge. Without JS the half-scrollbar overshoot is harmless. */
+.route-track {
+  position: relative;
+  width: calc(100vw - var(--route-gutter, 0px));
+  margin-left: calc(50% - 50vw + var(--route-gutter, 0px) / 2);
+}
 .route-stage { position: relative; }
 .route-canvas { display: none; width: 100%; height: 100%; touch-action: pan-y; }
 .route-fade {
@@ -433,7 +440,7 @@ html[lang="ms"] .portrait::after { content: "SEJAK 2010 · DUNGUN → SHAH ALAM"
 .route-label.dir-sw::before { left: 100%; bottom: 100%; width: 12px; height: 1px; transform: rotate(-45deg); transform-origin: left center; }
 
 /* the timeline continues straight under the stage */
-.journey-continued { padding-top: 24px; }
+.section.journey-continued { padding-top: 24px; }
 
 @media (max-width: 899px) {
   .route-globe.is-live .route-stage { height: min(100vh, 720px); height: min(100dvh, 720px); }
