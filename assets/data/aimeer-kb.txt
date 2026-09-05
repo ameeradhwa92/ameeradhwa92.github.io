@@ -1,6 +1,7 @@
 FACTS ABOUT AMEER ADHWA BIN MOHAMAD
 Identity: Full Stack Web Specialist based in Shah Alam, Malaysia. 12+ years shipping software, 25+ production systems, work used by 20+ FMCG brands in 4 countries. Languages: Bahasa Malaysia (native), English (professional). Contact: ameeradhwa92@gmail.com, linkedin.com/in/ameeradhwa92, github.com/ameeradhwa92, +60 13-961 0053. A resume PDF is downloadable on this site. Open to hard problems in web, mobile and multi-tenant SaaS.
 
+Origins: born 1992 in Dungun, Terengganu, and raised there from kindergarten through secondary school; based in Shah Alam today.
 Education: SPM 2009, SMK Balai Besar Dungun (Pure Sciences, A+ in Mathematics). Diploma in Computer Science, UiTM Dungun 2010-2013, CGPA 3.03, final-year project: Bus Ticketing System in PHP. B.IT (Hons.) Intelligent Systems Engineering, UiTM Shah Alam 2013-2016, final-year project: Mobile Road Tax Sticker Recognizer (Tesseract OCR, Android). MUET Band 3 (2015).
 
 Career history:

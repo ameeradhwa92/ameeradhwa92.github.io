@@ -4,10 +4,21 @@ Vendored parser assets for recruiter-side JD extraction:
 - `pdfjs/pdf.worker.min.mjs`
 - `jszip/jszip.min.js`
 
+Vendored renderer for the route globe (`assets/js/route-globe.js`):
+
+- `three/three.module.min.js` — the ESM entry; it imports `./three.core.min.js`
+  relatively, so the two files must stay side by side.
+- `three/three.core.min.js`
+
 Pinned versions:
 
 - PDF.js `4.10.38`
 - JSZip `3.10.1`
+- three.js `0.185.1` (r185) — `build/three.module.min.js` and `build/three.core.min.js`
+  copied unmodified from the npm tarball `three-0.185.1.tgz`
+  (sha512 `5aojFCXKwnjBRZvUnt3WFfEcvUJgkN5LlijRFN95hMy8WVkG4I0QNcJE+OuWvuJ0bOdStrbfXn0pkd6/QyiAlg==`).
+  The addons (`OrbitControls` etc.) are deliberately not vendored; the globe's
+  drag-to-orbit is a small additive offset in `route-globe-core.js`.
 
 Upstream license notices recorded from the distributed files:
 
@@ -47,4 +58,13 @@ Dual licenced under the MIT license or GPLv3. See https://raw.github.com/Stuk/js
 JSZip uses the library pako released under the MIT license :
 https://github.com/nodeca/pako/blob/main/LICENSE
 */
+```
+
+```text
+three.js
+/**
+ * @license
+ * Copyright 2010-2026 Three.js Authors
+ * SPDX-License-Identifier: MIT
+ */
 ```

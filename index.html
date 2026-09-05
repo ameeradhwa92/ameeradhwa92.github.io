@@ -17,7 +17,7 @@
   <!-- ?v= is the cache-busting tag. Bump it on every deploy that changes CSS or
        JS; chatbot.js reads this same tag off its own src and forwards it to the
        knowledge base and profile fetches, so this is the only place to edit. -->
-  <link rel="stylesheet" href="assets/css/style.css?v=2026-07-30g">
+  <link rel="stylesheet" href="assets/css/style.css?v=2026-09-05a">
   <script>
     document.documentElement.classList.replace('no-js', 'js');
     /* apply saved theme/language before first paint to avoid flashes */
@@ -96,6 +96,82 @@
         <div class="stat reveal"><b>25+</b><span data-i18n="stats.systems">production systems</span></div>
         <div class="stat reveal"><b>20+</b><span data-i18n="stats.brands">FMCG brands served</span></div>
         <div class="stat reveal"><b>4</b><span data-i18n="stats.countries">countries live</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ROUTE GLOBE ================= -->
+  <!-- Stops are the data: each <li data-lat data-lng data-kind data-zoom> is a
+       camera keyframe in DOM order (kind place|remote|region) and the nested
+       footprint items are the reveal's arc targets. Town-level coordinates only.
+       Without JS, WebGL2 or with reduced motion this renders as a poster plus a
+       plain list; route-globe.js upgrades it in place. -->
+  <section class="section wrap route-globe" id="route" aria-labelledby="route-h2">
+    <div class="section-head reveal">
+      <p class="eyebrow" data-i18n="globe.eyebrow">The Route · 1992 → Today</p>
+      <h2 id="route-h2" data-i18n="globe.h2">One small town, one line of travel — <em>drawn on a globe</em>.</h2>
+      <p data-i18n="globe.p">Scroll to fly the route stop by stop. On a desktop, drag the globe to look around.</p>
+    </div>
+
+    <div class="route-track" id="route-track">
+      <div class="route-stage" id="route-stage">
+        <canvas class="route-canvas" id="route-canvas" aria-hidden="true"></canvas>
+        <img class="route-poster route-poster-dark" src="assets/img/route-globe-dark.jpg" width="1600" height="900" loading="lazy" decoding="async" alt="">
+        <img class="route-poster route-poster-light" src="assets/img/route-globe-light.jpg" width="1600" height="900" loading="lazy" decoding="async" alt="">
+        <p class="route-hint" aria-hidden="true"><span data-i18n="globe.hint">Drag to orbit</span></p>
+
+        <ol class="route-stops" id="route-stops">
+          <li class="route-stop" data-lat="4.7667" data-lng="103.4167" data-kind="place" data-zoom="1.45">
+            <span class="route-stop-year" data-i18n="globe.born.year">1992</span>
+            <b class="route-stop-place" data-i18n="globe.born.place">Dungun, Terengganu</b>
+            <span class="route-stop-desc" data-i18n="globe.born.desc">Born here. Kindergarten to secondary school, all in one small east-coast town.</span>
+          </li>
+          <li class="route-stop" data-lat="4.7667" data-lng="103.4167" data-kind="place" data-zoom="1.3">
+            <span class="route-stop-year" data-i18n="globe.school.year">→ 2009</span>
+            <b class="route-stop-place" data-i18n="globe.school.place">SMK Balai Besar, Dungun</b>
+            <span class="route-stop-desc" data-i18n="globe.school.desc">Secondary school. SPM 2009 — Pure Sciences, with an A+ in Mathematics.</span>
+          </li>
+          <li class="route-stop" data-lat="4.7667" data-lng="103.4167" data-kind="place" data-zoom="1.2">
+            <span class="route-stop-year" data-i18n="globe.diploma.year">2010 — 2013</span>
+            <b class="route-stop-place" data-i18n="globe.diploma.place">UiTM Dungun</b>
+            <span class="route-stop-desc" data-i18n="globe.diploma.desc">Diploma in Computer Science. First real application: a bus ticketing system in PHP.</span>
+          </li>
+          <li class="route-stop" data-lat="3.1390" data-lng="101.6869" data-kind="place" data-zoom="1.12">
+            <span class="route-stop-year" data-i18n="globe.myemro.year">2013 — 2014</span>
+            <b class="route-stop-place" data-i18n="globe.myemro.place">Kuala Lumpur</b>
+            <span class="route-stop-desc" data-i18n="globe.myemro.desc">First job at MyEMRO — aircraft maintenance scheduling in Ruby on Rails.</span>
+          </li>
+          <li class="route-stop" data-lat="3.0733" data-lng="101.5185" data-kind="place" data-zoom="1.09">
+            <span class="route-stop-year" data-i18n="globe.degree.year">2013 — 2016</span>
+            <b class="route-stop-place" data-i18n="globe.degree.place">Shah Alam</b>
+            <span class="route-stop-desc" data-i18n="globe.degree.desc">B.IT (Hons.) Intelligent Systems Engineering at UiTM, studied while already working.</span>
+          </li>
+          <li class="route-stop" data-lat="3.1073" data-lng="101.6067" data-kind="place" data-zoom="1.09">
+            <span class="route-stop-year" data-i18n="globe.trm.year">2015 — 2023</span>
+            <b class="route-stop-place" data-i18n="globe.trm.place">Petaling Jaya</b>
+            <span class="route-stop-desc" data-i18n="globe.trm.desc">Eight years at TRM Nett Systems — 15+ systems for the nation's agencies, ports and customs.</span>
+          </li>
+          <li class="route-stop" data-lat="3.0733" data-lng="101.5185" data-kind="remote" data-zoom="1.09">
+            <span class="route-stop-year" data-i18n="globe.ncs.year">Feb — Aug 2023</span>
+            <b class="route-stop-place" data-i18n="globe.ncs.place">Shah Alam · remote</b>
+            <span class="route-stop-desc" data-i18n="globe.ncs.desc">Remote contract for NCS — Motorola Solutions' public-safety Android platform, delivered from Shah Alam.</span>
+          </li>
+          <li class="route-stop" data-lat="3.1390" data-lng="101.6869" data-kind="place" data-zoom="1.12">
+            <span class="route-stop-year" data-i18n="globe.retailaim.year">Aug 2023 — Present</span>
+            <b class="route-stop-place" data-i18n="globe.retailaim.place">Kuala Lumpur</b>
+            <span class="route-stop-desc" data-i18n="globe.retailaim.desc">RetailAIM Malaysia — sole developer of RetailAIM® Plus, now Full Stack Web Specialist.</span>
+          </li>
+          <li class="route-stop" data-lat="7.5" data-lng="109.5" data-kind="region" data-zoom="2.7">
+            <span class="route-stop-year" data-i18n="globe.sea.year">Today</span>
+            <b class="route-stop-place" data-i18n="globe.sea.place">Southeast Asia</b>
+            <span class="route-stop-desc" data-i18n="globe.sea.desc">RetailAIM® Plus runs live for 20+ FMCG brands across four countries.</span>
+            <ul class="route-arcs">
+              <li data-lat="1.3521" data-lng="103.8198" data-kind="footprint" data-i18n="globe.sea.sg">Singapore</li>
+              <li data-lat="13.7563" data-lng="100.5018" data-kind="footprint" data-i18n="globe.sea.th">Bangkok, Thailand</li>
+              <li data-lat="14.5995" data-lng="120.9842" data-kind="footprint" data-i18n="globe.sea.ph">Manila, Philippines</li>
+            </ul>
+          </li>
+        </ol>
       </div>
     </div>
   </section>
@@ -689,12 +765,14 @@
     </form>
   </section>
 
-  <script src="assets/js/i18n.js?v=2026-07-30g" defer></script>
-  <script src="assets/js/main.js?v=2026-07-30g" defer></script>
-  <script src="assets/js/aimeer-device.js?v=2026-07-30g" defer></script>
-  <script src="assets/js/jd-extractor.js?v=2026-07-30g" defer></script>
-  <script src="assets/js/jd-matcher.js?v=2026-07-30g" defer></script>
-  <script src="assets/js/jd-reasoning.js?v=2026-07-30g" defer></script>
-  <script src="assets/js/chatbot.js?v=2026-07-30g" defer></script>
+  <script src="assets/js/i18n.js?v=2026-09-05a" defer></script>
+  <script src="assets/js/main.js?v=2026-09-05a" defer></script>
+  <script src="assets/js/aimeer-device.js?v=2026-09-05a" defer></script>
+  <script src="assets/js/jd-extractor.js?v=2026-09-05a" defer></script>
+  <script src="assets/js/jd-matcher.js?v=2026-09-05a" defer></script>
+  <script src="assets/js/jd-reasoning.js?v=2026-09-05a" defer></script>
+  <script src="assets/js/chatbot.js?v=2026-09-05a" defer></script>
+  <script src="assets/js/route-globe-core.js?v=2026-09-05a" defer></script>
+  <script src="assets/js/route-globe.js?v=2026-09-05a" defer></script>
 </body>
 </html>

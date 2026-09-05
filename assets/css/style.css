@@ -297,6 +297,90 @@ html[lang="ms"] .portrait::after { content: "SEJAK 2010 · DUNGUN → SHAH ALAM"
   text-transform: uppercase; color: var(--muted);
 }
 
+/* ---------- route globe ---------- */
+/* Static by default: a poster and a plain list of stops. route-globe.js adds
+   .is-live once three.js is drawing, which turns the stage into a sticky
+   scrollytelling panel and the list into a single crossfading caption. */
+.route-globe { padding-bottom: 20px; }
+.route-track { position: relative; }
+.route-stage { position: relative; }
+.route-canvas { display: none; width: 100%; height: 100%; touch-action: pan-y; }
+.route-poster {
+  width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover;
+  border-radius: 18px; border: 1px solid var(--line); background: var(--panel);
+}
+.route-poster-light { display: none; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .route-poster-dark { display: none; }
+  :root:not([data-theme="dark"]) .route-poster-light { display: block; }
+}
+:root[data-theme="light"] .route-poster-dark { display: none; }
+:root[data-theme="light"] .route-poster-light { display: block; }
+:root[data-theme="dark"] .route-poster-dark { display: block; }
+:root[data-theme="dark"] .route-poster-light { display: none; }
+.route-hint { display: none; }
+
+.route-stops {
+  list-style: none; margin-top: 26px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px;
+}
+.route-stop {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 18px 20px; font-size: 0.92rem; color: var(--muted);
+}
+.route-stop-year {
+  display: block; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.2em;
+  color: var(--teal); text-transform: uppercase;
+}
+.route-stop-place {
+  display: block; font-family: var(--display); font-weight: 600; font-size: 1.15rem;
+  color: var(--paper); margin: 6px 0 6px; line-height: 1.2;
+}
+.route-stop-desc { display: block; }
+.route-arcs { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.route-arcs li {
+  font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.08em;
+  color: var(--teal); border: 1px solid var(--teal-deep); border-radius: 999px; padding: 3px 9px;
+}
+
+/* live mode */
+.route-globe.is-live .route-stage {
+  position: sticky; top: 74px; height: min(78vh, 640px); z-index: 1;
+  border-radius: 18px; overflow: hidden; background: var(--panel); border: 1px solid var(--line);
+  box-shadow: 0 24px 60px var(--shadow);
+}
+.route-globe.is-live .route-canvas { display: block; position: absolute; inset: 0; }
+.route-globe.is-live .route-poster { display: none; }
+.route-globe.is-live .route-hint {
+  position: absolute; top: 16px; right: 18px; margin: 0;
+  font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--muted); opacity: 0.85; transition: opacity 0.4s;
+}
+.route-globe.is-live.has-dragged .route-hint { opacity: 0; }
+@media (hover: hover) and (pointer: fine) {
+  .route-globe.is-live .route-hint { display: block; }
+  .route-globe.is-live .route-canvas { cursor: grab; }
+  .route-globe.is-live.is-dragging .route-canvas { cursor: grabbing; }
+}
+.route-globe.is-live .route-stops {
+  position: absolute; left: 22px; right: 22px; bottom: 22px; margin: 0;
+  display: block; max-width: 380px; min-height: 8.5em; pointer-events: none;
+}
+.route-globe.is-live .route-stop {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: rgba(var(--teal-rgb), 0.06); backdrop-filter: blur(6px);
+  opacity: 0; transform: translateY(8px);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+.route-globe.is-live .route-stop.is-active { opacity: 1; transform: none; }
+
+@media (max-width: 640px) {
+  .route-globe.is-live .route-stage { height: 64vh; top: 68px; }
+  .route-globe.is-live .route-stops { left: 12px; right: 12px; bottom: 12px; max-width: none; }
+  .route-globe.is-live .route-stop { padding: 14px 16px; font-size: 0.86rem; }
+  .route-stop-place { font-size: 1.05rem; }
+}
+
 /* ---------- section headers ---------- */
 .section { padding-top: 96px; padding-bottom: 40px; }
 .section-head { margin-bottom: 54px; max-width: 720px; }
@@ -560,6 +644,7 @@ body.modal-open { overflow: hidden; }
   .js .reveal { opacity: 1; transform: none; transition: none; }
   .badge .dot, .card:hover, .card:hover .shot img, .btn:hover { animation: none; transform: none; transition: none; }
   .spine-progress { box-shadow: none; }
+  .route-stop { transition: none; transform: none; }
   .atmosphere::before { animation: none; }
   .cursor-glow { display: none; }
   .card::after, .skill-group::after, .edu-card::after { display: none; }

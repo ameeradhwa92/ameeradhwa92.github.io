@@ -78,6 +78,10 @@ asset lacks one, and names the offending file. While iterating locally, tick
 | `assets/js/jd-matcher.js` | Recruiter JD matcher: deterministic keyword-based scoring against the published profile |
 | `assets/js/jd-reasoning.js` | Recruiter JD matcher: builds the cloud scoring request, re-validates the model's response the Worker relays (must stay in lockstep with the Worker's validator), merges it with the deterministic result (clamp band, fit band, report sections) |
 | `assets/js/chatbot.js` | AIMeer, the three-tier chatbot, plus the recruiter JD match report UI and its cloud-scoring request flow |
+| `assets/js/route-globe-core.js` | Route globe, pure half: sphere geometry, camera keyframes/scrub, coastline decoding, capability gate, load state machine. UMD, tested by plain `require()` |
+| `assets/js/route-globe.js` | Route globe, DOM/WebGL adapter: reads the stops `<ol>`, gates, lazy-imports vendored three.js, owns the canvas/scroll/drag/theme wiring |
+| `assets/data/route-globe-coastlines.json` | Generated country outlines for the globe (never hand-edited — see Regenerating the globe coastlines) |
+| `assets/vendor/three/` | Vendored three.js r185 (`three.module.min.js` + `three.core.min.js`, kept side by side) |
 | `assets/data/aimeer-kb.txt` | Chatbot knowledge base — fetched by *both* the browser and the Worker |
 | `assets/data/aimeer-profile.json` | Recruiter evidence registry (`recruiterEvidence`, `privacyExclusions`) — the only allowlist of evidence the JD matcher's cloud reasoning may cite |
 | `cloud/aimeer-worker.js` | Cloudflare Worker relay — chat/summary/jd-explanation/jd-reasoning/jd-scoring/version modes (deployed manually, see below) |
@@ -89,7 +93,8 @@ asset lacks one, and names the offending file. While iterating locally, tick
 
 Scripts are plain IIFEs loaded with `defer` in the order `verify_recruiter_ui.ps1` asserts:
 `i18n.js` → `main.js` → `aimeer-device.js` → `jd-extractor.js` → `jd-matcher.js` →
-`jd-reasoning.js` → `chatbot.js`. An inline script in `<head>` applies the saved
+`jd-reasoning.js` → `chatbot.js`, then `route-globe-core.js` → `route-globe.js` (the verify
+script's order regex stops at `chatbot.js`, so new tags go after it). An inline script in `<head>` applies the saved
 theme/language to `documentElement.dataset` before first paint to avoid a flash — it runs
 before the stylesheet's cascade matters, so keep it in sync with the palette selectors.
 
@@ -205,6 +210,45 @@ A change to a URL, job title, project status or education detail must be propaga
 4. The project registry table in `docs/superpowers/specs/2026-07-24-portfolio-site-design.md`
 
 Hard-coded facts also live in the `TOPICS` answers in `chatbot.js` — grep there too.
+
+### Route globe (three.js)
+
+The section `#route` between the stats strip and the timeline is a scroll-scrubbed
+line-art globe. Its **data is the markup**: each `<li data-lat data-lng data-kind data-zoom>`
+in `#route-stops` is a camera keyframe in DOM order (`place` | `remote` | `region`) and the
+nested `data-kind="footprint"` items are the reveal's arc targets. Town-level coordinates
+only — the profile's privacy exclusions rule out anything finer, and "Sura Gate" stays off
+the map. Adding a stop is an HTML + `i18n.js` edit; `tests/route-globe-section.test.js`
+checks ranges, kinds, zoom and MS coverage.
+
+`route-globe.js` upgrades the section in place only when `evaluateGate` passes (no
+`prefers-reduced-motion`, no `saveData`, WebGL2 present) and the section comes within
+600px of the viewport; then it dynamically imports the vendored three.js and fetches the
+coastline JSON with the same `?v=` tag. Everything else — no JS, reduced motion, no WebGL2,
+a failed load, a lost context — leaves the poster (`assets/img/route-globe-{dark,light}.jpg`)
+and the plain stops list, and writes the reason to `section.dataset.globe`. Read that
+attribute before guessing why the globe is static. Rendering is on demand: frames draw on
+scroll, drag and theme change, plus a 30 fps breathing sway only while the stage is on
+screen. Colours are read from the palette custom properties, so a theme change needs no
+globe code.
+
+The posters are screenshots of the finished scene at the final reveal (dark and light,
+1600×900). Recapture them when the route or the palette changes.
+
+#### Regenerating the globe coastlines
+
+`assets/data/route-globe-coastlines.json` is generated, not hand-edited, from the
+world-atlas 2.0.2 redistribution of Natural Earth (1:110m world, 1:50m Southeast Asia):
+
+```bash
+curl -sSL -o world-atlas.tgz https://registry.npmjs.org/world-atlas/-/world-atlas-2.0.2.tgz
+mkdir world-atlas && tar -xzf world-atlas.tgz -C world-atlas
+node tools/build_route_globe_coastlines.mjs world-atlas/package assets/data/route-globe-coastlines.json
+```
+
+The tool projects nothing itself; the browser projects the compact lon/lat integers with
+`route-globe-core.js`'s `latLngToVector`, the same function the stops use, so outlines and
+markers cannot drift apart.
 
 ### Regenerating the résumé PDF
 

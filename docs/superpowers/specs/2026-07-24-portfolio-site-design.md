@@ -58,6 +58,13 @@ If regenerating the site from scratch, feed this whole document to the builder.
    multi-tenant SaaS across Southeast Asia"), contact links (email, LinkedIn, GitHub,
    location), Download Resume button
 2. **Stats strip** — 12+ years · 25+ production systems · 20+ FMCG brands · 4 countries
+2b. **Route globe** (added 2026-09-05) — a scroll-scrubbed three.js line-art globe that flies
+   the life route town by town: born 1992 Dungun → SMK Balai Besar → UiTM Dungun → Kuala
+   Lumpur (MyEMRO) → Shah Alam (UiTM degree) → Petaling Jaya (TRM Nett) → Shah Alam, remote
+   (NCS) → Kuala Lumpur (RetailAIM) → pull-back reveal with arcs to Singapore, Bangkok and
+   Manila for the RetailAIM Plus footprint. Town-level coordinates only. Renders as a poster
+   plus a plain stops list without JS/WebGL2 or under `prefers-reduced-motion`. three.js is
+   vendored (`assets/vendor/three/`), the only heavy library on the page, and loads lazily.
 3. **Timeline** — ascending nodes:
    - 2010–2013 Diploma CS, UiTM Dungun (CGPA 3.03, FYP: Bus Ticketing System, PHP)
    - 2013–2014 MyEMRO — Ruby on Rails aircraft MRO scheduling
