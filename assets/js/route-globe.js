@@ -143,12 +143,16 @@
       }),
       loadLines()
     ]).then(function (loaded) {
-      build(loaded[0], loaded[1], loaded[2]);
-    }, function (err) {
-      transition("load-fail");
-      section.dataset.globe = "error";
-      warn("load", err && err.message ? err.message : String(err));
-    });
+      /* build() runs outside the promise chain's rejection handler, so a throw
+         in there (malformed coastline data, a renderer refusing to construct)
+         would otherwise leave dataset.globe stuck on "loading" and say nothing. */
+      try { build(loaded[0], loaded[1], loaded[2]); } catch (err) { fail(err); }
+    }, fail);
+  }
+  function fail(err) {
+    transition("load-fail");
+    section.dataset.globe = "error";
+    warn("load", err && err.message ? err.message : String(err));
   }
 
   /* ---- shaders ---- */
@@ -366,7 +370,7 @@
       }
       var main = make(2.5, 0.95);
       var glow = make(7, 0.12);
-      var pulse = segments ? null : make(3.5, 1, { dashed: true, dashSize: 0.012, gapSize: 100 });
+      var pulse = segments ? null : make(3.5, 1, { dashed: true, dashSize: 0.005, gapSize: 100 });
       if (pulse) pulse.computeLineDistances();
       var mats = [main.material, glow.material];
       if (pulse) mats.push(pulse.material);
@@ -438,6 +442,9 @@
       return m;
     });
     var allMaterials = placeMarkers.concat(footprintMarkers).map(function (m) { return m.mat; });
+    /* The stop the arcs fan out of: the only place label kept at the region
+       pull-back, where all four Malaysian places project into ~30px. */
+    var hubIndex = timeline.footprints.length ? timeline.footprints[0].originIndex : -1;
 
     /* ---- labels: DOM, projected each frame, text from the stops themselves ---- */
     var labelLayer = document.createElement("div");
@@ -461,12 +468,13 @@
     }
     refreshLabelText();
     var projected = new THREE.Vector3();
-    function projectLabels(pose, camDir, reveal) {
-      var limit = 1 / pose.distance + 0.04; /* a surface point is hidden by the sphere below this */
+    /* limit and regionActive come from frame() so the marker meshes and their
+       labels cannot drift apart on the horizon rule. */
+    function projectLabels(pose, reveal, limit, regionActive) {
       labels.forEach(function (l) {
         var m = l.marker;
-        var facing = m.dir.x * camDir.x + m.dir.y * camDir.y + m.dir.z * camDir.z;
-        var hidden = facing < limit || (m.footprint && reveal <= 0.02);
+        var hidden = !facingCamera(m, limit) || (m.footprint && reveal <= 0.02);
+        if (!m.footprint && regionActive && m.indices.indexOf(hubIndex) === -1) hidden = true;
         if (l.el.hidden !== hidden) l.el.hidden = hidden;
         if (hidden) return;
         projected.copy(l.world).project(camera);
@@ -557,6 +565,12 @@
     }
 
     var camDir = { x: 0, y: 0, z: 1 };
+    /* A surface point is hidden by the sphere below `limit`. The markers draw
+       with depthTest off, so without this test a long drag (yaw is unclamped)
+       floats the far side's dots over the globe; the labels use the same rule. */
+    function facingCamera(m, limit) {
+      return m.dir.x * camDir.x + m.dir.y * camDir.y + m.dir.z * camDir.z >= limit;
+    }
     function frame(now) {
       raf = null;
       if (dead) return;
@@ -594,21 +608,25 @@
 
       var scale = core.markerRadius(pose.distance) * MARKER_SCALE;
       var phase = (now % PULSE_MS) / PULSE_MS;
+      var limit = 1 / pose.distance + 0.04;
+      var regionActive = keyframes[pose.activeIndex].kind === "region";
       placeMarkers.forEach(function (m) {
         var active = m.indices.indexOf(pose.activeIndex) !== -1;
         m.mesh.scale.setScalar(scale * (active ? 1.15 : 1));
         m.mat.uniforms.pulse.value = active && breathing ? phase : -1;
         m.mat.uniforms.opacity.value = active ? 1 : 0.8;
+        m.mesh.visible = facingCamera(m, limit);
       });
       footprintMarkers.forEach(function (m) {
         m.mesh.scale.setScalar(scale * 0.8);
         m.mat.uniforms.opacity.value = reveal * 0.95;
-        m.mesh.visible = reveal > 0.02;
+        m.mesh.visible = reveal > 0.02 && facingCamera(m, limit);
       });
       setActive(pose.activeIndex);
 
       renderer.render(scene, camera);
-      projectLabels(pose, camDir, reveal); /* after render: project() reads the camera's world inverse */
+      /* after render: project() reads the camera's world inverse */
+      projectLabels(pose, reveal, limit, regionActive);
       lastRender = now;
       needsRender = false;
       if (breathing || settling || dragging) raf = requestAnimationFrame(frame);
