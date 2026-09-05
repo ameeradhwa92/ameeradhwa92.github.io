@@ -19,7 +19,7 @@ test('the route section sits between the stats strip and the timeline', () => {
   assert.ok(section, 'route section markup is present');
   const stats = html.indexOf('<section class="stats"');
   const route = html.indexOf('id="route"');
-  const journey = html.indexOf('<main class="section wrap" id="journey">');
+  const journey = html.indexOf('<main class="section wrap journey-continued" id="journey">');
   assert.ok(stats > -1 && stats < route && route < journey);
 });
 
@@ -42,7 +42,7 @@ test('stops carry town-level coordinates, a known kind and a sane zoom, in a val
   for (const stop of parsed.stops) {
     assert.ok(stop.lat >= -12 && stop.lat <= 25 && stop.lng >= 95 && stop.lng <= 125, 'all stops lie in Southeast Asia');
     assert.ok(/^\d+\.\d{1,4}$/.test(String(Math.abs(Number(raw[stop.index].lat)))), 'coordinates carry at most four decimals (town level)');
-    if (stop.kind !== 'footprint') assert.ok(stop.zoom > 1 && stop.zoom <= 3, `zoom in range for ${stop.key}`);
+    if (stop.kind !== 'footprint') assert.ok(stop.zoom > 1 && stop.zoom <= 3.2, `zoom in range for ${stop.key}`);
   }
   const timeline = core.buildTimeline(parsed.stops);
   assert.deepEqual(timeline.warnings, []);
@@ -116,4 +116,49 @@ test('the import map maps "three" to the same file the adapter imports, before a
   assert.equal(parsed.imports.three, './assets/vendor/three/three.module.min.js');
   assert.ok(html.indexOf('<script type="importmap">') < html.indexOf('<script src='), 'the import map precedes every external script');
   assert.doesNotMatch(parsed.imports.three, /\?v=/, 'no cache tag: the adapter imports the bare path, and the two must be one module');
+});
+
+test('one heading introduces both the globe and the timeline', () => {
+  assert.match(section, /<p class="eyebrow" data-i18n="globe\.eyebrow">The Journey · 1992 → Today<\/p>/);
+  assert.match(section, /<h2 id="route-h2" data-i18n="globe\.h2">One small town, one line of travel — every stop <em>still running<\/em> somewhere\.<\/h2>/);
+  assert.match(section, /data-i18n="globe\.p">Scroll to fly the route town by town/);
+  assert.match(section, /marked <b>Retired<\/b>\./);
+  const journey = html.slice(html.indexOf('<main class="section wrap journey-continued" id="journey">'));
+  assert.doesNotMatch(journey.slice(0, 400), /section-head/, 'the timeline no longer repeats the heading');
+  for (const key of ['journey.eyebrow', 'journey.h2', 'journey.p']) {
+    assert.doesNotMatch(html, new RegExp(`data-i18n="${key.replace('.', '\\.')}"`), `${key} left the DOM`);
+    assert.equal(I18N_MS[key], undefined, `${key} left i18n.js`);
+  }
+  assert.match(I18N_MS['globe.h2'], /<em>beroperasi<\/em>/);
+  assert.match(I18N_MS['globe.p'], /<b>Dihentikan<\/b>/);
+});
+
+test('the journey anchors land on the merged section', () => {
+  assert.match(html, /<a class="skip-link" href="#route"/);
+  assert.match(html, /<a href="#route" data-i18n="nav\.journey">/);
+  assert.match(html, /<a class="btn btn-ghost" href="#route" data-i18n="hero\.walk">/);
+  assert.doesNotMatch(html, /href="#journey"/, 'nothing still jumps past the globe');
+});
+
+test('the caption rail wraps the stops list with its progress bar first', () => {
+  assert.match(section, /<div class="route-rail" id="route-rail">\s*<span class="route-rail-progress" aria-hidden="true"><\/span>\s*<ol class="route-stops" id="route-stops">/);
+  assert.match(section, /<\/ol>\s*<\/div>\s*<\/div>\s*<\/div>\s*<\/section>/);
+});
+
+test('stops carry valid label directions and the Klang Valley fans out', () => {
+  const dirs = [...section.matchAll(/data-label-dir="([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(dirs.length >= 6, 'the four places and three footprints are directed');
+  for (const d of dirs) assert.match(d, /^(n|ne|e|se|s|sw|w|nw)$/);
+  const kl = section.match(/data-lat="3\.1390"[^>]*data-label-dir="([^"]+)"/);
+  const sa = section.match(/data-lat="3\.0733"[^>]*data-label-dir="([^"]+)"/);
+  const pj = section.match(/data-lat="3\.1073"[^>]*data-label-dir="([^"]+)"/);
+  assert.ok(kl && sa && pj, 'the first stop at each Klang Valley place is directed');
+  assert.equal(new Set([kl[1], sa[1], pj[1]]).size, 3, 'three different directions');
+});
+
+test('zooms sit between the limb floor and the pull-back', () => {
+  const zooms = [...section.matchAll(/data-zoom="([^"]+)"/g)].map((m) => Number(m[1]));
+  assert.equal(zooms.length, 9);
+  for (const z of zooms) assert.ok(z >= 1.5 && z <= 3.2, `zoom ${z} in [1.5, 3.2]`);
+  assert.equal(zooms[zooms.length - 1], 3);
 });

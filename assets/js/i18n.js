@@ -23,9 +23,9 @@ window.I18N_MS = {
   "stats.brands": "jenama FMCG dilayani",
   "stats.countries": "negara beroperasi",
 
-  "globe.eyebrow": "Laluan · 1992 → Kini",
-  "globe.h2": "Satu pekan kecil, satu garis perjalanan — <em>dilakar pada glob</em>.",
-  "globe.p": "Tatal untuk menyusuri laluan dari satu hentian ke hentian seterusnya. Pada desktop, seret glob untuk melihat sekeliling.",
+  "globe.eyebrow": "Perjalanan · 1992 → Kini",
+  "globe.h2": "Satu pekan kecil, satu garis perjalanan — setiap hentian masih <em>beroperasi</em> di suatu tempat.",
+  "globe.p": "Tatal untuk menyusuri laluan dari satu pekan ke pekan seterusnya — pada desktop, seret glob untuk melihat sekeliling. Di bawahnya, setiap persinggahan ialah era sebenar dengan pautan langsungnya; sistem yang telah ditamatkan operasinya ditanda secara jujur sebagai <b>Dihentikan</b>.",
   "globe.hint": "Seret untuk mengorbit",
   "globe.born.year": "1992",
   "globe.born.place": "Dungun, Terengganu",
@@ -57,10 +57,6 @@ window.I18N_MS = {
   "globe.sea.sg": "Singapura",
   "globe.sea.th": "Bangkok, Thailand",
   "globe.sea.ph": "Manila, Filipina",
-
-  "journey.eyebrow": "Perjalanan · 2010 → Kini",
-  "journey.h2": "Enam belas tahun, satu garis perjalanan — setiap hentian masih <em>beroperasi</em> di suatu tempat.",
-  "journey.p": "Setiap persinggahan di bawah ialah era sebenar, dan setiap projek disertakan pautan langsungnya. Sistem yang telah ditamatkan operasinya ditanda secara jujur sebagai <b>Dihentikan</b> — sistem tersebut telah menyempurnakan tempoh khidmatnya.",
 
   "era1.title": "Garisan permulaan — Diploma Sains Komputer",
   "era1.role": "<b>UiTM Dungun</b> · PNGK 3.03 · Projek tahun akhir: Sistem Tiket Bas dalam PHP",
