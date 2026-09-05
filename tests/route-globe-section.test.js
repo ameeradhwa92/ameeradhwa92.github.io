@@ -194,8 +194,8 @@ test('adapter constants match the CSS and the spec budget', () => {
 
 test('the rail and labels are styled and frozen under reduced motion', () => {
   assert.match(css, /\.route-globe\.is-live \.route-stop::before \{[^}]*border-radius: 50%/);
-  assert.match(css, /\.route-globe\.is-live \.route-stop\.is-active::before \{[^}]*border-color: var\(--teal\)/);
-  assert.match(css, /\.route-rail-progress \{[^}]*linear-gradient\(180deg, var\(--teal-deep\), var\(--teal\)\)/);
+  assert.match(css, /\.route-globe\.is-live \.route-stop\.is-active::before \{[^}]*border-color: var\(--thread\)/);
+  assert.match(css, /\.route-rail-progress \{[^}]*background: var\(--thread\)/);
   for (const dir of ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw']) {
     assert.match(css, new RegExp(`\\.route-label\\.dir-${dir}::before`), `leader line for ${dir}`);
   }

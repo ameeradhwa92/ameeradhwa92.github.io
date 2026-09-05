@@ -13,7 +13,7 @@
   }
   function syncThemeColor() {
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = effectiveTheme() === "light" ? "#f4f2ec" : "#0b0e10";
+    if (meta) meta.content = effectiveTheme() === "light" ? "#f1eff9" : "#161b33";
   }
   if (themeBtn) {
     themeBtn.addEventListener("click", function () {

@@ -4,8 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-`ameeradhwa92.github.io` — a GitHub Pages **user site**: a single-page, dark-editorial
-career timeline (2010 → present) for Ameer Adhwa Bin Mohamad. Hand-written HTML/CSS/JS,
+`ameeradhwa92.github.io` — a GitHub Pages **user site**: a single-page editorial
+career timeline (2010 → present) for Ameer Adhwa Bin Mohamad in the "Monsoon" palette
+(indigo night / lilac day, iris interface accent, coral journey thread — design of record
+in `docs/superpowers/specs/2026-09-05-monsoon-palette-and-loader-design.md`). Hand-written HTML/CSS/JS,
 **no framework, no build step, no package manager**. GitHub Pages publishes the repo root
 directly; `.nojekyll` disables Jekyll processing. Pushing to `main` *is* the deploy.
 
@@ -97,6 +99,16 @@ Scripts are plain IIFEs loaded with `defer` in the order `verify_recruiter_ui.ps
 script's order regex stops at `chatbot.js`, so new tags go after it). An inline script in `<head>` applies the saved
 theme/language to `documentElement.dataset` before first paint to avoid a flash — it runs
 before the stylesheet's cascade matters, so keep it in sync with the palette selectors.
+
+A second inline block in `<head>` is the **first-paint loader** (sand grains gather while
+real assets load, then scatter as a dot-matrix dissolve). It is inline on purpose so it
+paints before the stylesheet; its `--ld-*` tokens mirror the top of `style.css` and must be
+changed together. `<html>` starts with class `loading`; everything in `<body>` except
+`#loader` is `visibility: hidden` until the script adds `revealed` (at most 9 s, never
+under 1.6 s). `html:not(.js)` never shows the overlay, so a no-JS visitor gets the page
+as-is. The hero's thread SVG and copy stagger key off `html.revealed`, so anything that
+must animate on first view should too. The loader's status line is bilingual inline
+(`LABELS.en` / `LABELS.ms`) because it runs before `i18n.js`.
 
 ### i18n model
 
@@ -193,7 +205,15 @@ These carry real-world consequences — the site makes verifiable claims about l
   `badge-private` (enterprise SaaS, no public URL), `badge-dev`, or `badge-eol`. A retired
   project shows its former URL as plain struck-through text (`.card-formerly`), never as a
   link. Verify dead/live status by `curl` before changing a badge.
-- **Amber (`--amber`) is reserved for Retired/EOL badges only.** Teal is the signature accent.
+- **Amber (`--amber`) is reserved for Retired/EOL badges only.** Two accents, split by job:
+  **iris `--accent`** (`--accent-deep`, `--accent-hover`, `--accent-rgb`) is the interface —
+  links, buttons, live badges, tags, chat chrome, globe coastlines and atmosphere;
+  **coral `--thread`** (`--thread-rgb`) is the journey line and nothing else — scroll
+  progress, timeline spine and lit nodes, era years, route rail and active stop, globe route
+  and markers, the hero underline, selection and focus rings, the loader. Don't put the
+  thread on a button or the accent on the spine.
+- Eyebrows (`.eyebrow`) are italic Fraunces, not tracked mono caps; the class name and copy
+  stay because tests and i18n keys reference them.
 - Palette lives in three blocks at the top of `style.css`: the dark `:root` default, the
   `@media (prefers-color-scheme: light)` override, and the explicit `:root[data-theme="light"]`
   override. Light-theme changes must be made in **both** light blocks.

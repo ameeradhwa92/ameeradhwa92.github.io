@@ -13,7 +13,7 @@ window.I18N_MS = {
   "nav.resume.tooltip": "Muat turun resume",
 
   "hero.eyebrow": "Shah Alam, Malaysia — Pakar Web Tindanan Penuh",
-  "hero.h1": "Daripada bilik kuliah diploma di <em>Dungun</em> kepada SaaS berbilang penyewa di seluruh <em>Asia Tenggara</em>.",
+  "hero.h1": "Daripada bilik kuliah diploma di <em class=\"stop\">Dungun</em> kepada SaaS berbilang penyewa di seluruh <em>Asia Tenggara</em>.",
   "hero.sub": "Saya Ameer Adhwa Bin Mohamad. Selama lebih 12 tahun, saya membangunkan sistem web dan mudah alih untuk agensi kerajaan, pelabuhan dan kastam, serta klinik — dan kini saya pembangun di sebalik <b>RetailAIM® Plus</b>, platform SaaS ASP.NET Core berbilang penyewa yang digunakan oleh lebih 20 jenama FMCG (Nestlé, Unilever, Abbott, Farm Fresh) di Malaysia, Singapura, Thailand dan Filipina.",
   "hero.download": "Muat turun resume",
   "hero.walk": "Susuri garis masa ↓",

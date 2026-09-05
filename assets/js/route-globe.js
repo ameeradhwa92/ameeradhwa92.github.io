@@ -508,8 +508,9 @@
     }
     function applyTheme() {
       var styles = getComputedStyle(root);
-      var teal = cssColor(styles, "--teal", { r: 0.24, g: 0.81, b: 0.73 });
-      var tealDeep = cssColor(styles, "--teal-deep", { r: 0.09, g: 0.46, b: 0.43 });
+      var teal = cssColor(styles, "--accent", { r: 0.61, g: 0.63, b: 1 });
+      var tealDeep = cssColor(styles, "--accent-deep", { r: 0.36, g: 0.38, b: 0.85 });
+      var thread = cssColor(styles, "--thread", { r: 1, g: 0.52, b: 0.47 });
       var ink = cssColor(styles, "--ink", { r: 0.04, g: 0.05, b: 0.06 });
       var panel = cssColor(styles, "--panel", { r: 0.07, g: 0.09, b: 0.1 });
       var panel2 = cssColor(styles, "--panel-2", { r: 0.09, g: 0.11, b: 0.13 });
@@ -532,10 +533,10 @@
       tint(starMat.color, paper);
       stars.visible = !light;
 
-      route.setColor(teal);        /* the route rhymes with the timeline spine */
-      arcs.setColor(paper);        /* paper: teal arcs vanish against teal coastlines */
+      route.setColor(thread);      /* the journey thread: rhymes with the timeline spine */
+      arcs.setColor(paper);        /* paper: accent arcs vanish against accent coastlines */
       markerMaterials.forEach(function (m) {
-        tint(m.uniforms.color.value, teal);
+        tint(m.uniforms.color.value, thread);
         m.blending = light ? THREE.NormalBlending : THREE.AdditiveBlending;
         m.needsUpdate = true;
       });

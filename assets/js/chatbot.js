@@ -1262,7 +1262,7 @@
     modelLocal.addEventListener("blur", hideLocalCompatibilityHint);
   }
 
-  /* ---------------- launcher ring: grey → progress fill → teal glow ---------------- */
+  /* ---------------- launcher ring: grey → progress fill → accent glow ---------------- */
   function ringPending() { launcher.classList.add("ai-pending"); }
   function ringProgress(pct) {
     launcher.classList.add("ai-downloading");

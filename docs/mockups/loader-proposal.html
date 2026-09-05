@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" class="js loading">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loader proposal — ameeradhwa92.github.io</title>
+
+<!-- ================================================================
+     CRITICAL: everything the loader needs lives inline in <head>, so it
+     paints on the very first frame — before the stylesheet, fonts or any
+     image has arrived. On the live site this block would sit in <head>
+     exactly like the theme-flash script does today.
+     ================================================================ -->
+<style>
+  :root {
+    --ink: #161b33; --paper: #f4ecdc; --muted: #a2a6c9;
+    --thread: #ff8577; --thread-rgb: 255, 133, 119;
+    --display: "Fraunces", "Palatino Linotype", Georgia, serif;
+  }
+  :root[data-theme="light"] { --ink: #f1eff9; --paper: #1a1f44; --muted: #5c6088; --thread: #dd4a38; --thread-rgb: 221, 74, 56; }
+
+  .loader { position: fixed; inset: 0; z-index: 1000; background: var(--ink); }
+  .loader.bang { background: transparent; pointer-events: none; }
+  .loader canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .loader-core { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+  .loader-pct {
+    position: absolute; top: 122px; left: 0; transform: translateX(-50%);
+    font-family: var(--display); font-style: italic; font-weight: 300; font-size: 2.1rem;
+    color: var(--paper); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1;
+    white-space: nowrap; transition: transform 0.18s ease;
+  }
+  .loader-pct.tick { transform: translateX(-50%) scale(1.06); }
+  .loader-pct small { font-size: 0.55em; color: var(--muted); margin-left: 2px; }
+  .loader-note {
+    position: absolute; top: 172px; left: 0; transform: translateX(-50%); white-space: nowrap;
+    font-family: var(--display); font-style: italic; font-size: 0.95rem; color: var(--muted);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+  }
+  .loader-note.swap { opacity: 0; transform: translate(-50%, 6px); }
+  .loader.bang .loader-pct, .loader.bang .loader-note { transition: opacity 0.2s; opacity: 0; }
+  .loader.done { display: none; }
+
+  /* content is in the DOM the whole time (SEO, no-JS, screen readers); it only
+     settles once the grains have cleared */
+  html.loading .page { visibility: hidden; }
+  .page { transform: scale(1.03); opacity: 0.001; }
+  html.revealed .page { visibility: visible; transform: none; opacity: 1;
+    transition: transform 1.4s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.5s ease; }
+  html:not(.js) .loader { display: none; }
+  html:not(.js) .page { visibility: visible; transform: none; opacity: 1; }
+  @media (prefers-reduced-motion: reduce) {
+    .page { transform: none; }
+    .loader.bang { transition: opacity 0.4s; opacity: 0; }
+  }
+</style>
+<script>
+  /* Runs synchronously so the overlay is up before first paint. Tracks real assets;
+     the deferred scripts add their own steps as they arrive. */
+  (function () {
+    var q = location.search.match(/theme=(light|dark)/);
+    if (q) document.documentElement.dataset.theme = q[1];
+    var steps = {}, total = 0, done = 0, shown = 0, target = 0, started = performance.now();
+    var MIN_SHOW = 1600;   // never blink on a fast connection
+    var MAX_WAIT = 9000;   // never hold a slow one hostage
+    var raf, fired = false, timers = [];
+    var hold = Number((location.search.match(/hold=(\d+)/) || [])[1] || 0);          // debug: park the counter at N% forever
+    var freezeAt = Number((location.search.match(/freeze=(\d+)/) || [])[1] || 0);    // debug: stop the canvas N ms after the bang
+    var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var LABELS = { css: 'Setting the palette', fonts: 'Loading the type', hero: 'Developing the portrait',
+                   scripts: 'Waking AIMeer', route: 'Plotting the route', shots: 'Hanging the work' };
+
+    function register(name, weight) { steps[name] = { w: weight, done: false }; total += weight; }
+    function complete(name) {
+      if (!steps[name] || steps[name].done) return;
+      steps[name].done = true; done += steps[name].w; target = Math.round(100 * done / total);
+      if (hold) target = Math.min(target, hold);
+      var note = document.getElementById('loader-note');
+      if (note) { note.classList.add('swap'); setTimeout(function () { note.textContent = LABELS[name] || ''; note.classList.remove('swap'); }, 300); }
+    }
+
+    /* ---------- the grains ---------- */
+    var canvas, ctx, W = 0, H = 0, DPR = 1, grains = [], ripples = [], phase = 'gather', bangAt = 0, last = 0, frozen = false;
+    var N = 460, lastShownInt = 0;
+    function colors() {
+      var cs = getComputedStyle(document.documentElement);
+      return { ink: cs.getPropertyValue('--ink').trim(), thread: cs.getPropertyValue('--thread').trim(),
+               trgb: cs.getPropertyValue('--thread-rgb').trim(), paper: cs.getPropertyValue('--paper').trim() };
+    }
+    function resize() {
+      DPR = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight;
+      canvas.width = W * DPR; canvas.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    }
+    function seed() {
+      grains = []; ripples = [];
+      var far = Math.hypot(W, H) * 0.55;
+      for (var i = 0; i < N; i++) {
+        var a = Math.random() * Math.PI * 2;
+        grains.push({
+          a: a, r: far + Math.random() * far * 0.4,       // start off-screen, drift in
+          tr: 18 + Math.random() * 84,                     // orbit radius once gathered
+          sp: (0.25 + Math.random() * 0.5) * (Math.random() < 0.5 ? 1 : -1),
+          sz: 0.7 + Math.random() * 1.6, ph: Math.random() * Math.PI * 2,
+          paper: Math.random() < 0.22, x: 0, y: 0, vx: 0, vy: 0, life: 1, launched: false
+        });
+      }
+    }
+    function drawGather(t, dt, c) {
+      ctx.fillStyle = c.ink; ctx.fillRect(0, 0, W, H);
+      var cx = W / 2, cy = H / 2, p = shown / 100;
+      var visible = Math.floor(N * (0.18 + 0.82 * p));
+      var tight = 1 - 0.55 * p;                             // the cloud tightens as the count rises
+      // ripples: one every 0.9 s, hairline, fading out
+      if (!ripples.length || t - ripples[ripples.length - 1].t0 > 900) ripples.push({ t0: t });
+      ripples = ripples.filter(function (rp) { return t - rp.t0 < 2400; });
+      ripples.forEach(function (rp) {
+        var k = (t - rp.t0) / 2400, e = 1 - Math.pow(1 - k, 3);
+        ctx.beginPath(); ctx.arc(cx, cy, 6 + e * 150, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(' + c.trgb + ',' + (0.55 * (1 - k)) + ')'; ctx.lineWidth = 1; ctx.stroke();
+      });
+      // grains: drift inward, then orbit and breathe
+      var s = dt / 1000;
+      for (var i = 0; i < visible; i++) {
+        var g = grains[i], target = g.tr * tight;
+        g.r += (target - g.r) * Math.min(1, 1.6 * s);
+        g.a += g.sp * s * (1 + 0.6 * p);
+        var wob = Math.sin(t / 700 + g.ph) * 4;
+        g.x = cx + Math.cos(g.a) * (g.r + wob); g.y = cy + Math.sin(g.a) * (g.r + wob);
+        var near = Math.max(0, 1 - Math.abs(g.r - target) / 400);
+        ctx.globalAlpha = 0.25 + 0.75 * near;
+        ctx.fillStyle = g.paper ? c.paper : c.thread;
+        ctx.beginPath(); ctx.arc(g.x, g.y, g.sz, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      // the core: glows brighter as the cloud fills
+      var core = 3 + 5 * p + Math.sin(t / 260) * 0.8;
+      var grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, core * 6);
+      grd.addColorStop(0, 'rgba(' + c.trgb + ',' + (0.35 + 0.4 * p) + ')'); grd.addColorStop(1, 'rgba(' + c.trgb + ',0)');
+      ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(cx, cy, core * 6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = c.thread; ctx.beginPath(); ctx.arc(cx, cy, core, 0, Math.PI * 2); ctx.fill();
+    }
+    function drawBang(t, dt, c) {
+      var e = (t - bangAt) / 1000, cx = W / 2, cy = H / 2, s = dt / 1000;
+      ctx.clearRect(0, 0, W, H);
+      // dot projector: the ground breaks into a dot grid that shrinks away from the centre outward
+      var SP = 16, SPEED = 1000, DUR = 0.5, r0 = SP * 0.75, maxD = Math.hypot(cx, cy);
+      if (e < 0.16) { ctx.fillStyle = c.ink; ctx.fillRect(0, 0, W, H); }     // beat: the flash lands on solid ground
+      else {
+        var te = e - 0.16;
+        ctx.fillStyle = c.ink; ctx.beginPath();
+        for (var y = SP / 2; y < H + SP; y += SP) for (var x = SP / 2; x < W + SP; x += SP) {
+          var d = Math.hypot(x - cx, y - cy), k = (te - d / SPEED) / DUR;
+          if (k <= 0) { ctx.moveTo(x + r0, y); ctx.arc(x, y, r0, 0, Math.PI * 2); continue; }
+          if (k >= 1) continue;
+          var rr = r0 * (1 - k) * (1 - k);
+          ctx.moveTo(x + rr, y); ctx.arc(x, y, rr, 0, Math.PI * 2);
+        }
+        ctx.fill();
+        if (te < maxD / SPEED + DUR) {} else if (!frozen) finish();
+      }
+      // the flash
+      if (e < 0.5) {
+        var fk = 1 - e / 0.5, fr = 40 + e * 900;
+        var fg = ctx.createRadialGradient(cx, cy, 0, cx, cy, fr);
+        fg.addColorStop(0, 'rgba(' + c.trgb + ',' + (0.9 * fk) + ')'); fg.addColorStop(0.35, 'rgba(' + c.trgb + ',' + (0.35 * fk) + ')'); fg.addColorStop(1, 'rgba(' + c.trgb + ',0)');
+        ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(cx, cy, fr, 0, Math.PI * 2); ctx.fill();
+      }
+      // the grains scatter like thrown sand: fast, then dragged, then gone
+      for (var i = 0; i < grains.length; i++) {
+        var g = grains[i];
+        if (!g.launched) {
+          g.launched = true;
+          var ang = g.a + (Math.random() - 0.5) * 0.7, v = 700 + Math.random() * 1500;
+          g.x = cx + Math.cos(g.a) * g.r; g.y = cy + Math.sin(g.a) * g.r;
+          g.vx = Math.cos(ang) * v; g.vy = Math.sin(ang) * v; g.life = 0.9 + Math.random() * 0.9;
+        }
+        g.x += g.vx * s; g.y += g.vy * s;
+        var drag = Math.pow(0.12, s); g.vx *= drag; g.vy *= drag; g.vy += 60 * s;   // a little gravity: sand, not sparks
+        g.life -= s;
+        if (g.life <= 0) continue;
+        ctx.globalAlpha = Math.min(1, g.life * 1.4);
+        ctx.fillStyle = g.paper ? c.paper : c.thread;
+        var trail = Math.min(14, Math.hypot(g.vx, g.vy) * 0.012);
+        ctx.beginPath(); ctx.arc(g.x, g.y, g.sz, 0, Math.PI * 2); ctx.fill();
+        if (trail > 1.5) { ctx.globalAlpha *= 0.35; ctx.lineWidth = g.sz * 1.2; ctx.strokeStyle = ctx.fillStyle;
+          ctx.beginPath(); ctx.moveTo(g.x, g.y); ctx.lineTo(g.x - g.vx * 0.012, g.y - g.vy * 0.012); ctx.stroke(); }
+      }
+      ctx.globalAlpha = 1;
+    }
+    function frame(t) {
+      if (frozen) return;
+      var dt = last ? Math.min(48, t - last) : 16; last = t;
+      var c = colors();
+      if (phase === 'gather') drawGather(t, dt, c); else drawBang(t, dt, c);
+      raf = requestAnimationFrame(frame);
+    }
+    function tick() {
+      shown += (target - shown) * 0.1;
+      if (target - shown < 0.6) shown = target;
+      var n = Math.floor(shown), el = document.getElementById('loader-pct-n');
+      if (el && n !== lastShownInt) { el.textContent = n; lastShownInt = n;
+        var pc = el.parentNode; pc.classList.add('tick'); setTimeout(function () { pc.classList.remove('tick'); }, 120); }
+      var elapsed = performance.now() - started;
+      if (!fired && !hold && ((shown >= 100 && elapsed >= MIN_SHOW) || elapsed >= MAX_WAIT)) { fired = true; bang(); return; }
+      timers.push(setTimeout(tick, 33));
+    }
+    function bang() {
+      var l = document.getElementById('loader');
+      document.documentElement.classList.remove('loading');
+      l.classList.add('bang'); phase = 'bang'; bangAt = performance.now();
+      if (reduced) { finish(); return; }
+      timers.push(setTimeout(function () { document.documentElement.classList.add('revealed'); }, 260));
+      timers.push(setTimeout(finish, 3200));                 // belt and braces
+      if (freezeAt) setTimeout(function () { frozen = true; cancelAnimationFrame(raf); timers.forEach(clearTimeout); }, freezeAt);
+    }
+    var finished = false;
+    function finish() {
+      if (finished) return; finished = true;
+      document.documentElement.classList.add('revealed');
+      cancelAnimationFrame(raf);
+      document.getElementById('loader').classList.add('done');
+      document.dispatchEvent(new Event('site:revealed'));
+    }
+    function boot() {
+      canvas = document.getElementById('loader-canvas'); ctx = canvas.getContext('2d');
+      resize(); seed(); addEventListener('resize', function () { resize(); });
+      last = 0; raf = requestAnimationFrame(frame); tick();
+    }
+    window.SiteLoader = {
+      register: register, complete: complete,
+      start: function () { if (document.getElementById('loader-canvas')) boot(); else document.addEventListener('DOMContentLoaded', boot); },
+      reset: function () {
+        timers.forEach(clearTimeout); timers = []; cancelAnimationFrame(raf);
+        for (var k in steps) steps[k].done = false; done = 0; shown = 0; target = 0; lastShownInt = 0;
+        fired = false; finished = false; frozen = false; phase = 'gather'; started = performance.now();
+        document.getElementById('loader-pct-n').textContent = '0';
+      }
+    };
+    register('css', 1); register('fonts', 2); register('hero', 3); register('scripts', 2); register('route', 1); register('shots', 1);
+  })();
+</script>
+
+<!-- Mockup only: the live site self-hosts Fraunces -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&display=swap" rel="stylesheet">
+
+<style>
+/* ---- the rest is the Monsoon site styling from the palette mockup, trimmed ---- */
+:root[data-theme="dark"] {
+  --panel: #1c2240; --panel-2: #222a4b; --line: #303a66;
+  --accent: #9ba1ff; --accent-deep: #5c62d8; --accent-rgb: 155, 161, 255;
+  --amber: #e0b054; --nav-bg: rgba(22, 27, 51, 0.72); --shadow: rgba(6, 8, 24, 0.5);
+  --atmo-a: 0.32; --atmo-b: 0.14; color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --panel: #ffffff; --panel-2: #e7e6f4; --line: #d2d2e6;
+  --accent: #3f45c4; --accent-deep: #3238a8; --accent-rgb: 63, 69, 196;
+  --amber: #9c7420; --nav-bg: rgba(241, 239, 249, 0.8); --shadow: rgba(40, 42, 90, 0.18);
+  --atmo-a: 0.12; --atmo-b: 0.06; color-scheme: light;
+}
+:root { --body: "Segoe UI", system-ui, -apple-system, sans-serif; --mono: "Cascadia Code", Consolas, "SF Mono", monospace; --spine-x: 44px; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--ink); color: var(--paper); font-family: var(--body); font-size: 16px; line-height: 1.65; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+::selection { background: var(--thread); color: var(--ink); }
+a { color: var(--accent); text-decoration: none; }
+:focus-visible { outline: 2px solid var(--thread); outline-offset: 3px; }
+img { max-width: 100%; display: block; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 0 28px; }
+.atmosphere { position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(900px 520px at 78% -8%, rgba(var(--accent-rgb), var(--atmo-a)), transparent 66%),
+              radial-gradient(700px 700px at -12% 30%, rgba(var(--thread-rgb), var(--atmo-b)), transparent 60%), var(--ink); }
+.nav { position: fixed; top: 0; left: 0; right: 0; z-index: 50; backdrop-filter: blur(10px); background: var(--nav-bg); border-bottom: 1px solid var(--line); }
+.nav-inner { max-width: 1100px; margin: 0 auto; padding: 14px 28px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.nav-name { font-family: var(--display); font-size: 1.05rem; color: var(--paper); }
+.nav-links { display: flex; align-items: center; gap: 22px; font-size: 0.86rem; }
+.nav-links a { color: var(--muted); }
+.nav-cta { color: var(--accent); border: 1px solid var(--accent-deep); padding: 7px 14px; border-radius: 999px; }
+.hero { padding-top: 168px; padding-bottom: 80px; position: relative; }
+.hero-grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 56px; align-items: center; }
+.kicker { font-family: var(--display); font-style: italic; font-size: 1.05rem; color: var(--muted); margin-bottom: 20px; }
+.kicker b { color: var(--thread); font-weight: 500; }
+.hero h1 { font-family: var(--display); font-weight: 400; font-size: clamp(2.2rem, 5vw, 3.7rem); line-height: 1.12; letter-spacing: -0.01em; margin-bottom: 26px; text-wrap: balance; }
+.hero h1 em, .section-head h2 em { font-style: italic; color: var(--accent); }
+.hero h1 em.stop { color: inherit; text-decoration: underline; text-decoration-color: var(--thread); text-decoration-thickness: 2px; text-underline-offset: 6px; }
+.hero-sub { color: var(--muted); max-width: 54ch; margin-bottom: 34px; font-size: 1.02rem; }
+.hero-sub b { color: var(--paper); font-weight: 600; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 14px; }
+.btn { display: inline-flex; align-items: center; font-weight: 600; font-size: 0.92rem; border-radius: 999px; padding: 12px 22px; }
+.btn-solid { background: var(--accent); color: var(--ink); }
+.btn-ghost { color: var(--paper); border: 1px solid var(--line); }
+.hero-meta { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 0.84rem; color: var(--muted); }
+.hero-meta a { color: var(--muted); }
+.portrait { position: relative; justify-self: end; }
+.portrait img { width: min(330px, 100%); aspect-ratio: 3 / 4; object-fit: cover; border-radius: 18px; filter: saturate(0.94); box-shadow: 0 24px 60px var(--shadow); }
+.portrait::before { content: ""; position: absolute; inset: 14px -14px -14px 14px; border: 1px solid var(--accent-deep); border-radius: 18px; z-index: -1; }
+.portrait-cap { position: absolute; left: 0; bottom: -40px; font-family: var(--display); font-style: italic; font-size: 0.92rem; color: var(--muted); }
+/* hero thread draws only after the wave has passed */
+.hero-thread { position: absolute; left: 0; right: 0; top: 120px; height: 100%; z-index: -1; pointer-events: none; }
+.hero-thread path { fill: none; stroke: var(--thread); stroke-width: 1.5; stroke-linecap: round; stroke-dasharray: 2400; stroke-dashoffset: 2400; opacity: 0.55; }
+.hero-thread circle { fill: var(--thread); opacity: 0; }
+html.revealed .hero-thread path { animation: draw 2.2s 0.6s ease-out forwards; }
+html.revealed .hero-thread circle { animation: pop 0.4s 2.6s ease-out forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes pop { to { opacity: 1; } }
+/* staggered settle of the hero copy behind the wave */
+.hero-grid > div > * { opacity: 0; transform: translateY(14px); }
+html.revealed .hero-grid > div > * { opacity: 1; transform: none; transition: opacity 0.7s ease, transform 0.9s cubic-bezier(0.2, 0.8, 0.2, 1); }
+html.revealed .hero-grid > div > *:nth-child(1) { transition-delay: 0.25s; }
+html.revealed .hero-grid > div > *:nth-child(2) { transition-delay: 0.35s; }
+html.revealed .hero-grid > div > *:nth-child(3) { transition-delay: 0.45s; }
+html.revealed .hero-grid > div > *:nth-child(4) { transition-delay: 0.55s; }
+html.revealed .hero-grid > div > *:nth-child(5) { transition-delay: 0.65s; }
+.stats { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); }
+.stat { padding: 30px 18px; text-align: center; }
+.stat + .stat { border-left: 1px solid var(--line); }
+.stat b { display: block; font-family: var(--display); font-weight: 600; font-size: 2rem; line-height: 1.1; }
+.stat span { font-family: var(--display); font-style: italic; font-size: 0.95rem; color: var(--muted); }
+.section { padding-top: 96px; padding-bottom: 40px; }
+.section-head { margin-bottom: 54px; max-width: 720px; }
+.section-head h2 { font-family: var(--display); font-weight: 400; font-size: clamp(1.7rem, 3.4vw, 2.5rem); line-height: 1.15; margin-top: 10px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 20px; margin-top: 30px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; }
+.shot { aspect-ratio: 16 / 10; overflow: hidden; background: var(--panel-2); border-bottom: 1px solid var(--line); }
+.shot img { width: 100%; height: 100%; object-fit: cover; object-position: top center; }
+.card-body { padding: 20px; }
+.card-client { font-family: var(--display); font-style: italic; font-size: 0.9rem; color: var(--muted); margin-bottom: 6px; }
+.card h4 { font-family: var(--display); font-weight: 600; font-size: 1.12rem; line-height: 1.3; }
+.card p { color: var(--muted); font-size: 0.88rem; margin-top: 8px; }
+.footer { border-top: 1px solid var(--line); padding: 26px 0 120px; margin-top: 60px; font-size: 0.8rem; color: var(--muted); }
+
+/* review controls (mockup only) */
+.review { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 2000; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center;
+  background: var(--panel, #1c2240); border: 1px solid var(--line, #303a66); border-radius: 14px; padding: 10px 12px; box-shadow: 0 18px 50px var(--shadow, rgba(0,0,0,.5)); max-width: calc(100vw - 24px); }
+.review-group { display: inline-flex; border: 1px solid var(--line, #303a66); border-radius: 9px; overflow: hidden; }
+.review-group button, .review > button { background: none; border: 0; color: var(--muted); font: inherit; font-size: 0.82rem; padding: 7px 12px; cursor: pointer; }
+.review-group button + button { border-left: 1px solid var(--line, #303a66); }
+.review-group button[aria-pressed="true"] { background: var(--paper); color: var(--ink); }
+.review > button.primary { background: var(--thread); color: var(--ink); border-radius: 9px; font-weight: 600; }
+.review-label { font-family: var(--display); font-style: italic; font-size: 0.95rem; color: var(--muted); padding: 0 4px; }
+@media (max-width: 860px) { .hero-grid { grid-template-columns: 1fr; } .portrait { justify-self: start; } .stats-grid { grid-template-columns: repeat(2, 1fr); } .nav-links a:not(.nav-cta) { display: none; } .hero-thread { display: none; } }
+</style>
+</head>
+<body>
+
+<!-- ================= LOADER (first thing in <body>) ================= -->
+<div class="loader" id="loader" aria-hidden="true">
+  <canvas id="loader-canvas"></canvas>
+  <div class="loader-core">
+    <div class="loader-pct"><span id="loader-pct-n">0</span><small>%</small></div>
+    <div class="loader-note" id="loader-note">Setting the palette</div>
+  </div>
+</div>
+
+<div class="page">
+<div class="atmosphere" aria-hidden="true"></div>
+<nav class="nav" aria-label="Main">
+  <div class="nav-inner">
+    <a class="nav-name" href="#top">Ameer&nbsp;Adhwa</a>
+    <div class="nav-links"><a href="#">Journey</a><a href="#">Skills</a><a href="#">Contact</a><a class="nav-cta" href="#">Résumé</a></div>
+  </div>
+</nav>
+
+<header class="hero wrap" id="top">
+  <svg class="hero-thread" viewBox="0 0 1100 520" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M -20 470 C 180 470, 240 380, 300 330 S 420 300, 520 280 S 700 200, 790 150 S 940 90, 1120 95"/>
+    <circle cx="300" cy="330" r="3.5"/><circle cx="790" cy="150" r="3.5"/>
+  </svg>
+  <div class="hero-grid">
+    <div>
+      <p class="kicker">Shah Alam, Malaysia. <b>Full stack web specialist.</b></p>
+      <h1>From a diploma classroom in <em class="stop">Dungun</em> to multi-tenant SaaS across <em>Southeast Asia</em>.</h1>
+      <p class="hero-sub">I'm Ameer Adhwa Bin Mohamad. For 12+ years I've shipped web and mobile systems for government agencies, ports and customs, clinics, and today I'm the developer behind <b>RetailAIM® Plus</b>, a multi-tenant ASP.NET Core SaaS platform used by 20+ FMCG brands across Malaysia, Singapore, Thailand and the Philippines.</p>
+      <div class="hero-actions"><a class="btn btn-solid" href="#">Download résumé</a><a class="btn btn-ghost" href="#">Walk the timeline</a></div>
+      <div class="hero-meta"><a href="#">ameeradhwa92@gmail.com</a><a href="#">linkedin/ameeradhwa92</a><a href="#">ameeradhwa92.github.io</a><span>+60 13-961 0053</span></div>
+    </div>
+    <div class="portrait">
+      <img id="hero-img" src="../../assets/img/portrait-hero.jpg" alt="Ameer Adhwa Bin Mohamad" width="900" height="1200">
+      <span class="portrait-cap">Since 2010, Dungun to Shah Alam</span>
+    </div>
+  </div>
+</header>
+
+<section class="stats"><div class="wrap"><div class="stats-grid">
+  <div class="stat"><b>12+</b><span>years shipping</span></div>
+  <div class="stat"><b>25+</b><span>production systems</span></div>
+  <div class="stat"><b>20+</b><span>FMCG brands served</span></div>
+  <div class="stat"><b>4</b><span>countries live</span></div>
+</div></div></section>
+
+<main class="section wrap">
+  <div class="section-head"><p class="kicker">The journey, 2010 to today</p><h2>Sixteen years, one line of travel, and every stop <em>still running</em> somewhere.</h2></div>
+  <div class="cards">
+    <div class="card"><div class="shot"><img class="shot-img" src="../../assets/img/projects/retailaim-plus.jpg" alt="" width="1000" height="666"></div><div class="card-body"><p class="card-client">AIM Systems, product</p><h4>RetailAIM® Plus</h4><p>Multi-tenant field-force and retail execution SaaS, four countries live.</p></div></div>
+    <div class="card"><div class="shot"><img class="shot-img" src="../../assets/img/projects/service73.jpg" alt="" width="1000" height="666"></div><div class="card-body"><p class="card-client">TRM Nett, product</p><h4>Service 73</h4><p>Real-time GPS team management, published to both app stores.</p></div></div>
+    <div class="card"><div class="shot"><img class="shot-img" src="../../assets/img/projects/kastam-ecaf.jpg" alt="" width="1000" height="666"></div><div class="card-body"><p class="card-client">Royal Malaysian Customs</p><h4>Kastam eCAF</h4><p>Customs application forms for licensed manufacturing warehouses.</p></div></div>
+  </div>
+  <div class="footer">Loader mockup, not the live site. The percentage tracks real files: stylesheet, fonts, portrait, scripts, route data, screenshots.</div>
+</main>
+</div><!-- /.page -->
+
+<div class="review" role="group" aria-label="Preview controls">
+  <button type="button" class="primary" id="replay">Replay</button>
+  <span class="review-label">Connection</span>
+  <div class="review-group" id="net-group">
+    <button type="button" data-net="0">Fast</button>
+    <button type="button" data-net="1800">3G</button>
+    <button type="button" data-net="5000">Very slow</button>
+  </div>
+  <span class="review-label">Theme</span>
+  <div class="review-group" id="theme-group">
+    <button type="button" data-theme="dark">Dark</button>
+    <button type="button" data-theme="light">Light</button>
+  </div>
+</div>
+
+<script>
+  /* Mockup wiring. "Connection" adds an artificial delay to each step so the
+     behaviour on a slow link can be seen locally. Real steps are still real. */
+  (function () {
+    var L = window.SiteLoader;
+    var netParam = location.search.match(/net=(\d+)/);
+    var net = netParam ? Number(netParam[1]) : Number(localStorage.getItem('mock-net') || 0);
+    var theme = localStorage.getItem('mock-theme') || document.documentElement.dataset.theme;
+    document.documentElement.dataset.theme = theme;
+    function press(groupId, attr, val) {
+      document.querySelectorAll('#' + groupId + ' button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset[attr]) === String(val)); });
+    }
+    press('net-group', 'net', net); press('theme-group', 'theme', theme);
+
+    function delayed(name, ms) { setTimeout(function () { L.complete(name); }, ms + Math.random() * ms * 0.6); }
+    function run() {
+      L.start();
+      L.complete('css');                                   // this inline block is the stylesheet in the mockup
+      (document.fonts ? document.fonts.ready : Promise.resolve()).then(function () { delayed('fonts', net * 0.4); });
+      var hero = document.getElementById('hero-img');
+      var heroDone = function () { delayed('hero', net); };
+      if (hero.complete) heroDone(); else { hero.addEventListener('load', heroDone); hero.addEventListener('error', heroDone); }
+      delayed('scripts', net * 0.7);                       // stands in for the seven deferred scripts
+      delayed('route', net * 0.5);                         // stands in for route-globe-coastlines.json
+      var shots = Array.prototype.slice.call(document.querySelectorAll('.shot-img')), left = shots.length;
+      function one() { if (--left <= 0) delayed('shots', net * 0.9); }
+      shots.forEach(function (im) { if (im.complete) one(); else { im.addEventListener('load', one); im.addEventListener('error', one); } });
+    }
+    run();
+
+    document.getElementById('replay').addEventListener('click', function () {
+      var l = document.getElementById('loader');
+      document.documentElement.classList.remove('revealed');
+      document.documentElement.classList.add('loading');
+      l.classList.remove('bang', 'done');
+      window.scrollTo(0, 0);
+      L.reset(); run();
+    });
+    document.querySelectorAll('#net-group button').forEach(function (b) {
+      b.addEventListener('click', function () { net = Number(b.dataset.net); localStorage.setItem('mock-net', net); press('net-group', 'net', net); });
+    });
+    document.querySelectorAll('#theme-group button').forEach(function (b) {
+      b.addEventListener('click', function () { document.documentElement.dataset.theme = b.dataset.theme; localStorage.setItem('mock-theme', b.dataset.theme); press('theme-group', 'theme', b.dataset.theme); });
+    });
+  })();
+</script>
+</body>
+</html>
