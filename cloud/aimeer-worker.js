@@ -1,6 +1,7 @@
 /* AIMeer cloud relay — Cloudflare Worker + Workers AI.
-   Serves AI answers to devices that can't run the on-device WebLLM model
-   (iPhones/iPads, browsers without WebGPU, low-memory GPUs).
+   AIMeer's only AI tier since the on-device WebLLM model was retired (2026-10). Two models on the
+   one AI binding: TypeSafe's Jev decides (chat triage, recruiter JD match levels and evidence),
+   Llama 3.1 8B writes (chat answers, summaries, the JD narrative).
 
    Deploy (free plan, no credit card):
      1. dash.cloudflare.com → Compute (Workers) → Create → "Start with Hello World"
@@ -19,7 +20,7 @@
    deployed by hand, and a paste that silently does not take effect looks exactly like a fix that
    did not work. That cost several rounds of debugging: the same failures kept coming back because
    the revision under test was never the revision deployed. */
-const WORKER_REVISION = "2026-07-30-jd-11";
+const WORKER_REVISION = "2026-10-02-jev-1";
 
 const SITE = "https://ameeradhwa92.github.io";
 const KB_URL = SITE + "/assets/data/aimeer-kb.txt";
@@ -330,6 +331,76 @@ const JD_SCORING_OVERALL_PROMPT =
   "fitBand (strong if score>=75, good if >=60, partial if >=40, else limited), " +
   "narrative (one recruiter-facing paragraph, at most 600 characters, leading with strengths and honest about gaps).";
 
+/* ---------------- Jev: typed decisions instead of generated JSON ----------------
+   Jev is TypeSafe's "System One" model (released 2026-09-15, on Workers AI). It does not generate
+   text: it reads a state and answers named typed questions (choice, score, noul) with calibrated
+   probabilities. That is exactly the half of the recruiter report the 8B model kept failing at:
+   picking a matchLevel and evidence ids from fixed vocabularies. A choice answer cannot invent a
+   label, so the vocabulary and provenance failures jd-scoring tolerates after the fact cannot
+   happen here at all. The 8B model keeps the one job it does reliably, a short plain-text
+   narrative, and even that has a templated fallback, so jd-decide never fails on prose.
+
+   Two model ids because the catalogue lists both spellings; the first one that runs is cached
+   for the life of the isolate. `{"mode":"jev-probe"}` reports which one is live. */
+const JEV_MODEL_IDS = ["@cf/typesafe/jev", "typesafe/jev"];
+let jevModelId = null;
+
+/* Chat triage must never make AIMeer slower than it was: past this, the LLM answers untriaged. */
+const JEV_TRIAGE_TIMEOUT_MS = 2500;
+
+/* Independent studies found Jev well calibrated at the extremes and least reliable in the
+   0.3-0.8 band, so the chat gates only act on strong signals and leave the middle to the LLM. */
+const JEV_TRIAGE_HANDOFF_BELOW = 0.2;
+const JEV_TRIAGE_INTENT_MIN = 0.6;
+
+const JEV_TRIAGE_INTENTS = {
+  career: "Ameer's roles, employers, career history or years of experience",
+  projects: "systems, products or projects Ameer has built or worked on",
+  skills: "technologies, stacks, tools, clouds or skills Ameer uses",
+  education: "Ameer's education, degrees, certificates or courses",
+  contact: "how to contact, reach or hire Ameer, or get his resume",
+  compensation: "salary, pay, expected compensation, rates or remuneration",
+  "job-match": "checking how well Ameer fits a specific job, role or job description",
+  personal: "Ameer's family, background or personal life",
+  other: "greetings, small talk, or anything that is not about Ameer"
+};
+
+/* Order is the client's own MATCH_LEVEL_FACTORS order, strongest provenance first. */
+const JEV_LEVEL_CRITERIA = {
+  "direct-professional": "Published professional evidence shows Ameer delivering this exact requirement (same technology or responsibility) in paid work.",
+  "adjacent-professional": "Published professional evidence shows a closely related stack or responsibility in the same family (another cloud, another SQL dialect, another CI/CD tool), but not this exact one.",
+  "transferable-professional": "Published professional evidence shows a capability that genuinely transfers to this requirement although the tooling or domain differs.",
+  "academic-foundation": "Only academic or coursework evidence covers this requirement; no professional delivery of it is published.",
+  "learning-bridge": "Related evidence would shorten the ramp-up, but the requirement itself is not covered yet.",
+  "explicit-gap": "The published evidence clearly does not cover this requirement.",
+  "unverified": "The requirement cannot be judged from published evidence (soft skills, location, availability, or something the profile is silent on)."
+};
+
+/* Lowest to highest, as a Jev score rubric must be. The points are where each level lands on the
+   report's 0-100 scale: inside the fit band the level names (see computeFitBand's thresholds in
+   assets/js/jd-reasoning.js), so a fractional score interpolates between bands honestly. */
+const JEV_OVERALL_RUBRIC = [
+  "Limited overlap: most core requirements are gaps or unverified.",
+  "Partial fit: some core requirements are covered, with several important gaps.",
+  "Good fit: most core requirements are covered by direct or adjacent professional evidence.",
+  "Strong fit: nearly all core requirements are covered by direct professional evidence."
+];
+const JEV_OVERALL_POINTS = [30, 50, 67, 85];
+
+/* An evidence pick below this probability is a guess, not a citation. */
+const JEV_EVIDENCE_MIN = 0.15;
+
+const JD_DECIDE_NARRATIVE_MAX_TOKENS = 220;
+const JD_DECIDE_NARRATIVE_MAX = 600;
+
+/* Plain text, not JSON: the narrative is the only free prose in a jd-decide report, and an 8B
+   model writes a paragraph reliably where it does not reliably write a schema. */
+const JD_DECIDE_NARRATIVE_PROMPT =
+  "Write one recruiter-facing paragraph, at most 600 characters, summarising how Ameer's published evidence fits a role. " +
+  "The per-requirement decisions and the fit band were already made by a decision model and are final: do not change them, " +
+  "do not add a score or percentage, and do not invent evidence, employers or projects. Lead with strengths and be plain about gaps. " +
+  "Plain text only — no JSON, no markdown, no bullet points, no preamble.";
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("Origin") || "";
@@ -384,6 +455,14 @@ export default {
       return runJdScoringMode(env, cors, body);
     }
 
+    if (mode === "jd-decide") {
+      return runJdDecideMode(env, cors, body);
+    }
+
+    if (mode === "jev-probe") {
+      return runJevProbe(env, cors);
+    }
+
     if (mode === "jd-explanation" &&
       (!Array.isArray(body.messages) || body.messages.length !== 1 ||
         !body.messages[0] || body.messages[0].role !== "user")) {
@@ -403,6 +482,7 @@ export default {
     }
 
     let system = SUMMARY_PROMPT;
+    let triage = null;
     if (mode === "chat" || mode === "jd-explanation") {
       let kb = "";
       try {
@@ -410,6 +490,16 @@ export default {
       } catch {}
       if (!kb) return json({ error: "kb-unavailable" }, 502, cors);
       system = PERSONA_HEAD + kb;
+      if (mode === "chat") {
+        triage = await triageChat(env, kb, messages);
+        /* Salary and out-of-knowledge questions are answered by the browser's own curated copy and
+           the WhatsApp/email handoff, so they never reach the LLM: nothing is generated that could
+           quote a number or invent a fact. An empty reply is what an older client already treats
+           as a cloud miss, so it falls back to its instant answer either way. */
+        if (triage && (triage.action === "salary" || triage.action === "handoff")) {
+          return json({ reply: "", action: triage.action, intent: triage.intent }, 200, cors);
+        }
+      }
       if (mode === "jd-explanation") {
         system += "\n\n" + JD_EXPLANATION_PROMPT +
           "\nRequested language: " + jdExplanationPayload.language +
@@ -426,6 +516,9 @@ export default {
         max_tokens: mode === "summary" ? 160 : mode === "jd-explanation" ? 320 : 300,
         temperature: 0.2,
       });
+      if (triage) {
+        return json({ reply: modelText(out), action: triage.action, intent: triage.intent }, 200, cors);
+      }
       return json({ reply: modelText(out) }, 200, cors);
     } catch (e) {
       return json({ error: "ai-failed", detail: String((e && e.message) || e).slice(0, 200) }, 502, cors);
@@ -640,6 +733,545 @@ function validateJdScoringOverall(rawOutput) {
   };
 }
 
+/* ---------------- Jev runtime ---------------- */
+
+/* One Jev call. A thrown error moves on to the next model id (the catalogue spelling may differ
+   per account); an answer with no readable `answers` block stops there, because the model ran
+   and a second id would not read any better. */
+async function runJev(env, state, questions) {
+  const candidates = jevModelId ? [jevModelId] : JEV_MODEL_IDS;
+  let lastError = "jev-unavailable";
+  for (const id of candidates) {
+    let out;
+    try {
+      out = await env.AI.run(id, { state, questions });
+    } catch (e) {
+      lastError = "jev-run-failed:" + safeKeyLabel((e && e.message) || e);
+      continue;
+    }
+    const answers = readJevAnswers(out);
+    if (!answers) return { ok: false, error: "jev-shape-invalid" };
+    jevModelId = id;
+    return { ok: true, answers, modelId: id };
+  }
+  return { ok: false, error: lastError };
+}
+
+/* TypeSafe's API answers `{model, answers, usage}`; a binding may wrap that in `result` or
+   `response`, or hand it over as a JSON string. Anything else is not a Jev answer. */
+function readJevAnswers(out) {
+  let value = out;
+  for (let depth = 0; depth < 4 && value !== undefined && value !== null; depth += 1) {
+    if (typeof value === "string") {
+      try {
+        value = JSON.parse(value);
+      } catch {
+        return null;
+      }
+      continue;
+    }
+    if (!isPlainObject(value)) return null;
+    if (isPlainObject(value.answers)) return value.answers;
+    value = value.result !== undefined ? value.result : value.response;
+  }
+  return null;
+}
+
+function jevProbability(value) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1 ? value : null;
+}
+
+/* A choice answer is only read when it names one of the labels that were offered. `probability`
+   is the weight Jev gave the chosen label; Workers AI may omit the per-label table or the
+   confidence, so either one can stand in for the other, and an answer with neither is unreadable. */
+function readJevChoice(answer, labels) {
+  if (!isPlainObject(answer) || typeof answer.choice !== "string" || !labels.includes(answer.choice)) {
+    return null;
+  }
+  const rawProbabilities = isPlainObject(answer.probabilities) ? answer.probabilities : {};
+  const probabilities = {};
+  for (const label of labels) {
+    const p = jevProbability(rawProbabilities[label]);
+    if (p !== null) probabilities[label] = p;
+  }
+  const chosen = probabilities[answer.choice] !== undefined
+    ? probabilities[answer.choice]
+    : jevProbability(answer.confidence);
+  if (chosen === null) return null;
+  probabilities[answer.choice] = chosen;
+  return { choice: answer.choice, probability: chosen, probabilities };
+}
+
+/* A score answer is the probability-weighted level, 0-based, and may land between two levels. */
+function readJevScore(answer, levelCount) {
+  if (!isPlainObject(answer) || typeof answer.score !== "number" || !Number.isFinite(answer.score) ||
+    answer.score < 0 || answer.score > levelCount - 1) {
+    return null;
+  }
+  return { score: answer.score };
+}
+
+function readJevNoul(answer) {
+  if (typeof answer === "number") return jevProbability(answer);
+  if (!isPlainObject(answer)) return null;
+  return jevProbability(answer.noul !== undefined ? answer.noul : answer.probability);
+}
+
+/* ---------------- chat triage ----------------
+   Two questions about the visitor's latest message, answered before any text is generated:
+   what it is about, and whether the knowledge base can answer it at all. Only a strong signal
+   acts — a salary question goes to the browser's curated answer and handoff, a clearly
+   out-of-knowledge one goes straight to the handoff — so an uncertain triage costs nothing but
+   the call. Any failure, or a slow Jev, returns null and the LLM answers exactly as before. */
+async function triageChat(env, kb, messages) {
+  const latest = messages[messages.length - 1].content;
+  const intentLabels = Object.keys(JEV_TRIAGE_INTENTS);
+  const questions = {
+    intent: {
+      type: "choice",
+      instructions: "What is the visitor's latest message about?",
+      criteria: JEV_TRIAGE_INTENTS
+    },
+    answerable: {
+      type: "noul",
+      instructions: "The knowledge base in the state contains the facts needed to answer the visitor's latest message.",
+      criteria: {
+        true: "The knowledge base states the facts the answer needs.",
+        false: "The knowledge base is silent on what the visitor asked, so any answer would have to guess."
+      }
+    }
+  };
+  const state = { knowledgeBase: kb, conversation: messages.slice(-6), latestMessage: latest };
+
+  let timer = null;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve({ ok: false, error: "jev-timeout" }), JEV_TRIAGE_TIMEOUT_MS);
+  });
+  let result;
+  try {
+    result = await Promise.race([runJev(env, state, questions), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!result || !result.ok) return null;
+
+  const intent = readJevChoice(result.answers.intent, intentLabels);
+  const answerable = readJevNoul(result.answers.answerable);
+  if (!intent && answerable === null) return null;
+
+  const confidentIntent = intent && intent.probability >= JEV_TRIAGE_INTENT_MIN ? intent.choice : "";
+  let action = "answer";
+  if (confidentIntent === "compensation") {
+    action = "salary";
+  } else if (answerable !== null && answerable < JEV_TRIAGE_HANDOFF_BELOW && !(intent && intent.choice === "other")) {
+    /* Greetings are never in the knowledge base, so "other" is exempt — the LLM says hello. */
+    action = "handoff";
+  } else if (confidentIntent === "job-match") {
+    action = "jd";
+  }
+  return { action, intent: confidentIntent };
+}
+
+/* ---------------- jd-decide ----------------
+   The recruiter report from Jev decisions. Same request body as jd-scoring, same relayed response
+   shape (so the browser's validateModelOutput and mergeResult need no second contract), plus
+   `engine: "jev"` and a per-requirement `probability` the browser accepts as optional.
+
+   Jev is offered every citable record in the published profile, not only the ids the keyword
+   pass happened to touch: finding that Azure DevOps release work sits next to a "GitHub Actions"
+   requirement is the judgement this mode exists for. user-provided records stay out for the same
+   reason assets/js/jd-reasoning.js keeps them out (no match level may cite them). */
+async function runJdDecideMode(env, cors, body) {
+  let profile = null;
+  try {
+    profile = await loadReasoningProfile();
+  } catch {}
+  if (!profile) return json({ error: "profile-unavailable" }, 502, cors);
+
+  const payload = validateJdScoringBody(body, profile);
+  if (!payload.ok) return json({ error: payload.error }, 400, cors);
+
+  const input = payload.reasoningInput;
+  const registry = decideEvidenceRegistry(profile);
+  if (!registry.length) return jdDecideFailure(cors, "decide", "evidence-registry-empty");
+
+  let call;
+  try {
+    call = await runJev(env, buildJdDecideState(input, registry), buildJdDecideQuestions(input, registry));
+  } catch (e) {
+    return jdDecideFailure(cors, "jev", "jev-run-failed");
+  }
+  if (!call.ok) return jdDecideFailure(cors, "jev", call.error);
+
+  const decided = assembleJdDecisions(input, registry, call.answers);
+  if (!decided.ok) return jdDecideFailure(cors, "decide", decided.error);
+
+  const narrative = await writeJdDecideNarrative(env, input, decided, registry);
+  return json({
+    reasoning: JSON.stringify({
+      narrative,
+      requirements: decided.requirements,
+      overall: { score: decided.score, fitBand: decided.fitBand, narrative },
+      engine: "jev"
+    }),
+    revision: WORKER_REVISION
+  }, 200, cors);
+}
+
+function jdDecideFailure(cors, stage, reason) {
+  return json({ error: "decide-unavailable", stage, reason: reason || "unknown", revision: WORKER_REVISION }, 502, cors);
+}
+
+function decideEvidenceRegistry(profile) {
+  return (Array.isArray(profile.recruiterEvidence) ? profile.recruiterEvidence : [])
+    .map(sanitizeRecruiterEvidenceRecord)
+    .filter((record) => record && (record.evidenceType === "professional" || record.evidenceType === "academic"))
+    .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
+}
+
+/* No deterministic classification in the state on purpose: the keyword verdict sitting next to
+   each requirement is what the 8B model kept copying into matchLevel, and Jev should judge the
+   evidence, not echo the keyword pass. The JD prose stays — a decision model has none of the
+   8B model's trouble holding it alongside the questions. */
+function buildJdDecideState(input, registry) {
+  return {
+    jobDescription: input.jdText,
+    requirements: input.requirements.map((requirement) => ({
+      id: requirement.id,
+      requirement: requirement.term,
+      postingWording: requirement.original,
+      strength: requirement.strength,
+      yearsRequired: requirement.yearsRequired
+    })),
+    publishedEvidence: registry.map((record) => ({
+      id: record.id,
+      evidenceType: record.evidenceType,
+      claim: record.claim,
+      technologies: record.technologies,
+      capabilities: record.capabilities,
+      scope: record.scope
+    }))
+  };
+}
+
+function buildJdDecideQuestions(input, registry) {
+  const evidenceCriteria = {};
+  for (const record of registry) {
+    evidenceCriteria[record.id] = clipText(
+      record.evidenceType + " evidence: " + record.claim + " Technologies: " + record.technologies.join(", ") + ".",
+      400
+    );
+  }
+  evidenceCriteria.none = "No published evidence record supports this requirement.";
+
+  const questions = {};
+  input.requirements.forEach((requirement, index) => {
+    const label = "\"" + requirement.term + "\" (requirement " + requirement.id + ")";
+    questions["level_" + index] = {
+      type: "choice",
+      instructions: "How does Ameer's published evidence relate to the requirement " + label + "? " +
+        "Judge provenance honestly: academic exposure is never professional delivery.",
+      criteria: JEV_LEVEL_CRITERIA
+    };
+    questions["evidence_" + index] = {
+      type: "choice",
+      instructions: "Which single published evidence record best supports the requirement " + label + "?",
+      criteria: evidenceCriteria
+    };
+  });
+  questions.overall_fit = {
+    type: "score",
+    instructions: "Overall, how well does Ameer's published evidence fit what this job description actually needs?",
+    criteria: JEV_OVERALL_RUBRIC
+  };
+  return questions;
+}
+
+const JD_DECIDE_LEVEL_FACTORS = {
+  "direct-professional": 1,
+  "adjacent-professional": 0.75,
+  "transferable-professional": 0.55,
+  "academic-foundation": 0.3,
+  "learning-bridge": 0.15,
+  "explicit-gap": 0,
+  "unverified": 0
+};
+const JD_DECIDE_STRENGTH_FACTORS = { required: 1, neutral: 0.75, preferred: 0.5 };
+
+function assembleJdDecisions(input, registry, answers) {
+  const levels = Object.keys(JEV_LEVEL_CRITERIA);
+  const evidenceLabels = registry.map((record) => record.id).concat("none");
+  const registryById = new Map(registry.map((record) => [record.id, record]));
+  const vocabulary = new Set(buildCapabilityVocabulary(registry));
+
+  let readable = 0;
+  const requirements = input.requirements.map((requirement, index) => {
+    const level = readJevChoice(answers["level_" + index], levels);
+    if (level) readable += 1;
+    const evidence = readJevChoice(answers["evidence_" + index], evidenceLabels);
+    return decideRequirement(requirement, level, evidence, registryById, vocabulary, input.language);
+  });
+  if (!readable) return { ok: false, error: "jev-answers-unreadable" };
+
+  const overall = readJevScore(answers.overall_fit, JEV_OVERALL_RUBRIC.length);
+  const score = overall ? jevOverallPoints(overall.score) : decisionWeightedScore(input.requirements, requirements);
+  return { ok: true, requirements, score, fitBand: fitBandForScore(score) };
+}
+
+/* The rules every decision must pass before it leaves the Worker are the browser validator's own:
+   an evidence-based level cites at least one record, every cited record's type is one that level
+   may cite, and gaps cite nothing. A level Jev chose without compatible evidence above
+   JEV_EVIDENCE_MIN is demoted (professional → academic when only academic evidence fits, else
+   unverified), never left to fail validation, and a demoted decision is never reported as
+   confident. */
+function decideRequirement(requirement, level, evidence, registryById, vocabulary, language) {
+  let matchLevel = level ? level.choice : "unverified";
+  const probability = level ? level.probability : null;
+  let demoted = !level;
+
+  const ranked = evidence
+    ? Object.keys(evidence.probabilities)
+      .filter((id) => id !== "none" && registryById.has(id) && evidence.probabilities[id] >= JEV_EVIDENCE_MIN)
+      .sort((left, right) => evidence.probabilities[right] - evidence.probabilities[left])
+      .map((id) => registryById.get(id))
+    : [];
+
+  let cited = null;
+  const allowedTypes = JD_REASONING_MATCH_EVIDENCE_TYPES[matchLevel];
+  if (allowedTypes) cited = ranked.find((record) => allowedTypes[record.evidenceType] === true) || null;
+  if (JD_REASONING_EVIDENCE_BASED_LEVELS[matchLevel] && !cited) {
+    const academic = matchLevel !== "academic-foundation"
+      ? ranked.find((record) => record.evidenceType === "academic")
+      : null;
+    if (academic) {
+      matchLevel = "academic-foundation";
+      cited = academic;
+    } else {
+      matchLevel = "unverified";
+    }
+    demoted = true;
+  }
+  if (matchLevel === "explicit-gap" || matchLevel === "unverified") cited = null;
+
+  const capabilities = cited && (matchLevel === "adjacent-professional" ||
+    matchLevel === "transferable-professional" || matchLevel === "learning-bridge")
+    ? cited.capabilities.filter((capability) => vocabulary.has(clipText(capability, 120))).slice(0, 4)
+    : [];
+  const confidence = demoted || probability === null
+    ? "low"
+    : probability >= 0.8 ? "high" : probability >= 0.55 ? "medium" : "low";
+  const copy = jdDecideCopy(language, matchLevel, requirement.term, cited);
+
+  const decision = {
+    requirementId: requirement.id,
+    recruiterIntent: "",
+    expectedOutcome: "",
+    matchLevel,
+    evidenceRefs: cited ? [cited.id] : [],
+    transferableCapabilities: capabilities,
+    limitation: clipText(copy.limitation, JD_REASONING_TEXT_LIMITS.limitation),
+    recruiterFraming: clipText(copy.framing, JD_REASONING_TEXT_LIMITS.recruiterFraming),
+    verificationQuestion: clipText(copy.question, JD_REASONING_TEXT_LIMITS.verificationQuestion),
+    confidence
+  };
+  if (!demoted && probability !== null) decision.probability = Math.round(probability * 1000) / 1000;
+  return decision;
+}
+
+/* Per-requirement copy is templated, not generated: it is the same sentence for the same
+   decision every time, in the visitor's language, and it can only name the requirement and the
+   cited record's technologies. Bahasa Melayu follows the site's formal DBP register. */
+function jdDecideCopy(language, matchLevel, term, record) {
+  const techs = record ? record.technologies.slice(0, 3).join(", ") : "";
+  if (language === "ms") {
+    switch (matchLevel) {
+      case "direct-professional": return {
+        framing: "Bukti profesional terbitan meliputi " + term + " secara langsung.",
+        limitation: "",
+        question: "Kerja terkini manakah yang paling jelas menunjukkan " + term + ", dan bahagian apakah yang Ameer miliki sepenuhnya?"
+      };
+      case "adjacent-professional": return {
+        framing: "Kerja profesional yang berkait rapat (" + techs + ") bersebelahan dengan " + term + "; jangkakan tempoh penyesuaian yang singkat.",
+        limitation: "Ini pertimbangan bersebelahan, bukan bukti penyampaian langsung dengan " + term + ".",
+        question: "Bagaimanakah pengalaman Ameer dengan " + techs + " dapat dipindahkan kepada " + term + ", dan berapa lamakah tempoh penyesuaiannya?"
+      };
+      case "transferable-professional": return {
+        framing: "Keupayaan profesional daripada kerja dengan " + techs + " boleh dipindahkan kepada " + term + ", walaupun alatannya berbeza.",
+        limitation: "Ini pertimbangan keupayaan boleh dipindahkan, bukan bukti penyampaian langsung dengan " + term + ".",
+        question: "Bagaimanakah pengalaman Ameer dengan " + techs + " dapat dipindahkan kepada " + term + ", dan berapa lamakah tempoh penyesuaiannya?"
+      };
+      case "academic-foundation": return {
+        framing: term + " diliputi oleh kerja akademik sahaja, bukan penyampaian profesional terbitan.",
+        limitation: "Pendedahan akademik, bukan pengalaman profesional.",
+        question: "Apakah yang telah Ameer bina dengan " + term + " selain kerja akademiknya?"
+      };
+      case "learning-bridge": return {
+        framing: "Pengalaman berkaitan memendekkan tempoh penyesuaian kepada " + term + ", tetapi keperluan ini belum diliputi.",
+        limitation: "Belum ada penyampaian terbitan dengan " + term + ".",
+        question: "Apakah rancangan Ameer untuk menjadi produktif dengan " + term + "?"
+      };
+      case "explicit-gap": return {
+        framing: "Bukti terbitan tidak meliputi " + term + ".",
+        limitation: "Tiada penyampaian terbitan dengan " + term + ".",
+        question: "Apakah rancangan Ameer untuk menjadi produktif dengan " + term + "?"
+      };
+      default: return {
+        framing: term + " tidak dapat dinilai daripada profil terbitan.",
+        limitation: "Perlu disahkan dalam perbualan.",
+        question: "Bolehkah Ameer memberikan contoh konkrit tentang " + term + "?"
+      };
+    }
+  }
+  switch (matchLevel) {
+    case "direct-professional": return {
+      framing: "Published professional evidence covers " + term + " directly.",
+      limitation: "",
+      question: "Which recent piece of work best shows " + term + ", and what did Ameer own end to end?"
+    };
+    case "adjacent-professional": return {
+      framing: "Closely related professional work (" + techs + ") sits next to " + term + "; expect a short ramp-up.",
+      limitation: "An adjacent judgement, not proof of direct delivery with " + term + ".",
+      question: "How would Ameer's work with " + techs + " carry over to " + term + ", and how long would ramp-up take?"
+    };
+    case "transferable-professional": return {
+      framing: "Professional capabilities from work with " + techs + " transfer to " + term + ", though the tooling differs.",
+      limitation: "A transferable-capability judgement, not proof of direct delivery with " + term + ".",
+      question: "How would Ameer's work with " + techs + " carry over to " + term + ", and how long would ramp-up take?"
+    };
+    case "academic-foundation": return {
+      framing: term + " is covered by academic work only, not by published professional delivery.",
+      limitation: "Academic exposure, not professional experience.",
+      question: "What has Ameer built with " + term + " beyond his academic work?"
+    };
+    case "learning-bridge": return {
+      framing: "Related experience shortens the ramp into " + term + ", but it is not covered yet.",
+      limitation: "No published delivery with " + term + " yet.",
+      question: "What is Ameer's plan to become productive with " + term + "?"
+    };
+    case "explicit-gap": return {
+      framing: "Published evidence does not cover " + term + ".",
+      limitation: "No published delivery with " + term + ".",
+      question: "What is Ameer's plan to become productive with " + term + "?"
+    };
+    default: return {
+      framing: term + " cannot be judged from the published profile.",
+      limitation: "Needs confirming in conversation.",
+      question: "Can Ameer give a concrete example of " + term + "?"
+    };
+  }
+}
+
+function jevOverallPoints(score) {
+  const lower = Math.max(0, Math.min(JEV_OVERALL_POINTS.length - 1, Math.floor(score)));
+  const upper = Math.min(JEV_OVERALL_POINTS.length - 1, lower + 1);
+  const fraction = score - lower;
+  return Math.round(JEV_OVERALL_POINTS[lower] + (JEV_OVERALL_POINTS[upper] - JEV_OVERALL_POINTS[lower]) * fraction);
+}
+
+/* Used only when Jev answered the requirements but not the overall rubric. */
+function decisionWeightedScore(inputRequirements, decisions) {
+  let total = 0;
+  let matched = 0;
+  decisions.forEach((decision, index) => {
+    const weight = JD_DECIDE_STRENGTH_FACTORS[inputRequirements[index].strength] || 0.75;
+    total += weight;
+    matched += weight * (JD_DECIDE_LEVEL_FACTORS[decision.matchLevel] || 0);
+  });
+  return total ? Math.round((matched / total) * 100) : 0;
+}
+
+/* Mirrors computeFitBand in assets/js/jd-reasoning.js; the browser recomputes the band from its
+   clamped final score anyway, so this only has to agree with the score it is sent with. */
+function fitBandForScore(score) {
+  return score >= 75 ? "strong" : score >= 60 ? "good" : score >= 40 ? "partial" : "limited";
+}
+
+const JD_DECIDE_BAND_LABELS = {
+  en: { strong: "Strong fit", good: "Good fit", partial: "Partial fit", limited: "Limited overlap" },
+  ms: { strong: "Padanan kukuh", good: "Padanan baik", partial: "Padanan separa", limited: "Pertindihan terhad" }
+};
+
+/* The one generated paragraph. The 8B model sees the decisions and the band, never the JD prose
+   and never a schema; anything that looks like a schema, markup or a percentage of its own is
+   discarded for the templated paragraph, so the narrative can never contradict the decisions. */
+async function writeJdDecideNarrative(env, input, decided, registry) {
+  const registryById = new Map(registry.map((record) => [record.id, record]));
+  const language = input.language === "ms" ? "ms" : "en";
+  const context = {
+    fitBand: JD_DECIDE_BAND_LABELS.en[decided.fitBand],
+    decisions: decided.requirements.map((decision, index) => ({
+      requirement: input.requirements[index].term,
+      decision: decision.matchLevel,
+      evidence: decision.evidenceRefs.length ? registryById.get(decision.evidenceRefs[0]).claim : ""
+    }))
+  };
+  try {
+    const out = await env.AI.run(MODEL, {
+      messages: [
+        { role: "system", content: PERSONA_HEAD + "\n\n" + JD_DECIDE_NARRATIVE_PROMPT },
+        {
+          role: "user",
+          content: "Write the paragraph in " + (language === "ms" ? "formal Bahasa Malaysia" : "English") +
+            ". Decisions:\n" + JSON.stringify(context)
+        }
+      ],
+      max_tokens: JD_DECIDE_NARRATIVE_MAX_TOKENS,
+      temperature: 0.2
+    });
+    const text = cleanDecideNarrative(modelText(out));
+    if (text) return text;
+  } catch {}
+  return templatedDecideNarrative(language, input, decided);
+}
+
+function cleanDecideNarrative(raw) {
+  const text = normalizeText(String(raw || "").replace(/^["'\s]+|["'\s]+$/g, ""));
+  if (!text || text.length < 40) return "";
+  if (HTML_MARKUP_PATTERN.test(text) || /^[{[]/.test(text) || text.includes("```") || /\d\s*%/.test(text)) return "";
+  return clipText(text, JD_DECIDE_NARRATIVE_MAX);
+}
+
+function templatedDecideNarrative(language, input, decided) {
+  const terms = (levelsWanted) => decided.requirements
+    .map((decision, index) => (levelsWanted.includes(decision.matchLevel) ? input.requirements[index].term : ""))
+    .filter(Boolean);
+  const direct = terms(["direct-professional"]);
+  const near = terms(["adjacent-professional", "transferable-professional"]);
+  const gaps = terms(["explicit-gap", "learning-bridge"]);
+  const list = (items) => items.slice(0, 3).join(", ");
+  const total = decided.requirements.length;
+  const parts = [JD_DECIDE_BAND_LABELS[language][decided.fitBand] + "."];
+  if (language === "ms") {
+    if (direct.length) parts.push("Bukti profesional terbitan meliputi " + direct.length + " daripada " + total + " keperluan secara langsung (" + list(direct) + ").");
+    if (near.length) parts.push("Kerja profesional bersebelahan atau boleh dipindahkan meliputi " + list(near) + ".");
+    if (gaps.length) parts.push("Perlu disahkan semasa saringan: " + list(gaps) + ".");
+  } else {
+    if (direct.length) parts.push("Published professional evidence directly covers " + direct.length + " of " + total + " requirements (" + list(direct) + ").");
+    if (near.length) parts.push("Adjacent or transferable professional work covers " + list(near) + ".");
+    if (gaps.length) parts.push("Worth confirming in screening: " + list(gaps) + ".");
+  }
+  return clipText(parts.join(" "), JD_DECIDE_NARRATIVE_MAX);
+}
+
+/* `{"mode":"jev-probe"}`: one fixed question, so a paste can be confirmed to reach Jev (and which
+   model id answered) without spending a recruiter request on it. */
+async function runJevProbe(env, cors) {
+  const result = await runJev(env, "Help! My payouts have been failing for 3 days.", {
+    urgent: {
+      type: "noul",
+      instructions: "The message describes an urgent problem.",
+      criteria: { true: "It needs attention now.", false: "It can wait." }
+    }
+  });
+  return json({
+    revision: WORKER_REVISION,
+    ok: result.ok,
+    model: result.ok ? result.modelId : null,
+    reason: result.ok ? "" : result.error,
+    urgent: result.ok ? readJevNoul(result.answers.urgent) : null
+  }, result.ok ? 200 : 502, cors);
+}
+
 async function loadKB() {
   return loadCachedText(KB_URL, "aimeer-kb-cache=v1", "text/plain");
 }
@@ -710,7 +1342,9 @@ function detectMode(value) {
     : value === "jd-explanation" ? "jd-explanation"
       : value === "jd-reasoning" ? "jd-reasoning"
         : value === "jd-scoring" ? "jd-scoring"
-          : "chat";
+          : value === "jd-decide" ? "jd-decide"
+            : value === "jev-probe" ? "jev-probe"
+              : "chat";
 }
 
 function sanitizeMessages(rawMessages, limit, maxChars) {

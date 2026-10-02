@@ -1,18 +1,17 @@
-/* AIMeer — Ameer's AI twin. Hybrid three-tier portfolio chatbot.
-   Tier 1: instant keyword answers, zero download, works everywhere.
-   Tier 2: WebLLM (Llama 3.2 1B) running fully in-browser via WebGPU on capable
-           devices — auto-downloads in the background, cancellable in the panel.
-   Tier 3: devices that can't run the local model (iPhones, old GPUs, no WebGPU)
-           are routed to a Cloudflare Worker relay (cloud/aimeer-worker.js) so
-           AI answers are always available. The active route is shown in the
-           chat status line. */
+/* AIMeer — Ameer's AI twin. Two tiers, one decision layer.
+   Tier 1: instant keyword answers, zero download, works offline — and the fallback for every
+           cloud failure.
+   Tier 2: the Cloudflare Worker relay (cloud/aimeer-worker.js). TypeSafe's Jev decision model
+           triages each question first (salary → curated answer + handoff, out of knowledge →
+           handoff, job match → the JD matcher) and Llama 3.1 8B answers the rest from the KB.
+   The on-device WebLLM tier (Llama 3.2 1B, ≈ 0.9 GB download) was retired in 2026-10: it
+   answered poorly even on high-end GPUs and cost every capable visitor a large download.
+   The active tier is shown in the chat status line. */
 (function () {
   "use strict";
 
-  var WEBLLM_CDN = "https://esm.run/@mlc-ai/web-llm@0.2.79";
-  var KB_URL = "assets/data/aimeer-kb.txt";
   var PROFILE_URL = "assets/data/aimeer-profile.json";
-  /* Cloudflare Worker relay for devices that can't run the local model.
+  /* Cloudflare Worker relay — AIMeer's only AI tier.
      Deploy cloud/aimeer-worker.js, then paste its workers.dev URL here. */
   var CLOUD_ENDPOINT = typeof window.AIMEER_CLOUD_ENDPOINT === "string"
     ? window.AIMEER_CLOUD_ENDPOINT
@@ -23,9 +22,10 @@
   /* Cache busting.  GitHub Pages serves assets with Cache-Control: max-age=600,
      so a stale visitor self-heals within ten minutes; the ?v= tag on our own
      <script src> in index.html makes that deterministic instead.  We forward the
-     same tag to the two data files because they are fetched at runtime and are
-     not covered by the script tag: a stale aimeer-kb.txt makes AIMeer answer
-     from retired facts, which is worse than stale code.  Read from our own src
+     same tag to the recruiter profile because it is fetched at runtime and is
+     not covered by the script tag: a stale aimeer-profile.json makes the JD
+     matcher score against retired evidence, which is worse than stale code.
+     (aimeer-kb.txt is read only by the Worker, which caches it itself.)  Read from our own src
      rather than hardcoded, so index.html stays the ONLY place to bump it.
      Returns "" when there is no ?v= (local preview, test harness), leaving the
      URLs byte-identical to their un-versioned form. */
@@ -37,25 +37,8 @@
   }
   var ASSET_VERSION_QUERY = assetVersionQuery();
 
-  /* ---------------- knowledge base (fetched, shared with the cloud worker) ---------------- */
-  var KB = "", kbPromise = null;
+  /* ---------------- recruiter profile (fetched, shared with the cloud worker) ---------------- */
   var PROFILE = null, profilePromise = null;
-  function ensureKB() {
-    if (KB) return Promise.resolve(KB);
-    if (!kbPromise) {
-      kbPromise = fetch(KB_URL + ASSET_VERSION_QUERY).then(function (r) {
-        if (!r.ok) throw new Error("kb-" + r.status);
-        return r.text();
-      }).then(function (txt) {
-        KB = txt;
-        return KB;
-      }).catch(function (err) {
-        kbPromise = null;
-        throw err;
-      });
-    }
-    return kbPromise;
-  }
 
   function ensureProfile() {
     if (PROFILE) return Promise.resolve(PROFILE);
@@ -73,14 +56,6 @@
     }
     return profilePromise;
   }
-
-  var PROMPT_HEAD =
-    "You are AIMeer, the AI twin of Ameer Adhwa on his portfolio website. You speak about Ameer in the third person, " +
-    "warmly and professionally. Answer visitors' questions using ONLY the facts below. " +
-    "Keep answers short (2-5 sentences), factual and friendly. If the question is in Bahasa Malaysia, reply in formal " +
-    "Bahasa Malaysia; otherwise reply in English. If the answer is not in the facts, say you do not have that " +
-    "information and suggest asking Ameer directly — the chat will show WhatsApp and email buttons for that. " +
-    "Never invent projects, employers, dates or links.\n\n";
 
   /* ---------------- bounded recruiter helper compatibility ----------------
      Older local tools consume this public helper block directly.  The live
@@ -209,22 +184,11 @@
     return requestToken === currentToken;
   }
 
+  /* Kept on window.AIMeerRecruiter for older local tools. With the on-device tier retired there is
+     no "local" or "waiting" mode left: recruiter reasoning runs on the cloud Worker or not at all. */
   function computeJdReasoningMode(state) {
     if (!state || !state.hasResult || !state.hasNormalizedText) return "unavailable";
-    if (state.hasEngine && state.aiState === "ready") return "local";
-    if (state.localOK) {
-      if (state.dlActive || state.aiState === "loading" || state.route === "local" || state.preferredMode === "local") {
-        return "waiting";
-      }
-      if (state.cloudOk && (state.aiState === "cloud" || state.route === "cloud" || state.preferredMode === "cloud")) {
-        return "cloud";
-      }
-      return "unavailable";
-    }
-    if (state.cloudOk && (state.aiState === "cloud" || state.route === "cloud" || state.preferredMode === "cloud")) {
-      return "cloud";
-    }
-    return "unavailable";
+    return state.cloudOk ? "cloud" : "unavailable";
   }
 
   /* Which pass's confidence belongs beside the displayed score. renderJdResult shows
@@ -267,28 +231,10 @@
   /* ---------------- ui strings (dynamic ones JS must swap itself) ---------------- */
   var T = {
     en: {
-      greeting: "Hi, I'm AIMeer — Ameer's AI twin. Ask me about his career, projects and skills, or tap a suggestion below. Full AI mode gets ready by itself — on your device when it can, via secure cloud when it can't.",
+      greeting: "Hi, I'm AIMeer — Ameer's AI twin. Ask me about his career, projects and skills, or tap a suggestion below. Answers come from Ameer's published profile via secure cloud AI; anything it doesn't cover, I'll hand over to Ameer himself.",
       placeholder: "Ask AIMeer…",
-      statusInstant: "Instant answers · no download",
-      statusAI: "AI mode · on your device",
+      statusInstant: "Instant answers · works offline",
       statusCloud: "AI mode · secure cloud",
-      statusLoading: "Downloading model… ",
-      statusPreparing: "Preparing model… (first load compiles GPU shaders)",
-      aiDownloading: "AIMeer is preparing its on-device AI in the background (≈ 0.9 GB, one time — your questions will never leave this device). You can already chat while it downloads.",
-      aiPitchManual: "On-device AI runs a small language model entirely in your browser — your questions never leave this device. One-time download ≈ 0.9 GB.",
-      enableBtn: "Enable on-device AI",
-      cancelCloud: "Cancel — use cloud AI",
-      cancelPlain: "Cancel download",
-      aiReady: "AI mode is on. Everything runs on your device — ask me anything about Ameer's work.",
-      aiReadyCloud: "AI mode is on via secure cloud — this device can't run the on-device model, so answers are generated by a cloud model instead. Ask me anything about Ameer's work.",
-      aiInterim: "Answers come from the secure cloud for now — the on-device model is still downloading and takes over automatically when it's ready.",
-      cloudInterim: "The on-device model is taking a while to download, so I'll answer through the secure cloud in the meantime — I'll switch over automatically once it's ready.",
-      aiUpgraded: "The on-device model is ready — I've switched from cloud to on-device AI, so your questions now stay on this device.",
-      canceledCloud: "Download canceled — switched to cloud AI. Everything still works.",
-      canceledPlain: "Download canceled. Instant answers keep working — you can enable on-device AI anytime above.",
-      aiError: "AI mode failed to load — your connection may have dropped, or the device ran out of memory. Instant answers still work.",
-      aiErrorCloud: "The on-device model couldn't load, so I've switched to cloud AI — everything still works.",
-      unsupported: "This device can't run the on-device AI model and the cloud AI service isn't available right now, so free-form AI answers are off. Instant answers below still work — or email ameeradhwa92@gmail.com.",
       fallbackDefault: "I don't have an instant answer for that one — sounds like a question for Ameer himself. Send him this chat with the buttons below, or try a suggested topic.",
       thinking: "Thinking…",
       handoffPrompt: "Ask Ameer directly — I'll attach a short summary of this chat:",
@@ -343,6 +289,9 @@
       jdNoMatches: "No items in this section.",
       jdReasonTitle: "Recruiter reasoning",
       jdReasonStatusCloud: "Recruiter reasoning used secure cloud AI, weighing the job description wording, the keyword-based baseline, and recruiter-safe evidence.",
+      jdReasonStatusJev: "Each requirement was decided by Jev, a decision model that picks from fixed match levels and published evidence and reports how sure it is; a language model wrote only the summary paragraph.",
+      jdDecisionProbability: "{p}% decision confidence",
+      jdOfferMatcher: "Want a requirement-by-requirement answer? Paste the job description into the JD matcher.",
       jdReasonStatusUnavailable: "Recruiter reasoning is unavailable right now, so the keyword-based estimate above stands on its own.",
       jdReasonStatusFallback: "AI reasoning could not be completed, so this report uses the keyword-based estimate above instead.",
       jdReasonRequirements: "Requirement-by-requirement reasoning",
@@ -372,28 +321,10 @@
       jdReasonMatchUnverified: "Unverified"
     },
     ms: {
-      greeting: "Salam sejahtera! Saya AIMeer — kembar AI Ameer. Tanya saya tentang kerjaya, projek dan kemahiran beliau, atau tekan cadangan di bawah. Mod AI penuh disediakan secara automatik — pada peranti anda jika mampu, melalui awan selamat jika tidak.",
+      greeting: "Salam sejahtera! Saya AIMeer — kembar AI Ameer. Tanya saya tentang kerjaya, projek dan kemahiran beliau, atau tekan cadangan di bawah. Jawapan diambil daripada profil terbitan Ameer melalui AI awan selamat; apa-apa yang tidak diliputi akan saya serahkan kepada Ameer sendiri.",
       placeholder: "Tanya AIMeer…",
-      statusInstant: "Jawapan segera · tanpa muat turun",
-      statusAI: "Mod AI · pada peranti anda",
+      statusInstant: "Jawapan segera · berfungsi luar talian",
       statusCloud: "Mod AI · awan selamat",
-      statusLoading: "Memuat turun model… ",
-      statusPreparing: "Menyediakan model… (muatan pertama mengompil pelorek GPU)",
-      aiDownloading: "AIMeer sedang menyediakan AI setempat di latar belakang (≈ 0.9 GB, sekali sahaja — soalan anda tidak akan meninggalkan peranti ini). Anda sudah boleh bersembang sementara ia dimuat turun.",
-      aiPitchManual: "AI setempat menjalankan model bahasa kecil sepenuhnya dalam pelayar anda — soalan anda tidak meninggalkan peranti ini. Muat turun sekali sahaja ≈ 0.9 GB.",
-      enableBtn: "Aktifkan AI setempat",
-      cancelCloud: "Batal — guna AI awan",
-      cancelPlain: "Batal muat turun",
-      aiReady: "Mod AI telah diaktifkan. Semuanya berjalan pada peranti anda — tanyalah apa-apa sahaja tentang kerja Ameer.",
-      aiReadyCloud: "Mod AI diaktifkan melalui awan selamat — peranti ini tidak dapat menjalankan model setempat, jadi jawapan dijana oleh model awan. Tanyalah apa-apa sahaja tentang kerja Ameer.",
-      aiInterim: "Buat masa ini jawapan datang daripada awan selamat — model setempat masih dimuat turun dan akan mengambil alih secara automatik apabila siap.",
-      cloudInterim: "Model setempat mengambil masa untuk dimuat turun, jadi buat sementara waktu saya menjawab melalui awan selamat — saya akan bertukar secara automatik apabila ia siap.",
-      aiUpgraded: "Model setempat sudah siap — saya beralih daripada awan kepada AI setempat, jadi soalan anda kini kekal pada peranti ini.",
-      canceledCloud: "Muat turun dibatalkan — beralih kepada AI awan. Semuanya masih berfungsi.",
-      canceledPlain: "Muat turun dibatalkan. Jawapan segera masih berfungsi — anda boleh mengaktifkan AI setempat pada bila-bila masa di atas.",
-      aiError: "Mod AI gagal dimuatkan — sambungan mungkin terputus, atau memori peranti tidak mencukupi. Jawapan segera masih berfungsi.",
-      aiErrorCloud: "Model setempat gagal dimuatkan, jadi saya beralih kepada AI awan — semuanya masih berfungsi.",
-      unsupported: "Peranti ini tidak dapat menjalankan model AI setempat dan perkhidmatan AI awan tidak tersedia buat masa ini, jadi jawapan AI bebas dimatikan. Jawapan segera di bawah masih berfungsi — atau e-mel ameeradhwa92@gmail.com.",
       fallbackDefault: "Saya tiada jawapan segera untuk soalan itu — nampaknya soalan untuk Ameer sendiri. Hantar sembang ini kepada beliau dengan butang di bawah, atau cuba topik yang dicadangkan.",
       thinking: "Sedang berfikir…",
       handoffPrompt: "Tanya Ameer secara terus — saya akan lampirkan ringkasan sembang ini:",
@@ -448,6 +379,9 @@
       jdNoMatches: "Tiada item dalam seksyen ini.",
       jdReasonTitle: "Penaakulan perekrut",
       jdReasonStatusCloud: "Penaakulan perekrut menggunakan AI awan selamat, menimbang kandungan huraian jawatan, garis dasar berasaskan kata kunci, dan bukti selamat perekrut.",
+      jdReasonStatusJev: "Setiap keperluan diputuskan oleh Jev, model keputusan yang memilih daripada tahap padanan tetap dan bukti terbitan serta melaporkan tahap keyakinannya; model bahasa hanya menulis perenggan ringkasan.",
+      jdDecisionProbability: "{p}% keyakinan keputusan",
+      jdOfferMatcher: "Mahukan jawapan mengikut setiap keperluan? Tampal huraian jawatan ke dalam mod padanan huraian jawatan.",
       jdReasonStatusUnavailable: "Penaakulan perekrut tidak tersedia sekarang, jadi anggaran berasaskan kata kunci di atas berdiri dengan sendirinya.",
       jdReasonStatusFallback: "Penaakulan AI tidak dapat diselesaikan, jadi laporan ini menggunakan anggaran berasaskan kata kunci di atas.",
       jdReasonRequirements: "Penaakulan mengikut keperluan",
@@ -584,16 +518,6 @@
   var chips = document.getElementById("chat-chips");
   var status = document.getElementById("chat-status");
   var statusText = status.querySelector(".chat-status-text");
-  var aiBox = document.getElementById("chat-ai");
-  var aiPitch = aiBox.querySelector(".chat-ai-pitch");
-  var aiEnable = document.getElementById("chat-ai-enable");
-  var cancelBtn = document.getElementById("chat-ai-cancel");
-  var progress = panel.querySelector(".chat-progress");
-  var progressBar = panel.querySelector(".chat-progress-bar");
-  var progressText = panel.querySelector(".chat-progress-text");
-  var modelCloud = document.getElementById("chat-model-cloud");
-  var modelLocal = document.getElementById("chat-model-local");
-  var modelTooltip = document.getElementById("chat-model-tooltip");
   var jdToggle = document.getElementById("chat-jd-toggle");
   var jdPanel = document.getElementById("chat-jd-panel");
   var jdInput = document.getElementById("chat-jd-input");
@@ -611,16 +535,9 @@
 
   var open = false, greeted = false, jdPromoAdded = false, busy = false;
   var jdPromoCopy = null, jdPromoAction = null;
-  var engine = null, canceled = false, downloadGeneration = 0;
-  var dlActive = false;      /* the on-device download is running */
-  var fallbackTimer = null;  /* switches answers to cloud if the download is slow */
-  var LOCAL_TIMEOUT = window.AIMEER_LOCAL_TIMEOUT || 20000; /* ms of downloading before cloud takes over answering */
-  var route = "pending"; /* pending | local | cloud | none */
-  var localOK = false;   /* device could run the on-device model (for manual retry) */
+  /* Visitors from the WebLLM era may still carry its route preference; nothing reads it now. */
   try { localStorage.removeItem("aimeer-route"); } catch (e) { }
-  var preferredMode = null; /* explicit cloud/local choice, independent of the live route */
-  var announcedCloud = false;
-  var aiState = "off"; /* off | loading | ready (local) | cloud | failed */
+  var aiState = cloudOk ? "cloud" : "off"; /* cloud | off (instant answers only) */
   var history = []; /* {role, content} — capped so prefill stays fast */
   var transcript = []; /* full visitor conversation, for the WhatsApp/email handoff */
   var lastUnanswered = ""; /* the question AIMeer couldn't answer */
@@ -683,8 +600,8 @@
 
   /* The reply lands in the element the dots occupied, so the bubble itself is continuous — it does
      not exit and re-enter. Only the content changes, faded so the swap is not a hard cut.
-     The fade fires ONLY on the dots-to-text transition. The streaming path calls this once per
-     token and finishReply calls it again at the end; animating every time would strobe. */
+     The fade fires ONLY on the dots-to-text transition, so a second call on a settled bubble
+     cannot strobe it. */
   function settleBubbleContent(bubble, text) {
     var wasThinking = bubble.classList.contains("thinking");
     bubble.classList.remove("thinking");
@@ -698,16 +615,6 @@
     bubble.classList.add("chat-msg-settle");
     void bubble.offsetWidth;
     bubble.classList.remove("chat-msg-settle");
-  }
-
-  /* Token streaming writes to the log many times a second. With scroll-behavior: smooth every one
-     of those would retarget an in-flight scroll animation, which lags behind the text instead of
-     following it. Streaming jumps; message boundaries ease. */
-  function scrollLogToEndNow() {
-    var previous = log.style.scrollBehavior;
-    log.style.scrollBehavior = "auto";
-    log.scrollTop = log.scrollHeight;
-    log.style.scrollBehavior = previous;
   }
 
   function addJdPromo() {
@@ -815,6 +722,8 @@
      goes to the cloud Worker or nowhere at all. Removed; see FINAL WHOLE-BRANCH REVIEW, I3. */
   function reasoningStatusKey(mode) {
     if (jdState.reasoningFallback) return "jdReasonStatusFallback";
+    if (mode === "cloud" && jdState.scoringMode === "ai" && jdState.result &&
+      jdState.result.reasoningEngine === "jev") return "jdReasonStatusJev";
     return mode === "cloud" ? "jdReasonStatusCloud" : "jdReasonStatusUnavailable";
   }
 
@@ -928,6 +837,22 @@
     parent.appendChild(row);
   }
 
+  /* Jev's weight on the level it chose. Shown as "how sure the decision model was", never as a
+     probability that Ameer can do the job — that is a different claim, and not one it makes.
+     motion.js grows the bar from --p; without it the bar simply renders at its width. */
+  function renderDecisionMeter(probability) {
+    var percent = Math.round(Math.max(0, Math.min(1, probability)) * 100);
+    var meter = createJdNode("div", "chat-jd-meter");
+    var track = createJdNode("span", "chat-jd-meter-track");
+    track.setAttribute("aria-hidden", "true");
+    var bar = createJdNode("i", "chat-jd-meter-bar");
+    bar.style.setProperty("--p", String(percent / 100));
+    track.appendChild(bar);
+    meter.appendChild(track);
+    meter.appendChild(createJdNode("span", "chat-jd-meter-label", formatT("jdDecisionProbability", { p: percent })));
+    return meter;
+  }
+
   function renderRequirementReasoning(result) {
     var items = Array.isArray(result && result.requirementReasoning) ? result.requirementReasoning : [];
     var section = createJdNode("section", "chat-jd-section");
@@ -944,6 +869,7 @@
       summary.className = "chat-jd-requirement-summary";
       summary.appendChild(createJdNode("span", "chat-jd-term", item.term));
       summary.appendChild(createJdBadge(matchLevelLabel(item.matchLevel), item.verified ? "is-professional" : "is-user"));
+      if (typeof item.probability === "number") summary.appendChild(renderDecisionMeter(item.probability));
       card.appendChild(summary);
 
       var body = createJdNode("div", "chat-jd-requirement-body");
@@ -1147,6 +1073,15 @@
     }
   }
 
+  /* A report just settled. motion.js — the only place GSAP drives the page — choreographs it; with
+     no listener (reduced motion, GSAP missing) the event is a no-op and the report is already final.
+     Fired once per settle, never from renderJdResult, which also re-renders on language changes. */
+  function announceJdReport(mode) {
+    try {
+      document.dispatchEvent(new CustomEvent("aimeer:jd-report", { detail: { mode: mode } }));
+    } catch (e) { }
+  }
+
   function resetRecruiterState() {
     if (!recruiterUI) return;
     jdState.fileToken += 1;
@@ -1174,153 +1109,13 @@
     }
   }
 
-  function setStatus(mode, extra) {
+  function setStatus(mode) {
     status.className = "chat-status chat-status-" + mode;
-    statusText.textContent =
-      mode === "ai" ? t("statusAI") :
-        mode === "cloud" ? t("statusCloud") :
-          mode === "loading" ? (extra || t("statusLoading")) :
-            t("statusInstant");
+    statusText.textContent = mode === "cloud" ? t("statusCloud") : t("statusInstant");
   }
 
   function refreshStatus() {
-    if (aiState === "ready") setStatus("ai");
-    else if (aiState === "cloud") setStatus("cloud");
-    else if (aiState !== "loading") setStatus("instant");
-    syncModelSwitch();
-  }
-
-  function showLocalCompatibilityHint() {
-    if (!modelTooltip || localOK) return;
-    modelTooltip.hidden = false;
-  }
-
-  function persistPreferredRoute(mode) {
-    preferredMode = mode;
-  }
-
-  function clearPreferredRoute() {
-    preferredMode = null;
-    try { localStorage.removeItem("aimeer-route"); } catch (e) { }
-  }
-
-  function cancelLocalDownload() {
-    if (!dlActive) return false;
-    downloadGeneration += 1;
-    canceled = true;
-    dlActive = false;
-    if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
-    progressBar.style.width = "0";
-    progress.hidden = true;
-    ringReady();
-    syncModelSwitch();
-    return true;
-  }
-
-  function setPreferredRoute(mode) {
-    if (mode !== "cloud" && mode !== "local") return;
-    if (mode === "cloud") {
-      var canceledDownload = cancelLocalDownload();
-      persistPreferredRoute("cloud");
-      switchToCloud(canceledDownload ? "canceledCloud" : null);
-      return;
-    }
-    if (!localOK) {
-      if (preferredMode === "local") clearPreferredRoute();
-      showLocalCompatibilityHint();
-      if (cloudOk && aiState !== "cloud") switchToCloud();
-      else syncModelSwitch();
-      return;
-    }
-    persistPreferredRoute("local");
-    hideLocalCompatibilityHint();
-    if (!dlActive && aiState !== "ready") startLocalAI();
-    else syncModelSwitch();
-  }
-
-  function hideLocalCompatibilityHint() {
-    if (modelTooltip) modelTooltip.hidden = true;
-  }
-
-  function syncModelSwitch() {
-    if (!modelCloud || !modelLocal) return;
-    var activeMode = route === "local" || aiState === "ready"
-      ? "local"
-      : (route === "cloud" || aiState === "cloud" || cloudOk ? "cloud" : null);
-    var selectedMode = preferredMode === "local" && !localOK ? activeMode : (preferredMode || activeMode);
-    var localSelected = selectedMode === "local";
-    var cloudSelected = selectedMode === "cloud";
-    modelCloud.classList.toggle("is-selected", cloudSelected);
-    modelLocal.classList.toggle("is-selected", localSelected);
-    modelLocal.classList.toggle("is-unavailable", !localOK);
-    modelCloud.setAttribute("aria-pressed", cloudSelected ? "true" : "false");
-    modelLocal.setAttribute("aria-pressed", localSelected ? "true" : "false");
-    if (localOK) hideLocalCompatibilityHint();
-  }
-
-  if (modelCloud && modelLocal) {
-    modelCloud.addEventListener("click", function () { setPreferredRoute("cloud"); });
-    modelLocal.addEventListener("click", function () {
-      setPreferredRoute("local");
-    });
-    modelLocal.addEventListener("focus", showLocalCompatibilityHint);
-    modelLocal.addEventListener("blur", hideLocalCompatibilityHint);
-  }
-
-  /* ---------------- launcher ring: grey → progress fill → accent glow ---------------- */
-  function ringPending() { launcher.classList.add("ai-pending"); }
-  function ringProgress(pct) {
-    launcher.classList.add("ai-downloading");
-    launcher.style.setProperty("--dl", pct);
-  }
-  function ringReady() {
-    launcher.classList.remove("ai-pending", "ai-downloading");
-    launcher.style.removeProperty("--dl");
-  }
-
-  /* ---------------- the AI box under the header ---------------- */
-  function applyAiBox() {
-    aiBox.classList.remove("unsupported");
-    if (aiState === "cloud" && dlActive) {
-      /* interim: cloud answers while the on-device download keeps going */
-      aiBox.hidden = false;
-      aiPitch.textContent = t("aiInterim");
-      aiEnable.hidden = true;
-      progress.hidden = false;
-      cancelBtn.hidden = false;
-      cancelBtn.textContent = t("cancelPlain");
-      syncModelSwitch();
-      return;
-    }
-    if (aiState === "ready" || aiState === "cloud") {
-      aiBox.hidden = true;
-      syncModelSwitch();
-      return;
-    }
-    aiBox.hidden = false;
-    if (aiState === "loading") {
-      aiPitch.textContent = t("aiDownloading");
-      aiEnable.hidden = true;
-      progress.hidden = false;
-      cancelBtn.hidden = false;
-      cancelBtn.textContent = cloudOk ? t("cancelCloud") : t("cancelPlain");
-    } else if (aiState === "failed" || (route === "none" && localOK)) {
-      aiPitch.textContent = aiState === "failed" ? t("aiError") : t("aiPitchManual");
-      aiEnable.hidden = false;
-      aiEnable.textContent = t("enableBtn");
-      progress.hidden = true;
-    } else if (route === "none") {
-      aiBox.classList.add("unsupported");
-      aiPitch.textContent = t("unsupported");
-      aiEnable.hidden = true;
-      progress.hidden = true;
-    } else {
-      /* route pending, or local download not started yet */
-      aiPitch.textContent = t("aiDownloading");
-      aiEnable.hidden = true;
-      progress.hidden = true;
-    }
-    syncModelSwitch();
+    setStatus(aiState === "cloud" ? "cloud" : "instant");
   }
 
   function refreshLangBits() {
@@ -1344,7 +1139,6 @@
     var typing = log.querySelector(".chat-typing");
     if (typing) typing.setAttribute("aria-label", t("thinking"));
     refreshStatus();
-    applyAiBox();
     if (jdPromoCopy) jdPromoCopy.textContent = t("jdPromo");
     if (jdPromoAction) jdPromoAction.textContent = t("jdPromoAction");
     if (recruiterUI) {
@@ -1400,17 +1194,8 @@
     if (!greeted) {
       greeted = true;
       addMsg("bot", t("greeting"));
-      if (aiState === "cloud" && !announcedCloud) {
-        announcedCloud = true;
-        addMsg("bot", t("aiReadyCloud"));
-      }
     }
     addJdPromo();
-    /* opening the chat is intent — start the local download right away */
-    if (route === "local" && aiState === "off") {
-      if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
-      startLocalAI();
-    }
     refreshLangBits();
     input.focus();
   }
@@ -1430,219 +1215,15 @@
     if (e.key === "Escape" && open) closePanel();
   });
 
-  /* ---------------- route decision: local model, cloud relay, or neither ---------------- */
-  function decideRoute() {
-    var pref = preferredMode;
-    var requestAdapter = navigator.gpu && navigator.gpu.requestAdapter
-      ? navigator.gpu.requestAdapter()
-      : Promise.resolve(null);
-    return requestAdapter.then(function (adapter) {
-      var policy = window.AIMEER_DEVICE.evaluate({
-        userAgent: navigator.userAgent || "",
-        platform: navigator.platform || "",
-        maxTouchPoints: navigator.maxTouchPoints || 0,
-        hasWebGPU: !!adapter,
-        maxBufferSize: adapter && adapter.limits ? (adapter.limits.maxBufferSize || 0) : 0,
-        saveData: !!(navigator.connection && navigator.connection.saveData)
-      });
-      localOK = policy.localEligible;
-      if (pref === "local" && !localOK) {
-        clearPreferredRoute();
-        pref = null;
-      }
-      syncModelSwitch();
-      if (pref === "cloud" && cloudOk) return "cloud";
-      if (pref === "local" && localOK) return "local";
-      if (pref === "off") return "none"; /* visitor canceled before; manual enable still offered */
-      if (policy.cloudPreferred) {
-        return cloudOk ? "cloud" : "none";
-      }
-      return localOK ? "local" : (cloudOk ? "cloud" : "none");
-    }).catch(function () {
-      localOK = false;
-      if (pref === "local") clearPreferredRoute();
-      syncModelSwitch();
-      return Promise.resolve(cloudOk ? "cloud" : "none");
-    });
-  }
+  refreshStatus();
 
-  function switchToCloud(msgKey) {
-    route = "cloud";
-    aiState = "cloud";
-    ringReady();
-    refreshStatus();
-    applyAiBox();
-    if (recruiterUI && jdState.result) renderJdResult();
-    syncModelSwitch();
-    if (greeted && msgKey) {
-      announcedCloud = true;
-      addMsg("bot", t(msgKey));
-    }
-  }
 
-  /* ---------------- tier 2: on-device webllm, auto-started ---------------- */
-  function startLocalAI() {
-    if (dlActive || aiState === "ready") return;
-    var generation = ++downloadGeneration;
-    aiState = "loading";
-    route = "local";
-    canceled = false;
-    dlActive = true;
-    ringProgress(0);
-    setStatus("loading");
-    applyAiBox();
+  /* ---------------- tier 2: cloud relay ---------------- */
+  /* Resolves to { reply, action }. `action` is the Worker's Jev triage: "salary" and "handoff"
+     arrive with no reply on purpose (nothing was generated), "jd" and "answer" with one. A Worker
+     from before triage sends no action, which reads as "answer". */
+  var TRIAGE_ACTIONS = ["answer", "salary", "handoff", "jd"];
 
-    /* if the download takes longer than ~20s, cloud takes over answering while
-       the download keeps going in the background — local swaps back in when done */
-    if (cloudOk) {
-      fallbackTimer = setTimeout(function () {
-        fallbackTimer = null;
-        if (generation !== downloadGeneration || aiState !== "loading" || canceled) return;
-        aiState = "cloud";
-        refreshStatus();
-        applyAiBox();
-        if (greeted) {
-          announcedCloud = true;
-          addMsg("bot", t("cloudInterim"));
-        }
-      }, LOCAL_TIMEOUT);
-    }
-
-    Promise.all([ensureKB(), navigator.gpu.requestAdapter()]).then(function (r) {
-      if (generation !== downloadGeneration || canceled) return null;
-      var adapter = r[1];
-      if (!adapter) throw new Error("no-webgpu-adapter");
-      /* f16 shaders halve memory; fall back to f32 weights where unsupported */
-      var model = adapter.features.has("shader-f16")
-        ? "Llama-3.2-1B-Instruct-q4f16_1-MLC"
-        : "Llama-3.2-1B-Instruct-q4f32_1-MLC";
-      return import(WEBLLM_CDN).then(function (webllm) {
-        if (generation !== downloadGeneration || canceled) return null;
-        return webllm.CreateMLCEngine(model, {
-          initProgressCallback: function (p) {
-            if (generation !== downloadGeneration || canceled) return;
-            var pct = Math.round((p.progress || 0) * 100);
-            ringProgress(pct);
-            progressBar.style.width = pct + "%";
-            progressText.textContent = pct >= 100 ? t("statusPreparing") : pct + "%";
-            /* don't clobber the status line once cloud has taken over answering */
-            if (aiState === "loading") {
-              setStatus("loading", pct >= 100 ? t("statusPreparing") : t("statusLoading") + pct + "%");
-            }
-          }
-        });
-      });
-    }).then(function (e) {
-      if (generation !== downloadGeneration || canceled) {
-        /* visitor bailed while this resolved — drop the engine again */
-        try { if (e && e.unload) e.unload(); } catch (err) { }
-        return;
-      }
-      if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
-      var wasInterim = aiState === "cloud";
-      engine = e;
-      aiState = "ready";
-      dlActive = false;
-      ringReady();
-      setStatus("ai");
-      applyAiBox();
-      if (greeted) addMsg("bot", t(wasInterim ? "aiUpgraded" : "aiReady"));
-    }).catch(function (err) {
-      if (generation !== downloadGeneration) return;
-      if (fallbackTimer) { clearTimeout(fallbackTimer); fallbackTimer = null; }
-      dlActive = false;
-      if (canceled) return;
-      if (window.console && console.warn) console.warn("WebLLM init failed:", err);
-      if (aiState === "cloud") {
-        /* cloud already answering — just stop showing the download UI */
-        route = "cloud";
-        ringReady();
-        applyAiBox();
-      } else if (cloudOk) {
-        switchToCloud("aiErrorCloud");
-      } else {
-        aiState = "failed";
-        route = "none";
-        ringReady();
-        setStatus("instant");
-        applyAiBox();
-        if (greeted) addMsg("bot", t("aiError"));
-      }
-    });
-  }
-  aiEnable.addEventListener("click", startLocalAI);
-
-  cancelBtn.addEventListener("click", function () {
-    if (!dlActive) return;
-    cancelLocalDownload();
-    preferredMode = cloudOk ? "cloud" : null;
-    if (cloudOk) {
-      switchToCloud("canceledCloud");
-    } else {
-      aiState = "off";
-      route = "none";
-      ringReady();
-      setStatus("instant");
-      applyAiBox();
-      if (greeted) addMsg("bot", t("canceledPlain"));
-    }
-  });
-
-  var autoTimer = null;
-  function scheduleAutoStart() {
-    var kick = function () {
-      autoTimer = setTimeout(function () { startLocalAI(); }, 2200);
-    };
-    if (document.readyState === "complete") kick();
-    else window.addEventListener("load", kick);
-  }
-
-  ringPending();
-  decideRoute().then(function (r) {
-    if (aiState !== "off") return; /* a manual/auto start already won the race */
-    route = r;
-    if (r === "local") {
-      if (open) startLocalAI();
-      else scheduleAutoStart();
-    } else {
-      if (r === "cloud") {
-        aiState = "cloud";
-        if (greeted && !announcedCloud) {
-          announcedCloud = true;
-          addMsg("bot", t("aiReadyCloud"));
-        }
-      }
-      ringReady();
-    }
-    syncModelSwitch();
-    if (open) { refreshStatus(); applyAiBox(); }
-  });
-
-  async function askLLM(text, bubble) {
-    if (!KB) await ensureKB();
-    history.push({ role: "user", content: text });
-    if (history.length > 8) history = history.slice(-8);
-    var messages = [{ role: "system", content: PROMPT_HEAD + KB }].concat(history);
-    var reply = "";
-    var stream = await engine.chat.completions.create({
-      messages: messages,
-      stream: true,
-      temperature: 0.2,
-      max_tokens: 300
-    });
-    for await (var chunk of stream) {
-      var delta = chunk.choices && chunk.choices[0] && chunk.choices[0].delta;
-      if (delta && delta.content) {
-        reply += delta.content;
-        settleBubbleContent(bubble, reply);
-        scrollLogToEndNow();
-      }
-    }
-    history.push({ role: "assistant", content: reply });
-    return reply;
-  }
-
-  /* ---------------- tier 3: cloud relay ---------------- */
   function askCloud(text) {
     history.push({ role: "user", content: text });
     if (history.length > 8) history = history.slice(-8);
@@ -1654,10 +1235,12 @@
       if (!r.ok) throw new Error("cloud-" + r.status);
       return r.json();
     }).then(function (d) {
-      var reply = (d.reply || "").trim();
+      var reply = String((d && d.reply) || "").trim();
+      var action = d && TRIAGE_ACTIONS.indexOf(d.action) !== -1 ? d.action : "answer";
+      if (action === "salary" || action === "handoff") return { reply: "", action: action };
       if (!reply) throw new Error("cloud-empty");
       history.push({ role: "assistant", content: reply });
-      return reply;
+      return { reply: reply, action: action };
     });
   }
 
@@ -1667,13 +1250,13 @@
      prose, or a withheld-notice when it carried personal identifiers); nothing here
      re-derives or re-screens it, and 12000 mirrors the Worker's own clip so an oversize
      payload never round-trips. */
-  function buildJdScoringCloudPayload(input) {
+  function buildJdScoringCloudPayload(input, mode) {
     var safeInput = input || {};
     var evidenceIds = (Array.isArray(safeInput.evidenceRegistry) ? safeInput.evidenceRegistry : [])
       .map(function (record) { return record && typeof record.id === "string" ? record.id : ""; })
       .filter(Boolean);
     return {
-      mode: "jd-scoring",
+      mode: mode === "jd-decide" ? "jd-decide" : "jd-scoring",
       language: safeInput.language === "ms" ? "ms" : "en",
       jdText: String(safeInput.jdText || "").slice(0, 12000),
       deterministicInput: {
@@ -1686,11 +1269,11 @@
     };
   }
 
-  function requestJdScoringViaCloud(input) {
+  function requestJdScoringViaCloud(input, mode) {
     return fetch(CLOUD_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildJdScoringCloudPayload(input))
+      body: JSON.stringify(buildJdScoringCloudPayload(input, mode))
     }).then(function (r) {
       /* A failed response body carries `error` and, for a 502 reasoning-invalid, `reason` —
          the specific output-validation rule the model broke. Fold it into the thrown message
@@ -1713,10 +1296,12 @@
     });
   }
 
-  /* AI scoring is cloud-only: the on-device 1B model cannot produce the structured
-     score this contract needs, so a pending local download never gates or delays it.
-     One silent retry, then the deterministic pass stands on its own as a labeled
-     keyword estimate. */
+  /* AI scoring is cloud-only. Jev decisions (jd-decide) first: one request, no generated JSON to
+     break. Any jd-decide failure — a Worker from before Jev answers it as an unknown mode, or Jev
+     is unavailable — falls through to the jd-scoring flow exactly as it was: one silent retry,
+     then the deterministic pass stands on its own as a labeled keyword estimate. The one
+     exception is the Worker refusing the payload itself (a 4xx naming a jd- rule, such as
+     jd-privacy-invalid): jd-scoring validates the identical body and would refuse it too. */
   function requestJdReasoning() {
     if (!jdState.deterministicResult || !jdState.normalizedText || jdState.reasoningBusy) return;
     var deterministicResult = jdState.deterministicResult;
@@ -1744,6 +1329,7 @@
       jdState.result = deterministicResult;
       renderJdResult();
       markJdScoringSettled();
+      announceJdReport("fallback");
     }
 
     function requestScoringAttempt() {
@@ -1752,7 +1338,37 @@
         if (!validation || !validation.ok) {
           throw new Error(validation && validation.error ? validation.error : "reasoning-invalid");
         }
-        return validation.reasoning;
+        return { reasoning: validation.reasoning, input: reasoningInput };
+      });
+    }
+
+    /* Validated and merged against the wider decision input: Jev may cite any citable record in
+       the published profile, not only the ids the keyword pass referenced. */
+    function requestDecisionAttempt(profile) {
+      var decisionInput = window.JDReasoning.buildDecisionInput(reasoningInput, profile);
+      return requestJdScoringViaCloud(reasoningInput, "jd-decide").then(function (rawOutput) {
+        var validation = window.JDReasoning.validateModelOutput(rawOutput, decisionInput);
+        if (!validation || !validation.ok) {
+          throw new Error(validation && validation.error ? validation.error : "decide-invalid");
+        }
+        return { reasoning: validation.reasoning, input: decisionInput };
+      });
+    }
+
+    function requestScoringWithRetry() {
+      return requestScoringAttempt().catch(function (firstError) {
+        if (!canApplyReasoning()) return null;
+        /* A 4xx is the Worker refusing this exact payload — a privacy or shape violation.
+           Sending it again would fail identically, so retry only transport failures,
+           unparseable responses and invalid model output.
+           The (?::|$) is load-bearing: requestJdScoringViaCloud appends ":<reason>" to the
+           message when the Worker names a failure reason, and an anchored /^cloud-4\d\d$/
+           would stop matching — silently re-transmitting a payload the Worker already
+           refused, including one it refused on privacy grounds. */
+        if (/^cloud-4\d\d(?::|$)/.test(String(firstError && firstError.message))) throw firstError;
+        if (window.console && console.warn) console.warn("JD scoring retry after:", firstError);
+        markJdScoringRetrying();
+        return requestScoringAttempt();
       });
     }
 
@@ -1785,34 +1401,28 @@
         profile,
         currentLanguage
       );
-      return requestScoringAttempt().catch(function (firstError) {
+      if (typeof window.JDReasoning.buildDecisionInput !== "function") return requestScoringWithRetry();
+      return requestDecisionAttempt(profile).catch(function (decideError) {
         if (!canApplyReasoning()) return null;
-        /* A 4xx is the Worker refusing this exact payload — a privacy or shape violation.
-           Sending it again would fail identically, so retry only transport failures,
-           unparseable responses and invalid model output.
-           The (?::|$) is load-bearing: requestJdScoringViaCloud appends ":<reason>" to the
-           message when the Worker names a failure reason, and an anchored /^cloud-4\d\d$/
-           would stop matching — silently re-transmitting a payload the Worker already
-           refused, including one it refused on privacy grounds. */
-        if (/^cloud-4\d\d(?::|$)/.test(String(firstError && firstError.message))) throw firstError;
-        if (window.console && console.warn) console.warn("JD scoring retry after:", firstError);
-        markJdScoringRetrying();
-        return requestScoringAttempt();
+        if (/^cloud-4\d\d:jd-/.test(String(decideError && decideError.message))) throw decideError;
+        if (window.console && console.warn) console.warn("JD decide fallback to scoring:", decideError);
+        return requestScoringWithRetry();
       });
-    }).then(function (reasoning) {
+    }).then(function (scored) {
       /* Staleness returns silently — a newer analysis already owns jdState and the status
          line.  Anything else must settle, or the status line stays on "analyzing" forever. */
       if (!canApplyReasoning()) return;
-      if (!reasoning) {
+      if (!scored) {
         applyScoringFallback("reasoning-empty");
         return;
       }
       jdState.reasoningBusy = false;
       jdState.reasoningFallback = false;
       jdState.scoringMode = "ai";
-      jdState.result = window.JDReasoning.mergeResult(deterministicResult, reasoning, reasoningInput);
+      jdState.result = window.JDReasoning.mergeResult(deterministicResult, scored.reasoning, scored.input);
       renderJdResult();
       markJdScoringSettled();
+      announceJdReport("ai");
     }).catch(function (err) {
       applyScoringFallback(err);
     });
@@ -1868,24 +1478,6 @@
     var convo = transcript.slice(-12).map(function (m) {
       return (m.role === "user" ? "Visitor: " : "AIMeer: ") + m.content;
     }).join("\n");
-    if (aiState === "ready" && engine) {
-      return engine.chat.completions.create({
-        messages: [
-          {
-            role: "system", content:
-              "Summarize this chat between a website visitor and AIMeer (Ameer's portfolio assistant) " +
-              "in at most 3 short sentences addressed to Ameer, in the visitor's language " +
-              "(English or Bahasa Malaysia). Plain text only, no preamble."
-          },
-          { role: "user", content: convo }
-        ],
-        stream: false,
-        temperature: 0.2,
-        max_tokens: 160
-      }).then(function (res) {
-        return decorateSummary(res.choices[0].message.content);
-      }).catch(function () { return mechanicalSummary(); });
-    }
     if (aiState === "cloud") {
       return fetch(CLOUD_ENDPOINT, {
         method: "POST",
@@ -1969,6 +1561,49 @@
     busy = false;
   }
 
+  /* The Jev triage answers that never reach the LLM. A salary question gets the curated
+     compensation copy from TOPICS (the same text the instant tier gives) and the handoff; an
+     out-of-knowledge one gets the honest "ask Ameer" line and the handoff. Neither is generated. */
+  function salaryAnswer() {
+    for (var index = 0; index < TOPICS.length; index += 1) {
+      if (TOPICS[index].keys === SALARY_KEYS) return TOPICS[index][lang()];
+    }
+    return t("fallbackDefault");
+  }
+
+  function applyCloudAnswer(bubble, answer, question) {
+    if (answer.action === "salary") {
+      finishReply(bubble, salaryAnswer(), false, question);
+      offerHandoff();
+      return;
+    }
+    if (answer.action === "handoff") {
+      finishReply(bubble, t("fallbackDefault"), true, question);
+      return;
+    }
+    finishReply(bubble, answer.reply, DONT_KNOW.test(answer.reply), question);
+    if (answer.action === "jd") offerJdMatcher();
+  }
+
+  /* A job-match question in plain chat: point at the matcher, once per session, because a
+     paragraph cannot do what the requirement-by-requirement report does. */
+  var jdMatcherOffered = false;
+  function offerJdMatcher() {
+    if (!recruiterUI || jdMatcherOffered) return;
+    jdMatcherOffered = true;
+    var card = document.createElement("div");
+    card.className = "chat-msg chat-msg-bot chat-jd-offer";
+    card.appendChild(createJdNode("p", "chat-jd-promo-copy", t("jdOfferMatcher")));
+    var action = document.createElement("button");
+    action.type = "button";
+    action.className = "chat-jd-action chat-jd-promo-action";
+    action.textContent = t("jdPromoAction");
+    action.addEventListener("click", function () { setRecruiterOpen(true); });
+    card.appendChild(action);
+    log.appendChild(card);
+    log.scrollTop = log.scrollHeight;
+  }
+
   function send(text) {
     text = text.trim();
     if (!text || busy) return;
@@ -1978,17 +1613,9 @@
     busy = true;
     var bubble = setThinkingDots(addMsg("bot", ""));
 
-    if (aiState === "ready" && engine) {
-      askLLM(text, bubble).then(function (reply) {
-        finishReply(bubble, reply, DONT_KNOW.test(reply), text);
-      }).catch(function (err) {
-        if (window.console && console.warn) console.warn("WebLLM chat failed:", err);
-        var a = instantAnswer(text);
-        finishReply(bubble, a.text, !a.matched, text);
-      });
-    } else if (aiState === "cloud") {
-      askCloud(text).then(function (reply) {
-        finishReply(bubble, reply, DONT_KNOW.test(reply), text);
+    if (aiState === "cloud") {
+      askCloud(text).then(function (answer) {
+        applyCloudAnswer(bubble, answer, text);
       }).catch(function (err) {
         if (window.console && console.warn) console.warn("Cloud AI failed:", err);
         var a = instantAnswer(text);
@@ -2064,7 +1691,32 @@
       jdFile.click();
     });
     jdFile.addEventListener("change", function () {
-      var file = jdFile.files && jdFile.files[0] ? jdFile.files[0] : null;
+      handleJdFile(jdFile.files && jdFile.files[0] ? jdFile.files[0] : null);
+    });
+
+    /* Drag and drop onto the upload card: the same path as the picker, so the type, size and
+       extractor checks cannot drift between the two. The hidden input is cleared so choosing the
+       same file again afterwards still fires a change. */
+    var jdDrop = document.getElementById("chat-jd-drop");
+    if (jdDrop) {
+      var setDragOver = function (on) { jdDrop.classList.toggle("is-dragover", on); };
+      jdDrop.addEventListener("dragover", function (e) {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+        setDragOver(true);
+      });
+      jdDrop.addEventListener("dragleave", function () { setDragOver(false); });
+      jdDrop.addEventListener("drop", function (e) {
+        e.preventDefault();
+        setDragOver(false);
+        var files = e.dataTransfer && e.dataTransfer.files;
+        if (!files || !files.length) return;
+        jdFile.value = "";
+        handleJdFile(files[0]);
+      });
+    }
+
+    function handleJdFile(file) {
       var token = ++jdState.fileToken;
       jdInput.value = "";
       jdState.fileName = file && file.name ? file.name : "";
@@ -2111,7 +1763,7 @@
           errorKey: extractorErrorKey(err && err.message)
         });
       });
-    });
+    }
 
     jdInput.addEventListener("input", function () {
       if (jdInput.value.trim() && (jdState.fileName || jdState.extractedText)) {

@@ -1,10 +1,11 @@
 # AIMeer cloud relay
 
-`aimeer-worker.js` is a Cloudflare Worker that gives AIMeer real AI answers on
-devices that can't run the on-device WebLLM model (iPhones/iPads, browsers
-without WebGPU, low-memory GPUs). It runs Meta Llama 3.1 8B on **Workers AI**,
-entirely inside Cloudflare's free tier — no API key is stored anywhere, and the
-Worker only answers requests coming from the portfolio site.
+`aimeer-worker.js` is a Cloudflare Worker and AIMeer's only AI tier (the
+on-device WebLLM tier was retired in 2026-10). It runs two models on the one
+**Workers AI** binding: TypeSafe's **Jev** makes typed decisions (chat triage,
+recruiter match levels and evidence) and Meta **Llama 3.1 8B** writes text
+(chat answers, summaries, the JD narrative). No API key is stored anywhere, and
+the Worker only answers requests coming from the portfolio site.
 
 ## One-time setup (~10 minutes, free, no credit card)
 
@@ -48,7 +49,7 @@ curl -s -X POST https://aimeer-ai.<your-subdomain>.workers.dev/ \
   -H 'Content-Type: application/json' \
   -H 'Origin: https://ameeradhwa92.github.io' \
   -d '{"mode":"version"}'
-# {"revision":"2026-07-30-jd-6","aiBinding":true}
+# {"revision":"2026-10-02-jev-1","aiBinding":true}
 ```
 
 If `revision` does not match the constant in the file you just pasted, the deploy
@@ -57,6 +58,23 @@ reports whether the `AI` binding is still attached, and the version probe costs 
 Workers AI call. Every `jd-scoring` / `jd-reasoning` response carries the same
 `revision`, so a failure reason can always be read against the code that produced
 it.
+
+Then confirm Jev itself answers, and which catalogue id did (the Worker tries
+`@cf/typesafe/jev`, then `typesafe/jev`, and remembers the first that runs):
+
+```bash
+curl -s -X POST https://aimeer-ai.<your-subdomain>.workers.dev/ \
+  -H 'Content-Type: application/json' \
+  -H 'Origin: https://ameeradhwa92.github.io' \
+  -d '{"mode":"jev-probe"}'
+# {"revision":"2026-10-02-jev-1","ok":true,"model":"@cf/typesafe/jev","reason":"","urgent":0.93}
+```
+
+`ok:false` with `reason: jev-run-failed:...` means Jev is not reachable from this
+account's binding — check the model is listed under Workers AI → Models. Nothing
+breaks meanwhile: chat answers untriaged and the JD matcher falls back to
+`jd-scoring`. `jev-shape-invalid` means Jev answered in a shape `readJevAnswers`
+does not recognise; log the raw output and widen that reader.
 
 Suggested smoke tests after a manual redeploy:
 
@@ -67,7 +85,48 @@ Suggested smoke tests after a manual redeploy:
 - `jd-reasoning` accepts a bounded valid payload and returns structured JSON
   reasoning, while invalid payloads return safe error codes.
 - `jd-scoring` accepts the same payload plus the JD prose and returns an
-  `overall` block. This is the mode the live site uses for every match report.
+  `overall` block. The site's fallback when `jd-decide` fails.
+- `jd-decide` accepts the same payload and returns the same shape with
+  `"engine":"jev"` and a per-requirement `probability`. This is the mode the
+  live site tries first for every match report.
+- `chat` with a salary question returns `{"reply":"","action":"salary"}`.
+
+## `jd-decide`: Jev decisions, one call
+
+Jev does not generate text. It reads a state and answers named typed questions —
+`choice` (one label from a fixed set, with a probability per label), `score` (a
+probability-weighted level on an ordered rubric) and `noul` (a yes/no probability).
+`jd-decide` sends one Jev request: the JD prose, the requirements and every citable
+evidence record as state, then per requirement a `level_i` choice over the seven
+match levels and an `evidence_i` choice over the evidence ids plus `none`, and one
+`overall_fit` score on a four-level rubric (mapped to 30/50/67/85 so a fractional
+answer lands inside the right fit band).
+
+Because a choice answer can only be one of the labels offered, the failures
+`jd-scoring` has to tolerate after the fact — invented match levels, invented
+evidence ids, missing fields, truncated JSON — cannot happen. The Worker still
+applies the browser validator's provenance rules before relaying (an evidence-based
+level must cite a compatible record above probability 0.15, otherwise it is demoted,
+and a demoted decision is never reported as confident). Per-requirement copy is
+templated in English and Bahasa Melayu; Llama writes only the narrative, as plain
+text, from the decisions — and a narrative that looks like JSON, markup or a
+percentage of its own is replaced by a templated one.
+
+A `502 {"error":"decide-unavailable","stage":"jev"|"decide","reason":...}` is
+expected while Jev is unavailable; the browser then runs the `jd-scoring` flow
+below unchanged.
+
+## Chat triage
+
+Before the LLM answers a chat message, Jev answers two questions about it: what it
+is about (`intent`, a choice) and whether `aimeer-kb.txt` can answer it
+(`answerable`, a noul). Only strong signals act: compensation at ≥ 0.6 returns
+`action: "salary"` and a confidently unanswerable question (< 0.2, greetings
+exempt) returns `action: "handoff"` — both with an empty reply and **no LLM
+call**, so nothing is generated that could quote a number or invent a fact. A
+job-match intent returns `action: "jd"` alongside the answer, and the browser
+offers the JD matcher. Triage is capped at 2.5 s; a slow or failed Jev leaves
+chat exactly as it was before Jev.
 
 ## `jd-scoring` runs two model calls
 
@@ -87,6 +146,9 @@ a ten-field-per-requirement contract at once. Each `502` names which call broke 
 its `stage` field.
 
 Budget note: two calls per analysis instead of one, against 10,000 neurons/day.
+`jd-decide` is also two calls (one Jev, one short Llama narrative), and chat adds
+one Jev triage call per message; check the Workers AI dashboard for what Jev costs
+in neurons on this account.
 
 ## Diagnosing a `reasoning-invalid` 502
 

@@ -97,56 +97,33 @@ test("client helper builds a bounded jd-explanation payload without client syste
   assert.match(payload.disclaimer, /estimated compatibility score/i);
 });
 
-test("client helper keeps interim cloud fallback unavailable for local-capable devices but preserves genuine cloud routes", () => {
+test("client helper reports cloud whenever the Worker is configured, with no on-device tier left to wait for", () => {
   const helper = loadExplanationHelper();
 
+  /* The on-device WebLLM tier was retired (2026-10): legacy state fields such as a running
+     download no longer produce "waiting" — recruiter reasoning is cloud or nothing. */
   assert.equal(helper.getExplanationMode({
     hasResult: true,
     hasNormalizedText: true,
     aiState: "cloud",
     localOK: true,
-    preferredMode: null,
     route: "local",
     cloudOk: true,
     dlActive: true,
-    hasEngine: false
-  }), "waiting");
-
-  assert.equal(helper.getExplanationMode({
-    hasResult: true,
-    hasNormalizedText: true,
-    aiState: "loading",
-    localOK: true,
-    preferredMode: null,
-    route: "local",
-    cloudOk: true,
-    dlActive: true,
-    hasEngine: false
-  }), "waiting");
-
-  assert.equal(helper.getExplanationMode({
-    hasResult: true,
-    hasNormalizedText: true,
-    aiState: "cloud",
-    localOK: true,
-    preferredMode: "cloud",
-    route: "cloud",
-    cloudOk: true,
-    dlActive: false,
     hasEngine: false
   }), "cloud");
 
   assert.equal(helper.getExplanationMode({
     hasResult: true,
     hasNormalizedText: true,
-    aiState: "cloud",
-    localOK: false,
-    preferredMode: null,
-    route: "cloud",
-    cloudOk: true,
-    dlActive: false,
-    hasEngine: false
-  }), "cloud");
+    cloudOk: false
+  }), "unavailable");
+
+  assert.equal(helper.getExplanationMode({
+    hasResult: true,
+    hasNormalizedText: false,
+    cloudOk: true
+  }), "unavailable");
 });
 
 test("client helper token guards reject stale explanation responses after invalidation", () => {

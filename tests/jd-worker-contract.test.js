@@ -35,8 +35,13 @@ function loadBrowserHarness() {
   };
 }
 
-async function loadWorker() {
-  const source = fs.readFileSync(workerPath, 'utf8');
+let workerNonce = 0;
+
+/* `fresh` appends a unique comment so the data: URL differs and the import is not served from the
+   module cache — the Worker caches which Jev model id answered in module scope, and a test that
+   exercises the id fallback must not inherit an earlier test's choice. */
+async function loadWorker(fresh) {
+  const source = fs.readFileSync(workerPath, 'utf8') + (fresh ? `\n// fresh ${++workerNonce}\n` : '');
   const specifier = `data:text/javascript;base64,${Buffer.from(source, 'utf8').toString('base64')}`;
   const moduleNs = await import(specifier);
   return moduleNs.default;
@@ -177,7 +182,7 @@ function overallFixtureFor(fixture) {
 }
 
 async function callWorker(body, options = {}) {
-  const worker = await loadWorker();
+  const worker = await loadWorker(options.freshWorker);
   const fetchCalls = [];
   const aiCalls = [];
   const kbText = options.kbText || 'AIMeer bounded recruiter knowledge base.';
@@ -221,6 +226,7 @@ async function callWorker(body, options = {}) {
     env.AI = {
       async run(model, payload) {
         aiCalls.push({ model, payload });
+        if (options.aiImpl) return options.aiImpl(model, payload, aiCalls);
         if (options.aiError) throw options.aiError;
         const fixture = options.aiResponse !== undefined
           ? options.aiResponse
@@ -1842,7 +1848,10 @@ test('existing chat, summary, and jd-explanation modes remain compatible', async
   assert.equal(chat.status, 200);
   assert.equal(chat.json.reply, 'Chat reply');
   assert.equal(chat.fetchCalls.some((url) => url.includes('/assets/data/aimeer-kb.txt')), true);
-  assert.match(chat.aiCalls[0].payload.messages[0].content, /LEGACY-KB-FACT/);
+  /* Chat now asks Jev to triage first; an unreadable triage (this fixture is plain text) leaves
+     the LLM call exactly as it was. */
+  const chatLlmCall = chat.aiCalls.find((call) => call.payload.messages);
+  assert.match(chatLlmCall.payload.messages[0].content, /LEGACY-KB-FACT/);
 
   const summary = await callWorker({
     mode: 'summary',
@@ -1949,4 +1958,337 @@ test('the reasoning prompt never shows the model a matchLevel-shaped classificat
       `${classification} is a classification value with no matchLevel counterpart and must not ` +
       `appear in the model's input`);
   }
+});
+
+/* ---------------- Jev: jd-decide, chat triage, jev-probe ---------------- */
+
+const LLM_MODEL = '@cf/meta/llama-3.1-8b-instruct-fast';
+const isJev = (model) => /typesafe\/jev$/.test(model);
+
+function buildDecideRequest(options = {}) {
+  return { ...buildValidRequest(options), mode: 'jd-decide' };
+}
+
+/* Answers every question Jev is asked: `pick(name, question)` returns the answer for one question,
+   or undefined for the defaults below (first evidence record, adjacent-professional, score 2). */
+function jevAnswerer(pick = () => undefined) {
+  return (payload) => {
+    const answers = {};
+    for (const [name, question] of Object.entries(payload.questions)) {
+      const custom = pick(name, question, payload);
+      if (custom !== undefined) {
+        answers[name] = custom;
+        continue;
+      }
+      if (question.type === 'score') {
+        answers[name] = { type: 'score', score: 2, probabilities: { 0: 0, 1: 0.1, 2: 0.8, 3: 0.1 } };
+      } else if (question.type === 'choice' && name.startsWith('evidence_')) {
+        const professional = payload.state.publishedEvidence.find((record) => record.evidenceType === 'professional');
+        answers[name] = {
+          type: 'choice',
+          choice: professional.id,
+          probabilities: { [professional.id]: 0.7, none: 0.1 }
+        };
+      } else if (question.type === 'choice') {
+        answers[name] = {
+          type: 'choice',
+          choice: 'adjacent-professional',
+          probabilities: { 'adjacent-professional': 0.86, 'direct-professional': 0.1 }
+        };
+      } else {
+        answers[name] = { type: 'noul', noul: 0.5 };
+      }
+    }
+    return { model: 'jev-1.13.0', answers, usage: { input_tokens: 1, output_tokens: 1 } };
+  };
+}
+
+function decideAi({ jev = jevAnswerer(), narrative = 'Ameer brings adjacent Azure delivery to this role, with container orchestration the one area to confirm in screening.', jevError = null } = {}) {
+  return (model, payload) => {
+    if (isJev(model)) {
+      if (jevError) throw jevError;
+      return jev(payload);
+    }
+    if (narrative instanceof Error) throw narrative;
+    return { response: narrative };
+  };
+}
+
+function browserCheck(request, json) {
+  const harness = loadBrowserHarness();
+  const profile = loadProfile();
+  const normalized = harness.JDExtractor.normalize(`Required Skills:
+- Kubernetes
+- Azure
+- Azure DevOps
+- Bicep
+Preferred Skills:
+- CI/CD
+`);
+  const deterministicResult = harness.JDMatcher.scoreJobDescription(normalized, profile);
+  const input = harness.JDReasoning.buildInput(normalized, deterministicResult, profile, request.language);
+  const decisionInput = harness.JDReasoning.buildDecisionInput(input, profile);
+  const validated = harness.JDReasoning.validateModelOutput(json.reasoning, decisionInput);
+  return { harness, decisionInput, deterministicResult, validated };
+}
+
+test('jd-decide relays Jev decisions in the shape the browser validator already accepts', async () => {
+  const request = buildDecideRequest();
+  const result = await callWorker(request, { freshWorker: true, aiImpl: decideAi() });
+  assert.equal(result.status, 200, JSON.stringify(result.json));
+  assert.equal(result.json.revision, '2026-10-02-jev-1');
+
+  const reasoning = JSON.parse(result.json.reasoning);
+  assert.equal(reasoning.engine, 'jev');
+  assert.equal(reasoning.requirements.length, request.deterministicInput.requirements.length);
+  assert.equal(reasoning.overall.score, 67);
+  assert.equal(reasoning.overall.fitBand, 'good');
+  for (const decision of reasoning.requirements) {
+    assert.equal(decision.matchLevel, 'adjacent-professional');
+    assert.equal(decision.probability, 0.86);
+    assert.equal(decision.confidence, 'high');
+    assert.equal(decision.evidenceRefs.length, 1);
+  }
+
+  const { harness, decisionInput, deterministicResult, validated } = browserCheck(request, result.json);
+  assert.equal(validated.ok, true, validated.error);
+  const merged = harness.JDReasoning.mergeResult(deterministicResult, validated.reasoning, decisionInput);
+  assert.equal(merged.reasoningEngine, 'jev');
+  assert.equal(merged.requirementReasoning[0].probability, 0.86);
+});
+
+test('jd-decide asks one Jev call: two questions per requirement plus the overall rubric, no keyword verdicts', async () => {
+  const request = buildDecideRequest();
+  const result = await callWorker(request, { freshWorker: true, aiImpl: decideAi() });
+  const jevCalls = result.aiCalls.filter((call) => isJev(call.model));
+  assert.equal(jevCalls.length, 1);
+  const { state, questions } = jevCalls[0].payload;
+  const count = request.deterministicInput.requirements.length;
+  assert.equal(Object.keys(questions).length, count * 2 + 1);
+  assert.equal(questions.overall_fit.type, 'score');
+  assert.equal(questions.level_0.type, 'choice');
+  assert.deepEqual(Object.keys(questions.level_0.criteria), [
+    'direct-professional', 'adjacent-professional', 'transferable-professional',
+    'academic-foundation', 'learning-bridge', 'explicit-gap', 'unverified'
+  ]);
+  assert.ok(questions.evidence_0.criteria.none);
+  assert.equal(state.jobDescription, request.jdText);
+  assert.doesNotMatch(JSON.stringify(state.requirements), /classification|"strong"|"partial"/);
+  /* every citable record, never a user-provided one */
+  const profile = loadProfile();
+  const citable = profile.recruiterEvidence.filter((record) => record.evidenceType !== 'user-provided');
+  assert.equal(state.publishedEvidence.length, citable.length);
+  assert.ok(state.publishedEvidence.every((record) => record.evidenceType !== 'user-provided'));
+
+  /* the narrative call sees decisions, not the JD prose */
+  const llmCall = result.aiCalls.find((call) => call.model === LLM_MODEL);
+  assert.ok(!llmCall.payload.messages[1].content.includes(request.jdText.slice(0, 40)));
+});
+
+test('jd-decide demotes a level its evidence cannot back, and never calls a demotion confident', async () => {
+  const request = buildDecideRequest();
+  const jev = jevAnswerer((name, question, payload) => {
+    if (name === 'level_0') return { type: 'choice', choice: 'direct-professional', probabilities: { 'direct-professional': 0.95 } };
+    if (name === 'evidence_0') {
+      const academic = payload.state.publishedEvidence.find((record) => record.evidenceType === 'academic');
+      return { type: 'choice', choice: academic.id, probabilities: { [academic.id]: 0.8 } };
+    }
+    if (name === 'level_1') return { type: 'choice', choice: 'transferable-professional', probabilities: { 'transferable-professional': 0.9 } };
+    if (name === 'evidence_1') return { type: 'choice', choice: 'none', probabilities: { none: 0.9 } };
+    if (name === 'level_2') return { type: 'choice', choice: 'explicit-gap', probabilities: { 'explicit-gap': 0.6 } };
+    if (name === 'level_3') return { type: 'choice', choice: 'invented-level', probabilities: { 'invented-level': 0.99 } };
+    return undefined;
+  });
+  const result = await callWorker(request, { freshWorker: true, aiImpl: decideAi({ jev }) });
+  assert.equal(result.status, 200, JSON.stringify(result.json));
+  const [first, second, third, fourth] = JSON.parse(result.json.reasoning).requirements;
+
+  assert.equal(first.matchLevel, 'academic-foundation');
+  assert.equal(first.confidence, 'low');
+  assert.equal(first.probability, undefined);
+  assert.equal(second.matchLevel, 'unverified');
+  assert.deepEqual(second.evidenceRefs, []);
+  assert.equal(third.matchLevel, 'explicit-gap');
+  assert.deepEqual(third.evidenceRefs, []);
+  assert.equal(third.confidence, 'medium');
+  assert.equal(fourth.matchLevel, 'unverified');
+  assert.equal(fourth.confidence, 'low');
+
+  const { validated } = browserCheck(request, result.json);
+  assert.equal(validated.ok, true, validated.error);
+});
+
+test('jd-decide never relays a narrative that looks like a schema, markup or its own percentage', async () => {
+  for (const narrative of ['{"score": 90}', 'Ameer is an 85% fit for this role with strong Azure delivery and more besides.', '<b>Strong</b> fit for the role overall, with good Azure delivery.', new Error('llm down')]) {
+    const result = await callWorker(buildDecideRequest(), { freshWorker: true, aiImpl: decideAi({ narrative }) });
+    assert.equal(result.status, 200);
+    const reasoning = JSON.parse(result.json.reasoning);
+    assert.match(reasoning.narrative, /^Good fit\. /);
+    assert.equal(reasoning.overall.narrative, reasoning.narrative);
+  }
+  const ms = await callWorker(buildDecideRequest('ms'), { freshWorker: true, aiImpl: decideAi({ narrative: '' }) });
+  assert.match(JSON.parse(ms.json.reasoning).narrative, /^Padanan baik\. /);
+  assert.match(JSON.parse(ms.json.reasoning).requirements[0].verificationQuestion, /Ameer/);
+});
+
+test('jd-decide maps the overall rubric onto the fit bands, and falls back to the decisions without it', async () => {
+  const scoreOf = async (overallFit) => {
+    const jev = jevAnswerer((name) => (name === 'overall_fit' ? overallFit : undefined));
+    const result = await callWorker(buildDecideRequest(), { freshWorker: true, aiImpl: decideAi({ jev }) });
+    return JSON.parse(result.json.reasoning).overall;
+  };
+  assert.deepEqual(await scoreOf({ type: 'score', score: 3 }).then((o) => [o.score, o.fitBand]), [85, 'strong']);
+  assert.deepEqual(await scoreOf({ type: 'score', score: 0 }).then((o) => [o.score, o.fitBand]), [30, 'limited']);
+  assert.deepEqual(await scoreOf({ type: 'score', score: 1.5 }).then((o) => [o.score, o.fitBand]), [59, 'partial']);
+  /* no rubric answer: every requirement adjacent (0.75) */
+  assert.deepEqual(await scoreOf(null).then((o) => [o.score, o.fitBand]), [75, 'strong']);
+  assert.deepEqual(await scoreOf({ type: 'score', score: 9 }).then((o) => o.score), 75);
+});
+
+test('jd-decide reports a Jev outage as a staged 502 the browser can fall back from', async () => {
+  const outage = await callWorker(buildDecideRequest(), {
+    freshWorker: true,
+    aiImpl: decideAi({ jevError: new Error('No such model') })
+  });
+  assert.equal(outage.status, 502);
+  assert.equal(outage.json.error, 'decide-unavailable');
+  assert.equal(outage.json.stage, 'jev');
+  assert.match(outage.json.reason, /^jev-run-failed:/);
+  assert.deepEqual(outage.aiCalls.map((call) => call.model), ['@cf/typesafe/jev', 'typesafe/jev']);
+
+  const garbled = await callWorker(buildDecideRequest(), {
+    freshWorker: true,
+    aiImpl: (model) => (isJev(model) ? { response: 'not a decision' } : { response: 'x' })
+  });
+  assert.equal(garbled.status, 502);
+  assert.equal(garbled.json.reason, 'jev-shape-invalid');
+  assert.equal(garbled.aiCalls.length, 1);
+
+  const unreadable = await callWorker(buildDecideRequest(), {
+    freshWorker: true,
+    aiImpl: decideAi({ jev: jevAnswerer((name) => (name.startsWith('level_') ? { choice: 'nope' } : undefined)) })
+  });
+  assert.equal(unreadable.status, 502);
+  assert.equal(unreadable.json.stage, 'decide');
+  assert.equal(unreadable.json.reason, 'jev-answers-unreadable');
+});
+
+test('jd-decide tries the second catalogue id and remembers whichever answered', async () => {
+  const worker = await loadWorker(true);
+  const models = [];
+  const env = {
+    AI: {
+      async run(model, payload) {
+        models.push(model);
+        if (model === '@cf/typesafe/jev') throw new Error('No such model');
+        if (isJev(model)) return jevAnswerer()(payload);
+        return { response: 'Ameer brings adjacent Azure delivery to this role, with one area to confirm.' };
+      }
+    }
+  };
+  const originalFetch = global.fetch;
+  const originalCaches = global.caches;
+  const profileJson = JSON.stringify(loadProfile());
+  global.fetch = async () => new Response(profileJson, { status: 200, headers: { 'Content-Type': 'application/json' } });
+  global.caches = { default: { async match() { return null; }, async put() {} } };
+  try {
+    const post = () => worker.fetch(new Request('https://worker.example.test/', {
+      method: 'POST',
+      headers: { Origin: 'http://localhost:8080', 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildDecideRequest())
+    }), env);
+    assert.equal((await post()).status, 200);
+    assert.equal((await post()).status, 200);
+  } finally {
+    global.fetch = originalFetch;
+    global.caches = originalCaches;
+  }
+  assert.deepEqual(models.filter(isJev), ['@cf/typesafe/jev', 'typesafe/jev', 'typesafe/jev']);
+});
+
+test('jd-decide validates its body exactly like jd-scoring', async () => {
+  const withMessages = await callWorker({ ...buildDecideRequest(), messages: [{ role: 'user', content: 'x' }] }, { freshWorker: true, aiImpl: decideAi() });
+  assert.equal(withMessages.status, 400);
+  const noText = await callWorker({ ...buildDecideRequest(), jdText: '' }, { freshWorker: true, aiImpl: decideAi() });
+  assert.equal(noText.status, 400);
+  assert.equal(noText.aiCalls.length, 0);
+});
+
+function triageAi({ intent, intentP = 0.9, answerable, reply = 'LLM reply' }) {
+  return (model, payload) => {
+    if (isJev(model)) {
+      return {
+        answers: {
+          intent: { type: 'choice', choice: intent, probabilities: { [intent]: intentP } },
+          answerable: { type: 'noul', noul: answerable }
+        }
+      };
+    }
+    return { response: reply };
+  };
+}
+
+async function chatWith(message, ai) {
+  return callWorker({ mode: 'chat', messages: [{ role: 'user', content: message }] }, {
+    freshWorker: true,
+    kbText: 'KB FACTS',
+    aiImpl: ai
+  });
+}
+
+test('chat triage sends salary and out-of-knowledge questions to the handoff without generating text', async () => {
+  const salary = await chatWith('What package would he expect?', triageAi({ intent: 'compensation', answerable: 0.7 }));
+  assert.deepEqual(salary.json, { reply: '', action: 'salary', intent: 'compensation' });
+  assert.equal(salary.aiCalls.filter((call) => call.model === LLM_MODEL).length, 0);
+
+  const unknown = await chatWith('What is his blood type?', triageAi({ intent: 'personal', answerable: 0.05 }));
+  assert.deepEqual(unknown.json, { reply: '', action: 'handoff', intent: 'personal' });
+  assert.equal(unknown.aiCalls.filter((call) => call.model === LLM_MODEL).length, 0);
+
+  const jevState = unknown.aiCalls.find((call) => isJev(call.model)).payload.state;
+  assert.equal(jevState.knowledgeBase, 'KB FACTS');
+  assert.equal(jevState.latestMessage, 'What is his blood type?');
+});
+
+test('chat triage leaves greetings, uncertain signals and job-match intents to the LLM', async () => {
+  const hello = await chatWith('Hi there!', triageAi({ intent: 'other', answerable: 0.02, reply: 'Hello!' }));
+  assert.deepEqual(hello.json, { reply: 'Hello!', action: 'answer', intent: 'other' });
+
+  const unsure = await chatWith('Does he know Go?', triageAi({ intent: 'skills', answerable: 0.4 }));
+  assert.equal(unsure.json.action, 'answer');
+  assert.equal(unsure.json.reply, 'LLM reply');
+
+  const weakSalary = await chatWith('Is the pay ok?', triageAi({ intent: 'compensation', intentP: 0.45, answerable: 0.6 }));
+  assert.equal(weakSalary.json.action, 'answer');
+  assert.equal(weakSalary.json.intent, '');
+
+  const jd = await chatWith('Would he fit our backend role?', triageAi({ intent: 'job-match', answerable: 0.5 }));
+  assert.deepEqual(jd.json, { reply: 'LLM reply', action: 'jd', intent: 'job-match' });
+});
+
+test('a failed or garbled triage leaves chat answering exactly as before', async () => {
+  const thrown = await chatWith('Tell me about Azure.', (model) => {
+    if (isJev(model)) throw new Error('No such model');
+    return { response: 'Plain reply' };
+  });
+  assert.deepEqual(thrown.json, { reply: 'Plain reply' });
+
+  const garbled = await chatWith('Tell me about Azure.', (model) => ({ response: isJev(model) ? 'nonsense' : 'Plain reply' }));
+  assert.deepEqual(garbled.json, { reply: 'Plain reply' });
+});
+
+test('jev-probe reports which model id answered, and the revision', async () => {
+  const ok = await callWorker({ mode: 'jev-probe' }, {
+    freshWorker: true,
+    aiImpl: (model) => ({ answers: { urgent: { type: 'noul', noul: 0.81 } } })
+  });
+  assert.deepEqual(ok.json, { revision: '2026-10-02-jev-1', ok: true, model: '@cf/typesafe/jev', reason: '', urgent: 0.81 });
+
+  const down = await callWorker({ mode: 'jev-probe' }, {
+    freshWorker: true,
+    aiImpl: () => { throw new Error('nope'); }
+  });
+  assert.equal(down.status, 502);
+  assert.equal(down.json.ok, false);
+  assert.match(down.json.reason, /^jev-run-failed:/);
 });

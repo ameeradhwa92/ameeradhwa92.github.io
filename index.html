@@ -17,7 +17,7 @@
   <!-- ?v= is the cache-busting tag. Bump it on every deploy that changes CSS or
        JS; chatbot.js reads this same tag off its own src and forwards it to the
        knowledge base and profile fetches, so this is the only place to edit. -->
-  <link rel="stylesheet" href="assets/css/style.css?v=2026-10-02c">
+  <link rel="stylesheet" href="assets/css/style.css?v=2026-10-02d">
   <script>
     document.documentElement.classList.replace('no-js', 'js');
     /* apply saved theme/language before first paint to avoid flashes */
@@ -1063,7 +1063,7 @@
         <span class="skill-idx" aria-hidden="true">07</span>
         <h3 data-i18n="skills.ai">AI-assisted engineering</h3>
         <p data-i18n="skills.ai.desc">Claude Code and Codex workflows with shared agent rules and guard hooks; shipped AI features
-           such as AIMeer on this site — on-device WebLLM with a Cloudflare Workers AI fallback</p>
+           such as AIMeer on this site — a Jev decision layer and Llama 3.1 answers on Cloudflare Workers AI</p>
       </div>
     </div>
 
@@ -1153,7 +1153,7 @@
     <button class="chat-callout-close" type="button" aria-label="Dismiss">
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>
     </button>
-    <p data-i18n="chat.callout">Meet <b>AIMeer</b> — my AI twin. Ask it about my 16-year journey; real AI answers, on your device or via cloud.</p>
+    <p data-i18n="chat.callout">Meet <b>AIMeer</b> — my AI twin. Ask it about my 16-year journey, or match a job description against my profile, requirement by requirement.</p>
   </div>
 
   <section class="chat-panel" id="chat-panel" role="dialog" aria-label="AIMeer" hidden>
@@ -1162,35 +1162,13 @@
       <div class="chat-head-text">
         <h4 data-i18n="chat.title"><em>AI</em>Meer</h4>
         <p class="chat-status chat-status-instant" id="chat-status">
-          <span class="dot" aria-hidden="true"></span><span class="chat-status-text">Instant answers · no download</span>
+          <span class="dot" aria-hidden="true"></span><span class="chat-status-text">Instant answers · works offline</span>
         </p>
-      </div>
-      <div class="chat-model-switch" id="chat-model-switch">
-        <button class="chat-model-choice is-selected" id="chat-model-cloud" type="button" aria-pressed="true" aria-labelledby="chat-model-cloud-label">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18h10a4 4 0 0 0 .6-7.96A6 6 0 0 0 6 8.2 4.8 4.8 0 0 0 7 18Z"/></svg>
-          <span class="sr-only" id="chat-model-cloud-label" data-i18n="chat.model.cloud.label">Use secure cloud AI</span>
-        </button>
-        <button class="chat-model-choice" id="chat-model-local" type="button" aria-pressed="false" aria-labelledby="chat-model-local-label" aria-describedby="chat-model-tooltip">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 1v3m6-3v3M9 20v3m6-3v3M20 9h3m-3 6h3M1 9h3m-3 6h3M9 9h6v6H9z"/></svg>
-          <span class="sr-only" id="chat-model-local-label" data-i18n="chat.model.local.label">Use AI on this device</span>
-        </button>
-        <span class="chat-model-tooltip" id="chat-model-tooltip" role="tooltip" data-i18n="chat.model.local.hint" hidden>This device is not compatible with on-device AI. Secure cloud AI remains available.</span>
       </div>
       <button class="icon-btn chat-close" type="button" aria-label="Close chat">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>
       </button>
     </header>
-
-    <div class="chat-ai" id="chat-ai">
-      <p class="chat-ai-pitch">AIMeer is preparing its on-device AI in the background (≈ 0.9 GB, one time — your
-         questions will never leave this device). You can already chat while it downloads.</p>
-      <button class="chat-ai-btn" id="chat-ai-enable" type="button" hidden>Enable on-device AI</button>
-      <div class="chat-progress" hidden>
-        <div class="chat-progress-track"><div class="chat-progress-bar"></div></div>
-        <span class="chat-progress-text">0%</span>
-        <button class="chat-cancel" id="chat-ai-cancel" type="button" hidden>Cancel — use cloud AI</button>
-      </div>
-    </div>
 
     <div class="chat-log" id="chat-log" aria-live="polite"></div>
 
@@ -1210,7 +1188,7 @@
       <textarea class="chat-jd-input" id="chat-jd-input" rows="6" spellcheck="false" aria-describedby="chat-jd-paste-hint chat-jd-disclaimer"></textarea>
       <p class="chat-jd-hint" id="chat-jd-paste-hint" data-i18n="chat.jd.pasteHint">Pasted text is analyzed here, and the posting's wording is sent to AIMeer's secure cloud AI for scoring. Text that looks like a personal identifier is withheld instead of sent.</p>
 
-      <div class="chat-jd-upload">
+      <div class="chat-jd-upload" id="chat-jd-drop">
         <div class="chat-jd-upload-copy">
           <span class="chat-jd-label" data-i18n="chat.jd.fileLabel">Load a local PDF or DOCX</span>
           <p class="chat-jd-hint" data-i18n="chat.jd.fileHint">Files are parsed locally. Once you analyze, the posting's wording is sent to AIMeer's secure cloud AI for scoring, with text that looks like a personal identifier withheld instead.</p>
@@ -1219,6 +1197,7 @@
           <input class="sr-only" id="chat-jd-file" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
           <button class="chat-jd-file-btn" id="chat-jd-file-trigger" type="button" aria-controls="chat-jd-file" data-i18n="chat.jd.fileAction">Choose or replace file</button>
           <span class="chat-jd-file-name" id="chat-jd-file-name" data-i18n="chat.jd.fileEmpty">No file selected</span>
+          <span class="chat-jd-drop-hint" aria-hidden="true" data-i18n="chat.jd.dropHint">or drop a PDF or DOCX here</span>
         </div>
       </div>
 
@@ -1247,22 +1226,21 @@
     </form>
   </section>
 
-  <script src="assets/js/i18n.js?v=2026-10-02c" defer></script>
-  <script src="assets/js/main.js?v=2026-10-02c" defer></script>
-  <script src="assets/js/aimeer-device.js?v=2026-10-02c" defer></script>
-  <script src="assets/js/jd-extractor.js?v=2026-10-02c" defer></script>
-  <script src="assets/js/jd-matcher.js?v=2026-10-02c" defer></script>
-  <script src="assets/js/jd-reasoning.js?v=2026-10-02c" defer></script>
-  <script src="assets/js/chatbot.js?v=2026-10-02c" defer></script>
-  <script src="assets/js/route-globe-core.js?v=2026-10-02c" defer></script>
-  <script src="assets/js/route-globe.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/i18n.js?v=2026-10-02d" defer></script>
+  <script src="assets/js/main.js?v=2026-10-02d" defer></script>
+  <script src="assets/js/jd-extractor.js?v=2026-10-02d" defer></script>
+  <script src="assets/js/jd-matcher.js?v=2026-10-02d" defer></script>
+  <script src="assets/js/jd-reasoning.js?v=2026-10-02d" defer></script>
+  <script src="assets/js/chatbot.js?v=2026-10-02d" defer></script>
+  <script src="assets/js/route-globe-core.js?v=2026-10-02d" defer></script>
+  <script src="assets/js/route-globe.js?v=2026-10-02d" defer></script>
   <!-- GSAP is pinned by path (assets/vendor/README.md); motion.js and ir-showcase.js
        treat a missing window.gsap as "no motion" and leave the page static. -->
   <script src="assets/vendor/gsap/gsap.min.js" defer></script>
   <script src="assets/vendor/gsap/ScrollTrigger.min.js" defer></script>
   <script src="assets/vendor/gsap/SplitText.min.js" defer></script>
-  <script src="assets/js/ir-core.js?v=2026-10-02c" defer></script>
-  <script src="assets/js/ir-showcase.js?v=2026-10-02c" defer></script>
-  <script src="assets/js/motion.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/ir-core.js?v=2026-10-02d" defer></script>
+  <script src="assets/js/ir-showcase.js?v=2026-10-02d" defer></script>
+  <script src="assets/js/motion.js?v=2026-10-02d" defer></script>
 </body>
 </html>

@@ -52,13 +52,13 @@ copy, so any change to that text must update the script's expectations in the sa
 change, or it goes red unnoticed.
 
 There is no `node_modules`. Tests read the browser IIFEs into a `node:vm` context with a
-hand-rolled `document` stub (no jsdom); `route-globe-core.js` and `aimeer-device.js` are
+hand-rolled `document` stub (no jsdom); `route-globe-core.js` and `ir-core.js` are
 UMD and load with plain `require()`. A new script must stay a plain IIFE that tolerates
 that stub at load time, or split its pure half into a UMD file the way the globe does.
 
-`window.AIMEER_CLOUD_ENDPOINT` and `window.AIMEER_LOCAL_TIMEOUT`, set before `chatbot.js`
-runs, override the Worker URL and the 20 s local-model timeout — point a preview at a
-staging Worker without editing `chatbot.js`.
+`window.AIMEER_CLOUD_ENDPOINT`, set before `chatbot.js` runs, overrides the Worker URL —
+point a preview at a staging Worker without editing `chatbot.js`. An empty string turns the
+cloud tier off, which is how to preview the instant-answers-only experience.
 
 Verification is manual: open in a browser, check 375 / 768 / 1440 widths, toggle
 dark/light and EN/BM, and `curl` every project URL before publishing a status change.
@@ -66,13 +66,14 @@ dark/light and EN/BM, and `curl` every project URL before publishing a status ch
 ### Bump `?v=` on every deploy that touches CSS or JS
 
 GitHub Pages serves assets with `Cache-Control: max-age=600`, so a stale visitor
-self-heals within ten minutes. The `?v=` tag on the stylesheet and the twelve `assets/js/`
+self-heals within ten minutes. The `?v=` tag on the stylesheet and the eleven `assets/js/`
 script tags in `index.html` makes that deterministic instead — **bump it in `index.html` and nowhere
 else.** `chatbot.js` reads the tag off its own `<script src>` and forwards it to the
-`aimeer-kb.txt` and `aimeer-profile.json` fetches, so there is one value to edit and no
-drift. That forwarding matters: those two files are fetched at runtime and are not covered
-by the script tag, and a stale `aimeer-kb.txt` makes AIMeer answer from retired facts —
-worse than stale code.
+`aimeer-profile.json` fetch, so there is one value to edit and no drift. That forwarding
+matters: the profile is fetched at runtime and is not covered by the script tag, and a stale
+profile makes the JD matcher score against retired evidence — worse than stale code.
+(`aimeer-kb.txt` is read only by the Worker since the on-device tier was retired; see its
+edge cache below.)
 
 `verify_recruiter_ui.ps1` fails if the tags disagree with each other or if any CSS/JS
 asset lacks one, and names the offending file. While iterating locally, tick
@@ -86,30 +87,30 @@ asset lacks one, and names the offending file. While iterating locally, tick
 | `assets/css/style.css` | All styling; palette as CSS custom properties |
 | `assets/js/main.js` | Theme, language, scroll progress + self-drawing spine, reveals, cert modal, cursor glow |
 | `assets/js/i18n.js` | `window.I18N_MS` — Bahasa Melayu strings only |
-| `assets/js/aimeer-device.js` | Device/browser capability checks that decide local-AI eligibility (WebGPU, memory, iOS, known Android tiers) |
 | `assets/js/jd-extractor.js` | Recruiter JD matcher: local PDF/DOCX/paste text extraction and normalization |
 | `assets/js/jd-matcher.js` | Recruiter JD matcher: deterministic keyword-based scoring against the published profile |
-| `assets/js/jd-reasoning.js` | Recruiter JD matcher: builds the cloud scoring request, re-validates the model's response the Worker relays (must stay in lockstep with the Worker's validator), merges it with the deterministic result (clamp band, fit band, report sections) |
-| `assets/js/chatbot.js` | AIMeer, the three-tier chatbot, plus the recruiter JD match report UI and its cloud-scoring request flow |
+| `assets/js/jd-reasoning.js` | Recruiter JD matcher: builds the cloud scoring request (and `buildDecisionInput`, the wider registry a `jd-decide` response is checked against), re-validates the response the Worker relays (must stay in lockstep with the Worker's validator), merges it with the deterministic result (clamp band, fit band, report sections) |
+| `assets/js/chatbot.js` | AIMeer, the two-tier chatbot (instant answers + the cloud Worker with Jev triage), plus the recruiter JD match report UI, its drop zone, and its `jd-decide` → `jd-scoring` request flow |
 | `assets/js/route-globe-core.js` | Route globe, pure half: sphere geometry, camera keyframes/scrub, coastline decoding, capability gate, load state machine. UMD, tested by plain `require()` |
 | `assets/js/route-globe.js` | Route globe, DOM/WebGL adapter: reads the stops `<ol>`, gates, lazy-imports vendored three.js, owns the canvas/scroll/drag/theme wiring |
 | `assets/js/ir-core.js` | RetailAIM IR showcase, pure half: the survey pack's sample sizes and sizing rules. UMD, tested by plain `require()` |
 | `assets/js/ir-showcase.js` | RetailAIM IR showcase, DOM half: the IR Ops survey pack floating over the `#work` screens (three.js, lazy, same import URL as the globe), where it lives, and the step pills |
-| `assets/js/motion.js` | GSAP choreography: split-line headings, count-ups, stacked IR chapters, velocity marquees, magnetic buttons, custom cursor, nav hide/current dot, the MYT clock |
+| `assets/js/motion.js` | GSAP choreography: split-line headings, count-ups, stacked IR chapters, velocity marquees, magnetic buttons, custom cursor, nav hide/current dot, the MYT clock, and the JD report settling (on `aimeer:jd-report`) |
 | `assets/data/route-globe-coastlines.json` | Generated country outlines for the globe (never hand-edited — see Regenerating the globe coastlines) |
 | `assets/vendor/` | Self-hosted libraries, pins and hashes recorded in `assets/vendor/README.md`: `pdfjs/` 4.10.38 and `jszip/` 3.10.1 (lazily `import()`ed by `jd-extractor.js` for PDF/DOCX), `gsap/` 3.15.0 (core, ScrollTrigger, SplitText — classic `defer` tags), `three/` r185 (`three.module.min.js` + `three.core.min.js`, kept side by side) and its `lines/` fat-line addon, whose bare `three` import the `<head>` import map resolves |
-| `assets/data/aimeer-kb.txt` | Chatbot knowledge base — fetched by *both* the browser and the Worker |
+| `assets/data/aimeer-kb.txt` | Chatbot knowledge base — read by the Worker (the chat prompt and Jev's triage state); the browser's instant answers are the `TOPICS` table |
 | `assets/data/aimeer-profile.json` | Recruiter evidence registry (`recruiterEvidence`, `privacyExclusions`) — the only allowlist of evidence the JD matcher's cloud reasoning may cite |
-| `cloud/aimeer-worker.js` | Cloudflare Worker relay — chat/summary/jd-explanation/jd-reasoning/jd-scoring/version modes (deployed manually, see below) |
+| `cloud/aimeer-worker.js` | Cloudflare Worker relay — chat (Jev-triaged)/summary/jd-explanation/jd-reasoning/jd-scoring/jd-decide/jev-probe/version modes (deployed manually, see below) |
 | `docs/superpowers/specs/2026-07-24-portfolio-site-design.md` | Design spec + canonical project/URL/status registry |
 | `docs/superpowers/specs/2026-07-30-recruiter-copilot-ai-scoring-design.md` | Design of record for AI-led JD scoring — two-call split, clamp band, privacy screen, model-output tolerance, Worker diagnosability. Read before touching either JD validator |
+| `docs/superpowers/specs/2026-10-02-aimeer-jev-decisions-design.md` | Design of record for retiring the on-device tier and adding Jev (chat triage, `jd-decide`), the rollout order, the redesign brief for the chat/JD UI, and the roadmap |
 | `docs/resume-source/resume.html` | Source for the downloadable résumé PDF |
 | `tests/*.test.js` | `node --test` suite — run before anything ships (see Running locally); `ir-core.test.js` covers the pack's sizing rules |
 | `tools/` | Five extra harnesses `tests/*.test.js` does not cover (JD extractor/matcher/cloud-payload contracts, recruiter profile/KB drift, recruiter UI exact copy) — see Running locally |
 | `docs/superpowers/plans/` | Implementation plans that pair with the specs; `docs/mockups/*.html` are the standalone proposals a spec was approved from (they pull Fraunces from Google Fonts for convenience — the live site never does); `.superpowers/sdd/` holds tracked per-task subagent reports |
 
 Scripts are plain IIFEs loaded with `defer` in the order `verify_recruiter_ui.ps1` asserts:
-`i18n.js` → `main.js` → `aimeer-device.js` → `jd-extractor.js` → `jd-matcher.js` →
+`i18n.js` → `main.js` → `jd-extractor.js` → `jd-matcher.js` →
 `jd-reasoning.js` → `chatbot.js`, then `route-globe-core.js` → `route-globe.js`, then the three
 vendored GSAP files → `ir-core.js` → `ir-showcase.js` → `motion.js` (the verify script's order
 regex stops at `chatbot.js`, so new tags go after it; `tests/route-globe-section.test.js` pins
@@ -147,28 +148,35 @@ element and snapshots its `innerHTML` into an in-memory `EN` dict; switching to 
   `data-i18n-aria="key"`; `setLang()` writes that key's text, tags stripped, into `aria-label`.
   `setLang()` also dispatches `site:lang` on `document` after every swap.
 
-### AIMeer chatbot (three tiers)
+### AIMeer chatbot (two tiers and a decision layer)
 
-`chatbot.js` picks a route in `decideRoute()` and degrades gracefully:
+`chatbot.js` has two tiers and degrades gracefully:
 
-1. **Instant** — regex `TOPICS` table, zero download, always available and the fallback for
-   every failure path in tiers 2–3.
-2. **On-device** — dynamically imports `@mlc-ai/web-llm` from `esm.run` and runs
-   Llama-3.2-1B via WebGPU. This is the **only approved external network dependency** on the
-   site; everything else (including fonts) is self-hosted so the page renders offline.
-3. **Cloud** — POSTs to the Cloudflare Worker (`CLOUD_ENDPOINT`), which runs
-   `@cf/meta/llama-3.1-8b-instruct-fast` on Workers AI.
+1. **Instant** — regex `TOPICS` table, zero download, works offline, and the fallback for
+   every cloud failure.
+2. **Cloud** — POSTs to the Cloudflare Worker (`CLOUD_ENDPOINT`). The Worker first asks
+   **Jev** (TypeSafe's decision model on Workers AI, `@cf/typesafe/jev`) two typed questions
+   about the message — its intent and whether the KB can answer it — then lets
+   `@cf/meta/llama-3.1-8b-instruct-fast` answer. A confident salary question comes back as
+   `action: "salary"` and a confidently unanswerable one as `action: "handoff"`, both with an
+   empty reply and no LLM call; the browser answers them from `TOPICS` and the handoff card.
+   `action: "jd"` adds a one-time offer of the JD matcher. A Worker with no `action` reads as
+   `"answer"`.
 
-iOS is force-routed to cloud regardless of WebGPU support (Safari's per-tab memory ceiling
-kills the model mid-load). If the local download exceeds `LOCAL_TIMEOUT` (20 s), cloud
-answers take over as interim and local swaps back in when ready — the `aiState` /
-`route` / `dlActive` triple is what `applyAiBox()` and the launcher ring read, so update all
-of them together when changing the state machine.
+The on-device tier (WebLLM, Llama 3.2 1B via WebGPU) was **retired in 2026-10**: it answered
+poorly even on high-end GPUs and cost every capable visitor a ≈ 0.9 GB download.
+`aimeer-device.js`, the model switcher and the download UI went with it. The site now has **no
+external network dependency** besides the Worker — everything else, fonts included, is
+self-hosted so the page renders offline. `aiState` is `"cloud"` when `CLOUD_ENDPOINT` is set
+and `"off"` otherwise; there is no download state machine left.
 
-Both the browser and the Worker assemble their system prompt from `PROMPT_HEAD`/`PERSONA_HEAD`
-plus `aimeer-kb.txt`. **Keep those two persona strings identical**, or the same question gets
-a different voice depending on the visitor's device. The Worker assembles the prompt
-server-side on purpose — that's what stops the endpoint being used as a generic LLM proxy;
+Jev is a decision model, not a text model: it can only pick from the labels it is offered and
+reports calibrated probabilities. Independent evaluations found it well calibrated at the
+extremes and least reliable in the 0.3–0.8 band, which is why the chat gates only act on
+strong signals (`JEV_TRIAGE_*` in the Worker). Don't lower those thresholds without evidence.
+
+The Worker assembles its system prompt from `PERSONA_HEAD` plus `aimeer-kb.txt` (the browser's
+copy, `PROMPT_HEAD`, went with the on-device tier). It does so server-side on purpose — that's what stops the endpoint being used as a generic LLM proxy;
 don't let client-supplied `system` messages through.
 
 Unanswered questions **and** any salary-matching question (`SALARY_KEYS`) trigger the handoff
@@ -181,17 +189,38 @@ steps; the `AI` binding variable name must be exactly `AI`.
 
 The Worker edge-caches `aimeer-kb.txt` and `aimeer-profile.json` for an hour
 (`loadCachedText`, tags `aimeer-kb-cache=v1` / `aimeer-profile-cache=v1`). A pushed KB
-change reaches the instant and on-device tiers on the next `?v=` bump but the cloud tier up
-to an hour later. Bumping a cache tag forces it, and that is a Worker change and a redeploy.
+change reaches the cloud tier up to an hour later (the instant tier never reads the KB — its
+copy is the `TOPICS` table, see "When a fact changes"). Bumping a cache tag forces it, and that is a Worker change and a redeploy.
 
 **Bump `WORKER_REVISION` on every Worker change, and confirm the paste landed before
 believing any live behaviour.** `POST {"mode":"version"}` returns `{revision, aiBinding}`.
 A paste that silently didn't take effect is indistinguishable from a fix that didn't work,
 and that ambiguity has already cost a full round of debugging on this file.
 
+### Recruiter JD decisions: `jd-decide` first, `jd-scoring` as the fallback
+
+The browser sends every analysis to `jd-decide` first. One **Jev** call answers, per
+requirement, a `level_i` choice over the seven match levels and an `evidence_i` choice over
+every citable record in the published profile (plus `none`), and one `overall_fit` score on a
+four-level rubric. Llama then writes only the narrative, as plain text, from the decisions.
+The response has the `jd-scoring` shape plus `engine: "jev"` and a per-requirement
+`probability`, both optional in `jd-reasoning.js`, so **one validator serves both modes**.
+Because Jev is offered the whole citable registry (not only the ids the keyword pass touched),
+the browser validates and merges a `jd-decide` response against
+`JDReasoning.buildDecisionInput(input, profile)`, not the `jd-scoring` input.
+
+Any `jd-decide` failure falls through to the `jd-scoring` flow below, unchanged, retry rules
+included — except a 4xx naming a `jd-` rule (`jd-privacy-invalid` and friends), because
+`jd-scoring` validates the identical body and would refuse it too. That fall-through is also
+what keeps the site working against a Worker from before Jev, which answers `jd-decide` as an
+unknown chat request (`400 empty`). Never make the browser depend on `jd-decide` succeeding.
+
+The probability on each requirement card is Jev's weight on the level it chose — "how sure the
+decision model was", never the odds that Ameer can do the job. Keep the copy that way.
+
 ### Recruiter JD scoring runs two model calls
 
-`jd-scoring` is the mode the site uses, and it calls Workers AI **twice**: the
+`jd-scoring` is the fallback mode, and it calls Workers AI **twice**: the
 per-requirement reasoning (reusing `jd-reasoning`'s prompt and message verbatim, with no
 JD prose) and then the overall score (full JD prose, three-key `{score, fitBand,
 narrative}` schema). This is not an optimization — a single call failed every live request
