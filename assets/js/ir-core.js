@@ -1,30 +1,17 @@
-/* RetailAIM IR showcase — the pure half. No DOM, no three.js: the rules the
-   interactive demos in ir-showcase.js run on, kept here so node:test can
-   require() them. Mirrors the shape of the real product's workflows (product
-   survey capture, recognition compliance against hurdle rates, final-appeal
-   verdicts) on sample data only; nothing here talks to a server. */
+/* RetailAIM IR showcase — the pure half. No DOM, no three.js: the sizing rules
+   the product-survey pack in ir-showcase.js runs on, kept here so node:test can
+   require() them. Sample data only; nothing here talks to a server. */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
   else root.IR_CORE = factory();
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
 
-  /* ---- capture: barcode + pack size ---- */
-
   var DIM_MIN = 1;    /* cm — anything smaller is a typo, not a product */
   var DIM_MAX = 60;   /* cm — the demo pack stays a shelf item */
 
-  /* GS1 check digit for EAN-8, UPC-A (12) and EAN-13: weights 3,1 from the right. */
-  function isValidGtin(code) {
-    var digits = String(code == null ? "" : code).replace(/\s+/g, "");
-    if (!/^\d+$/.test(digits)) return false;
-    if (digits.length !== 8 && digits.length !== 12 && digits.length !== 13) return false;
-    var sum = 0;
-    for (var i = digits.length - 2, w = 3; i >= 0; i--, w = w === 3 ? 1 : 3) {
-      sum += Number(digits[i]) * w;
-    }
-    return (10 - (sum % 10)) % 10 === Number(digits[digits.length - 1]);
-  }
+  /* Sample packs the survey demo cycles through: width × height in cm. */
+  var SAMPLE_PACKS = [[8, 20], [14, 9], [6, 14.5], [11, 26], [18, 12]];
 
   /* Field input → centimetres. Accepts "12.5" and the Malay decimal comma "12,5";
      returns null for anything that is not a usable size. */
@@ -52,84 +39,20 @@
     };
   }
 
-  /* A survey item is complete when every captured field is valid. */
-  function surveyStatus(item) {
-    var ok = isValidGtin(item && item.barcode) && parseCm(item && item.width) != null && parseCm(item && item.height) != null;
-    return ok ? "completed" : "incomplete";
-  }
-
-  /* ---- recognise: compliance against a hurdle rate ---- */
-
-  /* Share of expected SKUs found on the shelf, judged against the client's hurdle. */
-  function compliance(found, expected, hurdlePct) {
-    if (!(expected > 0)) return { pct: 0, pass: false, gap: hurdlePct || 0 };
-    var pct = Math.round(Math.max(0, Math.min(found, expected)) / expected * 1000) / 10;
-    var hurdle = typeof hurdlePct === "number" ? hurdlePct : 0;
-    return { pct: pct, pass: pct >= hurdle, gap: Math.round((hurdle - pct) * 10) / 10 };
-  }
-
-  /* ---- resolve: final-appeal verdicts ---- */
-
-  var BULK_MAX = 200; /* the hub's multi-select ceiling, one transaction */
-  var VERDICTS = { approve: true, reject: true };
-
-  /* Toggle an id in a selection without ever exceeding the bulk ceiling.
-     Returns a new array; the input is not mutated. */
-  function toggleSelection(selected, id, max) {
-    var limit = typeof max === "number" ? max : BULK_MAX;
-    var list = (selected || []).slice();
-    var at = list.indexOf(id);
-    if (at >= 0) { list.splice(at, 1); return list; }
-    if (list.length >= limit) return list;
-    list.push(id);
-    return list;
-  }
-
-  /* Apply one verdict to every selected appeal line still pending. Lines that
-     already carry a verdict keep it: a judged line is not re-judged by a bulk action. */
-  function applyVerdict(lines, ids, verdict) {
-    if (!VERDICTS[verdict]) throw new Error("unknown verdict: " + verdict);
-    var pick = {};
-    (ids || []).forEach(function (id) { pick[id] = true; });
-    return (lines || []).map(function (line) {
-      if (!pick[line.id] || line.verdict) return line;
-      var next = {};
-      for (var k in line) if (Object.prototype.hasOwnProperty.call(line, k)) next[k] = line[k];
-      next.verdict = verdict;
-      return next;
-    });
-  }
-
-  /* KPI tiles after verdicts. Each appeal line names the KPI it contests and the
-     points approving it restores; rejected and pending lines change nothing. */
-  function kpisAfter(baseline, lines) {
-    var out = {};
-    Object.keys(baseline || {}).forEach(function (k) { out[k] = baseline[k]; });
-    (lines || []).forEach(function (line) {
-      if (line.verdict !== "approve" || !(line.kpi in out)) return;
-      out[line.kpi] = Math.min(100, Math.round((out[line.kpi] + (line.restores || 0)) * 10) / 10);
-    });
-    return out;
-  }
-
-  function tally(lines) {
-    var t = { pending: 0, approve: 0, reject: 0 };
-    (lines || []).forEach(function (line) { t[line.verdict || "pending"] += 1; });
-    return t;
+  /* Index of the pack after `i`, wrapping round the sample list. */
+  function nextPack(i) {
+    var n = SAMPLE_PACKS.length;
+    var k = Math.floor(Number(i));
+    if (!isFinite(k)) return 0;
+    return ((k + 1) % n + n) % n;
   }
 
   return {
     DIM_MIN: DIM_MIN,
     DIM_MAX: DIM_MAX,
-    BULK_MAX: BULK_MAX,
-    isValidGtin: isValidGtin,
+    SAMPLE_PACKS: SAMPLE_PACKS,
     parseCm: parseCm,
     packSize: packSize,
-    surveyStatus: surveyStatus,
-    compliance: compliance,
-    toggleSelection: toggleSelection,
-    applyVerdict: applyVerdict,
-    kpisAfter: kpisAfter,
-    tally: tally
+    nextPack: nextPack
   };
 });

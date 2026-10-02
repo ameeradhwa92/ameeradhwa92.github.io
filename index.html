@@ -17,7 +17,7 @@
   <!-- ?v= is the cache-busting tag. Bump it on every deploy that changes CSS or
        JS; chatbot.js reads this same tag off its own src and forwards it to the
        knowledge base and profile fetches, so this is the only place to edit. -->
-  <link rel="stylesheet" href="assets/css/style.css?v=2026-10-02a">
+  <link rel="stylesheet" href="assets/css/style.css?v=2026-10-02c">
   <script>
     document.documentElement.classList.replace('no-js', 'js');
     /* apply saved theme/language before first paint to avoid flashes */
@@ -386,172 +386,144 @@
 
     <div class="ir-flow wrap" id="ir-flow">
       <ol class="ir-steps" aria-label="Workflows">
-        <li><a href="#ir-capture"><span>01</span><b data-i18n="ir.step1">Capture</b></a></li>
-        <li><a href="#ir-recognise"><span>02</span><b data-i18n="ir.step2">Recognise</b></a></li>
-        <li><a href="#ir-resolve"><span>03</span><b data-i18n="ir.step3">Resolve</b></a></li>
+        <li><a href="#ir-overview"><span>01</span><b data-i18n="ir.step1">Overview</b></a></li>
+        <li><a href="#ir-plan"><span>02</span><b data-i18n="ir.step2">Plan</b></a></li>
+        <li><a href="#ir-track"><span>03</span><b data-i18n="ir.step3">Track</b></a></li>
+        <li><a href="#ir-survey"><span>04</span><b data-i18n="ir.step4">Survey</b></a></li>
       </ol>
 
-      <!-- 01 · capture -->
-      <article class="ir-chapter" id="ir-capture" aria-labelledby="ir-capture-h3">
-        <div class="ir-copy">
-          <p class="ir-num" aria-hidden="true">01</p>
-          <h3 id="ir-capture-h3" data-i18n="ir.cap.h3">Capture — the product survey, rebuilt for the phone</h3>
-          <p data-i18n="ir.cap.p">Field teams record every pack the recognition model must learn: find the product, scan its barcode, key in its size. The legacy survey became a SvelteKit app light enough for a merchandiser's phone.</p>
-          <ul class="ir-points">
-            <li data-i18n="ir.cap.pt1">Camera barcode reader for 21 formats, on self-hosted WebAssembly</li>
-            <li data-i18n="ir.cap.pt2">A 3D pack in three.js re-scales live as width and height are typed</li>
-            <li data-i18n="ir.cap.pt3">Category tabs, name search and an Incomplete / Completed split</li>
-          </ul>
-          <p class="ir-try" data-i18n="ir.cap.try">Try it: press <b>Scan</b>, then drag the sizes.</p>
-        </div>
+      <div class="ir-chapters">
+        <!-- on tall desktops the survey pack rides here, sticky above every chapter (ir-showcase.js moves it) -->
+        <div class="ir-pack-rail" id="ir-pack-rail"></div>
 
-        <div class="ir-device ir-phone" data-demo="capture">
-          <div class="phone-screen">
-            <div class="app-bar"><b>IR Ops</b><span class="app-pill" data-i18n="ir.demo.ws">Sample workspace</span></div>
-            <div class="cap-tabs" aria-hidden="true">
-              <span class="is-on" data-i18n="ir.cap.cat1">Beverages</span>
-              <span data-i18n="ir.cap.cat2">Snacks</span>
-              <span data-i18n="ir.cap.cat3">Home care</span>
-            </div>
-            <div class="cap-filter" aria-hidden="true">
-              <span class="is-on"><span data-i18n="ir.cap.incomplete">Incomplete</span> <b id="cap-inc">3</b></span>
-              <span><span data-i18n="ir.cap.completed">Completed</span> <b id="cap-done">9</b></span>
-            </div>
-            <div class="cap-stage" id="cap-stage" data-cursor="drag">
-              <canvas class="cap-canvas" id="cap-canvas" aria-hidden="true"></canvas>
-              <div class="cap-box" id="cap-box" aria-hidden="true">
-                <i class="f-front"></i><i class="f-back"></i><i class="f-left"></i><i class="f-right"></i><i class="f-top"></i><i class="f-bottom"></i>
-              </div>
-              <span class="cap-laser" aria-hidden="true"></span>
-              <span class="cap-dims" id="cap-dims">8 × 20 × 3.4 cm</span>
-            </div>
-            <p class="cap-name" data-i18n="ir.cap.product">Sample sparkling drink · 320 ml</p>
-            <form class="cap-form" id="cap-form" novalidate>
-              <label class="cap-field" for="cap-barcode"><span data-i18n="ir.cap.barcode">Barcode</span></label>
-              <div class="cap-input-row">
-                <input class="cap-input" id="cap-barcode" type="text" inputmode="numeric" maxlength="13" autocomplete="off" spellcheck="false" placeholder="955…" aria-describedby="cap-check">
-                <button class="cap-scan" id="cap-scan" type="button" data-i18n="ir.cap.scan">Scan</button>
-              </div>
-              <p class="cap-check" id="cap-check" data-state="empty" aria-live="polite">
-                <span class="cap-msg cap-msg-empty" data-i18n="ir.cap.msgEmpty">Scan or type an EAN-13</span>
-                <span class="cap-msg cap-msg-ok" data-i18n="ir.cap.msgOk">Check digit valid</span>
-                <span class="cap-msg cap-msg-bad" data-i18n="ir.cap.msgBad">Check digit does not match</span>
-              </p>
-              <div class="cap-row">
-                <div class="cap-dim">
-                  <label class="cap-field" for="cap-w"><span data-i18n="ir.cap.width">Width (cm)</span></label>
-                  <input class="cap-input" id="cap-w" type="text" inputmode="decimal" value="8" autocomplete="off">
-                  <input class="cap-range" id="cap-w-range" type="range" min="1" max="40" step="0.5" value="8" aria-label="Width (cm)" data-i18n-aria="ir.cap.width">
+        <!-- 01 · overview -->
+        <article class="ir-chapter" id="ir-overview" aria-labelledby="ir-ov-h3">
+          <div class="ir-copy">
+            <p class="ir-num" aria-hidden="true">01</p>
+            <h3 id="ir-ov-h3" data-i18n="ir.ov.h3">Overview — the whole workspace on one screen</h3>
+            <p data-i18n="ir.ov.p">IR Workforce is where the team runs its work. A project manager lands on project health, team workload and what is due next, and a project with nobody in charge is flagged as stalled before it slips.</p>
+            <ul class="ir-points">
+              <li data-i18n="ir.ov.pt1">Project health with On Track, Stalled and Delayed badges</li>
+              <li data-i18n="ir.ov.pt2">Team workload, so no one carries the whole board</li>
+              <li data-i18n="ir.ov.pt3">One-click switcher across the IR workspaces, in English and Bahasa Melayu</li>
+            </ul>
+            <p class="ir-try" data-i18n="ir.pack.try">The pack is from IR Ops, the product survey: <b>drag</b> it to turn it, or try the next pack.</p>
+          </div>
+
+          <div class="ir-shots ir-shots-one">
+            <figure class="ir-browser ir-shot">
+              <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span class="browser-url">/w/workspace/dashboard</span></div>
+              <img class="ir-img ir-img-dark" src="assets/img/projects/ir-workforce/dashboard-dark.jpg" alt="IR Workforce dashboard with sample data: task totals, project health, team workload and what is coming up next" loading="lazy" width="1280" height="800">
+              <img class="ir-img ir-img-light" src="assets/img/projects/ir-workforce/dashboard-light.jpg" alt="IR Workforce dashboard with sample data: task totals, project health, team workload and what is coming up next" loading="lazy" width="1280" height="800">
+            </figure>
+
+            <div class="ir-pack-slot" id="ir-pack-slot">
+              <div class="ir-pack" id="ir-pack">
+                <div class="cap-stage" id="cap-stage" data-cursor="drag">
+                  <canvas class="cap-canvas" id="cap-canvas" aria-hidden="true"></canvas>
+                  <div class="cap-box" id="cap-box" aria-hidden="true">
+                    <i class="f-front"></i><i class="f-back"></i><i class="f-left"></i><i class="f-right"></i><i class="f-top"></i><i class="f-bottom"></i>
+                  </div>
                 </div>
-                <div class="cap-dim">
-                  <label class="cap-field" for="cap-h"><span data-i18n="ir.cap.height">Height (cm)</span></label>
-                  <input class="cap-input" id="cap-h" type="text" inputmode="decimal" value="20" autocomplete="off">
-                  <input class="cap-range" id="cap-h-range" type="range" min="1" max="40" step="0.5" value="20" aria-label="Height (cm)" data-i18n-aria="ir.cap.height">
+                <div class="ir-pack-tag">
+                  <span><b>IR Ops</b> · <span data-i18n="ir.pack.tag">product survey</span></span>
+                  <span class="cap-dims" id="cap-dims">8 × 20 × 3.4 cm</span>
+                  <button class="ir-pack-next" id="cap-next" type="button" data-i18n="ir.pack.next">Next pack</button>
                 </div>
               </div>
-              <p class="cap-status" id="cap-status" data-state="incomplete">
-                <span class="cap-st cap-st-incomplete" data-i18n="ir.cap.stIncomplete">Incomplete</span>
-                <span class="cap-st cap-st-completed" data-i18n="ir.cap.stCompleted">Completed — saved to the survey</span>
-              </p>
-            </form>
-          </div>
-        </div>
-      </article>
-
-      <!-- 02 · recognise -->
-      <article class="ir-chapter" id="ir-recognise" aria-labelledby="ir-rec-h3">
-        <div class="ir-copy">
-          <p class="ir-num" aria-hidden="true">02</p>
-          <h3 id="ir-rec-h3" data-i18n="ir.rec.h3">Recognise — every shelf photo becomes a score</h3>
-          <p data-i18n="ir.rec.p">Recognition finds each SKU on the shelf; IR Insights then judges the visit against the client's hurdle rates. It replaced a stand-alone analytics prototype and reads each tenant's own database through fixed, read-only SQL — one business unit at a time.</p>
-          <ul class="ir-points">
-            <li data-i18n="ir.rec.pt1">Compliance against hurdle rates, appeals, photo traffic and Quick View</li>
-            <li data-i18n="ir.rec.pt2">Business units enforced on every query, not just hidden in the UI</li>
-            <li data-i18n="ir.rec.pt3">Visit photos streamed from each tenant's own blob storage</li>
-          </ul>
-          <p class="ir-try" data-i18n="ir.rec.try">Try it: switch the business unit.</p>
-        </div>
-
-        <div class="ir-device ir-browser" data-demo="recognise">
-          <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span class="browser-url">/w/sample/insights</span></div>
-          <div class="rec-body">
-            <div class="rec-photo" data-cursor="scan">
-              <div class="rec-shelf" id="rec-shelf" aria-hidden="true"></div>
-              <span class="rec-sweep" aria-hidden="true"></span>
-              <p class="rec-found"><b id="rec-count">0</b> / <span id="rec-total">21</span> <span data-i18n="ir.rec.found">SKUs recognised</span></p>
-            </div>
-            <div class="rec-panel">
-              <div class="rec-units" role="group" aria-label="Business unit">
-                <button class="is-on" type="button" data-unit="a" aria-pressed="true" data-i18n="ir.rec.unitA">Unit A</button>
-                <button type="button" data-unit="b" aria-pressed="false" data-i18n="ir.rec.unitB">Unit B</button>
-              </div>
-              <ul class="rec-kpis" id="rec-kpis">
-                <li data-kpi="osa"><span class="rec-k" data-i18n="ir.rec.osa">On-shelf availability</span><b class="rec-v">0%</b><span class="rec-bar"><i></i><em></em></span></li>
-                <li data-kpi="sos"><span class="rec-k" data-i18n="ir.rec.sos">Share of shelf</span><b class="rec-v">0%</b><span class="rec-bar"><i></i><em></em></span></li>
-                <li data-kpi="promo"><span class="rec-k" data-i18n="ir.rec.promo">Promotion compliance</span><b class="rec-v">0%</b><span class="rec-bar"><i></i><em></em></span></li>
-              </ul>
-              <p class="rec-legend"><em></em><span data-i18n="ir.rec.hurdle">Hurdle rate</span></p>
-              <div class="rec-traffic">
-                <span data-i18n="ir.rec.traffic">Photo traffic · last 7 days</span>
-                <div class="rec-spark" id="rec-spark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-              </div>
             </div>
           </div>
-        </div>
-      </article>
+        </article>
 
-      <!-- 03 · resolve -->
-      <article class="ir-chapter" id="ir-resolve" aria-labelledby="ir-res-h3">
-        <div class="ir-copy">
-          <p class="ir-num" aria-hidden="true">03</p>
-          <h3 id="ir-res-h3" data-i18n="ir.res.h3">Resolve — appeals and audits, closed in one screen</h3>
-          <p data-i18n="ir.res.p">When a merchandiser disputes a score, the IR team rules on it. Each appeal line shows its evidence and exactly what approving it would change; verdicts land in one transaction, and an audit issue becomes a tracked task whose closure writes Completed back to the tenant.</p>
-          <ul class="ir-points">
-            <li data-i18n="ir.res.pt1">Approve or reject per line, or up to 200 appeals at once</li>
-            <li data-i18n="ir.res.pt2">One screen at 1366 × 768 — evidence, KPIs and verdicts, no page scroll</li>
-            <li data-i18n="ir.res.pt3">Audit issues open tasks in the IR Workforce app and write back on close</li>
-          </ul>
-          <p class="ir-try" data-i18n="ir.res.try">Try it: tick a few lines, then approve.</p>
-        </div>
-
-        <div class="ir-device ir-browser" data-demo="resolve">
-          <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span class="browser-url">/w/sample/audits/final-appeals</span></div>
-          <div class="res-body">
-            <div class="res-head">
-              <b data-i18n="ir.res.title">Final appeal · Visit 0412 · Sample outlet</b>
-              <span class="res-tally" id="res-tally" aria-live="polite"><span data-i18n="ir.res.pending">Pending</span> <b data-t="pending">5</b> · <span data-i18n="ir.res.approved">Approved</span> <b data-t="approve">0</b> · <span data-i18n="ir.res.rejected">Rejected</span> <b data-t="reject">0</b></span>
-            </div>
-            <div class="res-kpis" id="res-kpis">
-              <div data-kpi="osa"><span>OSA</span><b>78</b></div>
-              <div data-kpi="sos"><span>SOS</span><b>41</b></div>
-              <div data-kpi="cta"><span>CTA</span><b>62</b></div>
-              <div data-kpi="gold"><span>Gold</span><b>70</b></div>
-            </div>
-            <div class="res-main">
-              <div class="res-evidence" aria-hidden="true"><i></i><i></i></div>
-              <ul class="res-lines" id="res-lines">
-                <li data-id="l1" data-kpi="osa" data-restores="6"><label><input type="checkbox" value="l1"><span class="res-kind">OSA-NPD</span><span class="res-why" data-i18n="ir.res.l1">On the shelf, not recognised</span></label><span class="res-gain">+6</span></li>
-                <li data-id="l2" data-kpi="sos" data-restores="4"><label><input type="checkbox" value="l2"><span class="res-kind">SOS</span><span class="res-why" data-i18n="ir.res.l2">Facings miscounted</span></label><span class="res-gain">+4</span></li>
-                <li data-id="l3" data-kpi="cta" data-restores="5"><label><input type="checkbox" value="l3"><span class="res-kind">CTA</span><span class="res-why" data-i18n="ir.res.l3">End-cap display missed</span></label><span class="res-gain">+5</span></li>
-                <li data-id="l4" data-kpi="gold" data-restores="3"><label><input type="checkbox" value="l4"><span class="res-kind">Gold Promo</span><span class="res-why" data-i18n="ir.res.l4">Promo tag out of frame</span></label><span class="res-gain">+3</span></li>
-                <li data-id="l5" data-kpi="osa" data-restores="2"><label><input type="checkbox" value="l5"><span class="res-kind">OSA-NPD</span><span class="res-why" data-i18n="ir.res.l5">Claimed: not there</span></label><span class="res-gain">+2</span></li>
-              </ul>
-            </div>
-            <div class="res-actions">
-              <button class="res-btn res-approve" id="res-approve" type="button" disabled><span data-i18n="ir.res.approve">Approve selected</span> <b class="res-n">0</b></button>
-              <button class="res-btn res-reject" id="res-reject" type="button" disabled><span data-i18n="ir.res.reject">Reject selected</span></button>
-              <button class="res-btn res-reset" id="res-reset" type="button" data-i18n="ir.res.reset">Reset</button>
-            </div>
-            <div class="res-task" id="res-task" hidden>
-              <span class="res-task-tag">IR Workforce</span>
-              <b data-i18n="ir.res.taskTitle">Audit issue closed</b>
-              <span data-i18n="ir.res.taskBody">Completed written back to the tenant · task moved to Done</span>
-            </div>
+        <!-- 02 · plan -->
+        <article class="ir-chapter" id="ir-plan" aria-labelledby="ir-plan-h3">
+          <div class="ir-copy">
+            <p class="ir-num" aria-hidden="true">02</p>
+            <h3 id="ir-plan-h3" data-i18n="ir.plan.h3">Plan — from the board down to the last subtask</h3>
+            <p data-i18n="ir.plan.p">Every project has a board, list, timeline, calendar and activity feed. A task carries its assignee, dates, milestone, effort, dependencies and subtasks, and an audit issue from the field opens a task here by itself.</p>
+            <ul class="ir-points">
+              <li data-i18n="ir.plan.pt1">Kanban board with drag and drop between stages</li>
+              <li data-i18n="ir.plan.pt2">A task drawer for progress, effort, dependencies, subtasks and attachments</li>
+              <li data-i18n="ir.plan.pt3">Closing an audit task writes Completed back to the client's own system</li>
+            </ul>
           </div>
-        </div>
-      </article>
 
-      <p class="ir-note" data-i18n="ir.note">Illustrative recreations with sample data. The production app is private to the IR team, behind its sign-in.</p>
+          <div class="ir-shots ir-shots-two">
+            <figure class="ir-browser ir-shot ir-shot-back">
+              <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span class="browser-url">/w/workspace/projects/board</span></div>
+              <img class="ir-img ir-img-dark" src="assets/img/projects/ir-workforce/board-dark.jpg" alt="A project's task board in IR Workforce with sample tasks across Backlog, To Do, In Progress and Review" loading="lazy" width="1280" height="800">
+              <img class="ir-img ir-img-light" src="assets/img/projects/ir-workforce/board-light.jpg" alt="A project's task board in IR Workforce with sample tasks across Backlog, To Do, In Progress and Review" loading="lazy" width="1280" height="800">
+            </figure>
+            <figure class="ir-browser ir-shot ir-shot-front">
+              <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span class="browser-url">/w/workspace/tasks/101</span></div>
+              <img class="ir-img ir-img-dark" src="assets/img/projects/ir-workforce/task-dark.jpg" alt="The task drawer open on a sample task: status, priority, assignee, dates, progress, effort, dependencies and subtasks" loading="lazy" width="1280" height="800">
+              <img class="ir-img ir-img-light" src="assets/img/projects/ir-workforce/task-light.jpg" alt="The task drawer open on a sample task: status, priority, assignee, dates, progress, effort, dependencies and subtasks" loading="lazy" width="1280" height="800">
+            </figure>
+          </div>
+        </article>
+
+        <!-- 03 · track -->
+        <article class="ir-chapter" id="ir-track" aria-labelledby="ir-track-h3">
+          <div class="ir-copy">
+            <p class="ir-num" aria-hidden="true">03</p>
+            <h3 id="ir-track-h3" data-i18n="ir.track.h3">Track — timelines and reports that show the truth</h3>
+            <p data-i18n="ir.track.p">The timeline lays every project against today, with who is in charge and where nobody is. Reports turns the same data into status, trend and delivery charts for the weekly review.</p>
+            <ul class="ir-points">
+              <li data-i18n="ir.track.pt1">Day, week and month timeline with stall markers</li>
+              <li data-i18n="ir.track.pt2">Tasks by status, completion trend and priority breakdown</li>
+              <li data-i18n="ir.track.pt3">Built on volt-svelte, the team’s own Svelte 5 component kit</li>
+            </ul>
+          </div>
+
+          <div class="ir-shots ir-shots-two">
+            <figure class="ir-browser ir-shot ir-shot-back">
+              <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span class="browser-url">/w/workspace/timeline</span></div>
+              <img class="ir-img ir-img-dark" src="assets/img/projects/ir-workforce/timeline-dark.jpg" alt="The IR Workforce timeline: sample projects as bars against a week scale, one marked stalled" loading="lazy" width="1280" height="800">
+              <img class="ir-img ir-img-light" src="assets/img/projects/ir-workforce/timeline-light.jpg" alt="The IR Workforce timeline: sample projects as bars against a week scale, one marked stalled" loading="lazy" width="1280" height="800">
+            </figure>
+            <figure class="ir-browser ir-shot ir-shot-front">
+              <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span class="browser-url">/w/workspace/reports</span></div>
+              <img class="ir-img ir-img-dark" src="assets/img/projects/ir-workforce/reports-dark.jpg" alt="IR Workforce reports with sample data: tasks by status, completion trend and priority breakdown" loading="lazy" width="1280" height="800">
+              <img class="ir-img ir-img-light" src="assets/img/projects/ir-workforce/reports-light.jpg" alt="IR Workforce reports with sample data: tasks by status, completion trend and priority breakdown" loading="lazy" width="1280" height="800">
+            </figure>
+          </div>
+        </article>
+
+        <!-- 04 · survey (IR Ops, on the phone; product names, codes and photos blurred) -->
+        <article class="ir-chapter" id="ir-survey" aria-labelledby="ir-survey-h3">
+          <div class="ir-copy">
+            <p class="ir-num" aria-hidden="true">04</p>
+            <h3 id="ir-survey-h3" data-i18n="ir.survey.h3">Survey — every pack, measured on a phone</h3>
+            <p data-i18n="ir.survey.p">IR Ops rebuilt the legacy product survey for a merchandiser's phone. Find the product, scan or key in its barcode, type its width and height, and a 3D pack re-scales to match — the same pack that has been floating over these screens.</p>
+            <ul class="ir-points">
+              <li data-i18n="ir.survey.pt1">Camera barcode reader for 21 formats, on self-hosted WebAssembly</li>
+              <li data-i18n="ir.survey.pt2">A three.js pack that re-scales as sizes are typed, with the product photo to check against</li>
+              <li data-i18n="ir.survey.pt3">Category tabs, search and an Incomplete / Completed split across the whole catalogue</li>
+            </ul>
+          </div>
+
+          <div class="ir-shots ir-shots-phones">
+            <figure class="ir-phone-shot">
+              <img class="ir-img ir-img-dark" src="assets/img/projects/ir-ops/home-dark.jpg" alt="IR Ops home on a phone: the product survey, a 3D pack and the count of products left to survey" loading="lazy" width="360" height="780">
+              <img class="ir-img ir-img-light" src="assets/img/projects/ir-ops/home-light.jpg" alt="IR Ops home on a phone: the product survey, a 3D pack and the count of products left to survey" loading="lazy" width="360" height="780">
+            </figure>
+            <figure class="ir-phone-shot">
+              <img class="ir-img ir-img-dark" src="assets/img/projects/ir-ops/catalog-dark.jpg" alt="The IR Ops catalogue: search, category tabs and the incomplete products, with product names blurred" loading="lazy" width="360" height="780">
+              <img class="ir-img ir-img-light" src="assets/img/projects/ir-ops/catalog-light.jpg" alt="The IR Ops catalogue: search, category tabs and the incomplete products, with product names blurred" loading="lazy" width="360" height="780">
+            </figure>
+            <figure class="ir-phone-shot">
+              <img class="ir-img ir-img-dark" src="assets/img/projects/ir-ops/measure-dark.jpg" alt="Measuring a product in IR Ops: the 3D pack above the product code, width and height fields" loading="lazy" width="360" height="780">
+              <img class="ir-img ir-img-light" src="assets/img/projects/ir-ops/measure-light.jpg" alt="Measuring a product in IR Ops: the 3D pack above the product code, width and height fields" loading="lazy" width="360" height="780">
+            </figure>
+            <figure class="ir-phone-shot">
+              <img class="ir-img ir-img-dark" src="assets/img/projects/ir-ops/photo-dark.jpg" alt="The product photo laid over the measuring screen for reference, with product details blurred" loading="lazy" width="360" height="780">
+              <img class="ir-img ir-img-light" src="assets/img/projects/ir-ops/photo-light.jpg" alt="The product photo laid over the measuring screen for reference, with product details blurred" loading="lazy" width="360" height="780">
+            </figure>
+          </div>
+        </article>
+      </div>
+
+      <p class="ir-note" data-i18n="ir.note">Screens from IR Workforce in demo mode, with sample projects and people, and from IR Ops with product details blurred. Both apps are private to the IR team, behind their sign-in.</p>
     </div>
 
     <!-- under the hood -->
@@ -953,7 +925,7 @@
 
         <div class="cards">
           <div class="card card-feature">
-            <div class="shot"><img src="assets/img/projects/retailaim-ir.jpg" alt="Illustrative recreation of the RetailAIM IR final-appeal screen with sample data" loading="lazy" width="1003" height="717"></div>
+            <div class="shot"><img src="assets/img/projects/retailaim-ir.jpg" alt="RetailAIM IR Workforce dashboard in demo mode, with sample data" loading="lazy" width="1000" height="625"></div>
             <div class="card-body">
               <p class="card-client" data-i18n="rair.client">RetailAIM · Intelligent Recognition team</p>
               <h4 data-i18n="rair.title">RetailAIM IR Platform</h4>
@@ -1275,22 +1247,22 @@
     </form>
   </section>
 
-  <script src="assets/js/i18n.js?v=2026-10-02a" defer></script>
-  <script src="assets/js/main.js?v=2026-10-02a" defer></script>
-  <script src="assets/js/aimeer-device.js?v=2026-10-02a" defer></script>
-  <script src="assets/js/jd-extractor.js?v=2026-10-02a" defer></script>
-  <script src="assets/js/jd-matcher.js?v=2026-10-02a" defer></script>
-  <script src="assets/js/jd-reasoning.js?v=2026-10-02a" defer></script>
-  <script src="assets/js/chatbot.js?v=2026-10-02a" defer></script>
-  <script src="assets/js/route-globe-core.js?v=2026-10-02a" defer></script>
-  <script src="assets/js/route-globe.js?v=2026-10-02a" defer></script>
+  <script src="assets/js/i18n.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/main.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/aimeer-device.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/jd-extractor.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/jd-matcher.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/jd-reasoning.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/chatbot.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/route-globe-core.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/route-globe.js?v=2026-10-02c" defer></script>
   <!-- GSAP is pinned by path (assets/vendor/README.md); motion.js and ir-showcase.js
        treat a missing window.gsap as "no motion" and leave the page static. -->
   <script src="assets/vendor/gsap/gsap.min.js" defer></script>
   <script src="assets/vendor/gsap/ScrollTrigger.min.js" defer></script>
   <script src="assets/vendor/gsap/SplitText.min.js" defer></script>
-  <script src="assets/js/ir-core.js?v=2026-10-02a" defer></script>
-  <script src="assets/js/ir-showcase.js?v=2026-10-02a" defer></script>
-  <script src="assets/js/motion.js?v=2026-10-02a" defer></script>
+  <script src="assets/js/ir-core.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/ir-showcase.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/motion.js?v=2026-10-02c" defer></script>
 </body>
 </html>

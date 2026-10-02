@@ -1,5 +1,5 @@
 /* Page choreography — the 2026-10 redesign's motion layer, on the vendored GSAP.
-   Owns: split-line heading reveals, stat count-ups, the stacked IR chapters,
+   Owns: split-line heading reveals, stat count-ups, the stacked IR chapters and their screens,
    the scroll-velocity marquee, magnetic buttons, the custom cursor, the nav's
    hide-on-scroll and current-section dot, and the Shah Alam clock.
 
@@ -145,12 +145,27 @@
       });
     });
   });
-  /* every width: the device mocks drift slightly against their copy */
-  gsap.utils.toArray(".ir-device").forEach(function (device) {
-    gsap.fromTo(device, { y: 40 }, {
-      y: -20, ease: "none",
-      scrollTrigger: { trigger: device.parentNode, start: "top bottom", end: "bottom top", scrub: 0.6 }
+  /* every width: the screens drift against their copy, the front one of a pair faster */
+  gsap.utils.toArray(".ir-shots").forEach(function (shots) {
+    var chapter = shots.closest(".ir-chapter") || shots;
+    gsap.fromTo(shots, { y: 36 }, {
+      y: -16, ease: "none",
+      scrollTrigger: { trigger: chapter, start: "top bottom", end: "bottom top", scrub: 0.6 }
     });
+    /* the handsets rise at slightly different speeds, like cards dealt onto the table */
+    gsap.utils.toArray(shots.querySelectorAll(".ir-phone-shot")).forEach(function (phone, i) {
+      gsap.fromTo(phone, { y: 40 + i * 18 }, {
+        y: -i * 4, ease: "none",
+        scrollTrigger: { trigger: chapter, start: "top bottom", end: "center center", scrub: 0.8 }
+      });
+    });
+    var front = shots.querySelector(".ir-shot-front");
+    if (front) {
+      gsap.fromTo(front, { y: 50, x: 24 }, {
+        y: -10, x: 0, ease: "none",
+        scrollTrigger: { trigger: chapter, start: "top bottom", end: "center center", scrub: 0.8 }
+      });
+    }
   });
 
   /* ================= parallax portraits ================= */
@@ -215,6 +230,19 @@
     hero.addEventListener("pointerleave", function () { rx(0); ry(0); });
   }
 
+  /* the screens lean toward the pointer, like a print turned to the light */
+  gsap.utils.toArray(".ir-shots").forEach(function (shots) {
+    gsap.set(shots, { transformPerspective: 1400 });
+    var tx = gsap.quickTo(shots, "rotationY", { duration: 0.9, ease: "power3.out" });
+    var tz = gsap.quickTo(shots, "rotationX", { duration: 0.9, ease: "power3.out" });
+    shots.addEventListener("pointermove", function (e) {
+      var r = shots.getBoundingClientRect();
+      tx(((e.clientX - r.left) / r.width - 0.5) * 7);
+      tz(-((e.clientY - r.top) / r.height - 0.5) * 5);
+    });
+    shots.addEventListener("pointerleave", function () { tx(0); tz(0); });
+  });
+
   /* the cursor: a dot that tracks exactly and a ring that eases after it */
   var cursor = document.querySelector(".cursor");
   if (!cursor) return;
@@ -222,7 +250,7 @@
   var label = cursor.querySelector(".cursor-label");
   var LABELS = {
     hello: { en: "Hello", ms: "Helo" }, drag: { en: "Drag", ms: "Seret" },
-    scan: { en: "Scan", ms: "Imbas" }, write: { en: "Write", ms: "Tulis" }
+    write: { en: "Write", ms: "Tulis" }
   };
   root.classList.add("has-cursor");
   gsap.set([dot, ring], { x: -100, y: -100 });

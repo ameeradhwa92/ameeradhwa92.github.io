@@ -6,8 +6,8 @@ Personal portfolio of **Ameer Adhwa Bin Mohamad** — Full Stack Web Specialist
 A single scrollable career timeline, 2010 → today: from a Diploma in Computer
 Science at UiTM Dungun to building **RetailAIM® Plus**, a multi-tenant SaaS
 platform serving 20+ FMCG brands across Southeast Asia — and, newest, the **RetailAIM IR**
-platform, whose three core workflows (capture, recognise, resolve) the page recreates as
-interactive demos with sample data.
+platform, shown through its IR Workforce screens (demo mode) with the product survey's 3D
+pack floating over them.
 
 **Live:** https://ameeradhwa92.github.io/
 
