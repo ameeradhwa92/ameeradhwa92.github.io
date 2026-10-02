@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Ameer Adhwa — Full Stack Web Specialist · The Journey</title>
-  <meta name="description" content="The 16-year journey of Ameer Adhwa Bin Mohamad — from a Diploma in Computer Science at UiTM Dungun to Full Stack Web Specialist building multi-tenant SaaS for 20+ FMCG brands across Southeast Asia.">
+  <meta name="description" content="The 16-year journey of Ameer Adhwa Bin Mohamad — from a Diploma in Computer Science at UiTM Dungun to Full Stack Web Specialist building multi-tenant SaaS for 20+ FMCG brands across Southeast Asia, and the RetailAIM IR platform.">
   <link rel="canonical" href="https://ameeradhwa92.github.io/">
   <meta name="theme-color" content="#161b33">
   <meta property="og:type" content="website">
@@ -17,7 +17,7 @@
   <!-- ?v= is the cache-busting tag. Bump it on every deploy that changes CSS or
        JS; chatbot.js reads this same tag off its own src and forwards it to the
        knowledge base and profile fetches, so this is the only place to edit. -->
-  <link rel="stylesheet" href="assets/css/style.css?v=2026-09-05d">
+  <link rel="stylesheet" href="assets/css/style.css?v=2026-10-02a">
   <script>
     document.documentElement.classList.replace('no-js', 'js');
     /* apply saved theme/language before first paint to avoid flashes */
@@ -265,12 +265,15 @@
   <a class="skip-link" href="#route" data-i18n="skip">Skip to the journey</a>
   <div class="atmosphere" aria-hidden="true"></div>
   <div class="cursor-glow" aria-hidden="true"></div>
+  <div class="cursor" aria-hidden="true"><span class="cursor-ring"><em class="cursor-label"></em></span><span class="cursor-dot"></span></div>
   <div class="progress" aria-hidden="true"></div>
 
   <nav class="nav" aria-label="Main">
     <div class="nav-inner">
-      <a class="nav-name" href="#top">Ameer&nbsp;Adhwa</a>
+      <a class="nav-name" href="#top"><span class="nav-mark" aria-hidden="true">AA</span><span>Ameer&nbsp;Adhwa</span></a>
+      <span class="nav-clock" aria-hidden="true"><span class="nav-clock-dot"></span>Shah Alam · <span id="nav-time">--:--</span> MYT</span>
       <div class="nav-links">
+        <a href="#work" data-i18n="nav.work">Work</a>
         <a href="#route" data-i18n="nav.journey">Journey</a>
         <a href="#skills" data-i18n="nav.skills">Skills</a>
         <a href="#contact" data-i18n="nav.contact">Contact</a>
@@ -289,22 +292,23 @@
   </nav>
 
   <!-- ================= HERO ================= -->
-  <header class="hero wrap" id="top">
+  <header class="hero" id="top">
     <!-- the journey thread: draws once after the loader releases the page -->
     <svg class="hero-thread" viewBox="0 0 1100 520" preserveAspectRatio="none" aria-hidden="true">
       <path d="M -20 470 C 180 470, 240 380, 300 330 S 420 300, 520 280 S 700 200, 790 150 S 940 90, 1120 95"/>
       <circle cx="300" cy="330" r="3.5"/>
       <circle cx="790" cy="150" r="3.5"/>
     </svg>
-    <div class="hero-grid">
-      <div>
+    <div class="hero-grid wrap">
+      <div class="hero-copy">
         <p class="eyebrow" data-i18n="hero.eyebrow">Shah Alam, Malaysia — Full Stack Web Specialist</p>
-        <h1 data-i18n="hero.h1">From a diploma classroom in <em class="stop">Dungun</em> to multi-tenant SaaS across <em>Southeast Asia</em>.</h1>
+        <h1 class="hero-title" data-i18n="hero.h1">From a diploma classroom in <em class="stop">Dungun</em> to multi-tenant SaaS across <em>Southeast Asia</em>.</h1>
         <p class="hero-sub" data-i18n="hero.sub">
           I'm Ameer Adhwa Bin Mohamad. For 12+ years I've shipped web and mobile systems for
           government agencies, ports and customs, clinics — and today I'm the developer behind
           <b>RetailAIM® Plus</b>, a multi-tenant ASP.NET Core SaaS platform used by 20+ FMCG brands
-          (Nestlé, Unilever, Abbott, Farm Fresh) across Malaysia, Singapore, Thailand and the Philippines.
+          (Nestlé, Unilever, Abbott, Farm Fresh) across Malaysia, Singapore, Thailand and the Philippines,
+          and the new <b>RetailAIM IR</b> platform for its Intelligent Recognition team.
         </p>
         <div class="hero-actions">
           <a class="btn btn-solid" href="assets/resume/Ameer_Adhwa_Resume_2026.pdf" download data-i18n="hero.download">Download résumé</a>
@@ -318,10 +322,34 @@
         </div>
       </div>
       <div class="portrait reveal">
-        <img src="assets/img/portrait-hero.jpg" alt="Ameer Adhwa Bin Mohamad, smiling in a navy suit" width="900" height="1200">
+        <div class="portrait-frame" data-cursor="hello">
+          <img src="assets/img/portrait-hero.jpg" alt="Ameer Adhwa Bin Mohamad, smiling in a navy suit" width="900" height="1200">
+        </div>
+        <a class="hero-now" href="#work">
+          <span class="hero-now-dot" aria-hidden="true"></span>
+          <span data-i18n="hero.now">Now shipping · <b>RetailAIM IR</b></span>
+        </a>
       </div>
     </div>
+    <a class="hero-scroll" href="#work" aria-hidden="true" tabindex="-1"><span></span></a>
   </header>
+
+  <!-- ================= MARQUEE ================= -->
+  <!-- decorative: every technology named here is also listed in the toolkit below -->
+  <div class="marquee" aria-hidden="true">
+    <div class="marquee-track">
+      <div class="marquee-group">
+        <span>ASP.NET Core</span><i>✦</i><span>.NET 10</span><i>✦</i><span>SvelteKit</span><i>✦</i><span>React</span><i>✦</i>
+        <span>three.js</span><i>✦</i><span>GSAP</span><i>✦</i><span>Flutter</span><i>✦</i><span>Azure DevOps</span><i>✦</i>
+        <span>Playwright</span><i>✦</i><span>SQL Server</span><i>✦</i><span>Salesforce</span><i>✦</i><span>FastAPI</span><i>✦</i>
+      </div>
+      <div class="marquee-group">
+        <span>ASP.NET Core</span><i>✦</i><span>.NET 10</span><i>✦</i><span>SvelteKit</span><i>✦</i><span>React</span><i>✦</i>
+        <span>three.js</span><i>✦</i><span>GSAP</span><i>✦</i><span>Flutter</span><i>✦</i><span>Azure DevOps</span><i>✦</i>
+        <span>Playwright</span><i>✦</i><span>SQL Server</span><i>✦</i><span>Salesforce</span><i>✦</i><span>FastAPI</span><i>✦</i>
+      </div>
+    </div>
+  </div>
 
   <!-- ================= STATS ================= -->
   <section class="stats" aria-label="Career at a glance">
@@ -332,6 +360,224 @@
         <div class="stat reveal"><b>20+</b><span data-i18n="stats.brands">FMCG brands served</span></div>
         <div class="stat reveal"><b>4</b><span data-i18n="stats.countries">countries live</span></div>
       </div>
+    </div>
+  </section>
+
+  <!-- ================= NEWEST WORK: RETAILAIM IR ================= -->
+  <!-- Three interactive workflows (capture, recognise, resolve) recreated with sample data
+       by ir-showcase.js; the rules they run on live in ir-core.js. The production app is
+       private to the IR team, so nothing here talks to it. Without JS each device shows
+       its resting state. -->
+  <section class="section ir" id="work" aria-labelledby="ir-h2">
+    <div class="wrap">
+      <div class="ir-head">
+        <p class="eyebrow reveal" data-i18n="ir.eyebrow">Newest work · 2026 · for the Intelligent Recognition team</p>
+        <h2 class="ir-title" id="ir-h2" data-i18n="ir.h2">RetailAIM IR — shelf photos in, <em>decisions out</em>.</h2>
+        <div class="ir-intro">
+          <p class="ir-lede reveal" data-i18n="ir.lede">Intelligent Recognition turns merchandisers' shelf photos into compliance scores for FMCG brands. The tools around it had grown up as separate prototypes, so I rebuilt them as one platform: a work-management app for the IR team, a phone-first product survey, and the insights and appeal screens that close the loop.</p>
+          <dl class="ir-facts reveal">
+            <div><dt data-i18n="ir.fact.role">Role</dt><dd data-i18n="ir.fact.roleV">Design, build &amp; release — end to end</dd></div>
+            <div><dt data-i18n="ir.fact.stack">Stack</dt><dd>.NET 10 · EF Core · SvelteKit · three.js · Azure</dd></div>
+            <div><dt data-i18n="ir.fact.status">Status</dt><dd><span class="badge badge-private"><span class="dot"></span><span data-i18n="badge.live-private">Live · Private</span></span></dd></div>
+          </dl>
+        </div>
+      </div>
+    </div>
+
+    <div class="ir-flow wrap" id="ir-flow">
+      <ol class="ir-steps" aria-label="Workflows">
+        <li><a href="#ir-capture"><span>01</span><b data-i18n="ir.step1">Capture</b></a></li>
+        <li><a href="#ir-recognise"><span>02</span><b data-i18n="ir.step2">Recognise</b></a></li>
+        <li><a href="#ir-resolve"><span>03</span><b data-i18n="ir.step3">Resolve</b></a></li>
+      </ol>
+
+      <!-- 01 · capture -->
+      <article class="ir-chapter" id="ir-capture" aria-labelledby="ir-capture-h3">
+        <div class="ir-copy">
+          <p class="ir-num" aria-hidden="true">01</p>
+          <h3 id="ir-capture-h3" data-i18n="ir.cap.h3">Capture — the product survey, rebuilt for the phone</h3>
+          <p data-i18n="ir.cap.p">Field teams record every pack the recognition model must learn: find the product, scan its barcode, key in its size. The legacy survey became a SvelteKit app light enough for a merchandiser's phone.</p>
+          <ul class="ir-points">
+            <li data-i18n="ir.cap.pt1">Camera barcode reader for 21 formats, on self-hosted WebAssembly</li>
+            <li data-i18n="ir.cap.pt2">A 3D pack in three.js re-scales live as width and height are typed</li>
+            <li data-i18n="ir.cap.pt3">Category tabs, name search and an Incomplete / Completed split</li>
+          </ul>
+          <p class="ir-try" data-i18n="ir.cap.try">Try it: press <b>Scan</b>, then drag the sizes.</p>
+        </div>
+
+        <div class="ir-device ir-phone" data-demo="capture">
+          <div class="phone-screen">
+            <div class="app-bar"><b>IR Ops</b><span class="app-pill" data-i18n="ir.demo.ws">Sample workspace</span></div>
+            <div class="cap-tabs" aria-hidden="true">
+              <span class="is-on" data-i18n="ir.cap.cat1">Beverages</span>
+              <span data-i18n="ir.cap.cat2">Snacks</span>
+              <span data-i18n="ir.cap.cat3">Home care</span>
+            </div>
+            <div class="cap-filter" aria-hidden="true">
+              <span class="is-on"><span data-i18n="ir.cap.incomplete">Incomplete</span> <b id="cap-inc">3</b></span>
+              <span><span data-i18n="ir.cap.completed">Completed</span> <b id="cap-done">9</b></span>
+            </div>
+            <div class="cap-stage" id="cap-stage" data-cursor="drag">
+              <canvas class="cap-canvas" id="cap-canvas" aria-hidden="true"></canvas>
+              <div class="cap-box" id="cap-box" aria-hidden="true">
+                <i class="f-front"></i><i class="f-back"></i><i class="f-left"></i><i class="f-right"></i><i class="f-top"></i><i class="f-bottom"></i>
+              </div>
+              <span class="cap-laser" aria-hidden="true"></span>
+              <span class="cap-dims" id="cap-dims">8 × 20 × 3.4 cm</span>
+            </div>
+            <p class="cap-name" data-i18n="ir.cap.product">Sample sparkling drink · 320 ml</p>
+            <form class="cap-form" id="cap-form" novalidate>
+              <label class="cap-field" for="cap-barcode"><span data-i18n="ir.cap.barcode">Barcode</span></label>
+              <div class="cap-input-row">
+                <input class="cap-input" id="cap-barcode" type="text" inputmode="numeric" maxlength="13" autocomplete="off" spellcheck="false" placeholder="955…" aria-describedby="cap-check">
+                <button class="cap-scan" id="cap-scan" type="button" data-i18n="ir.cap.scan">Scan</button>
+              </div>
+              <p class="cap-check" id="cap-check" data-state="empty" aria-live="polite">
+                <span class="cap-msg cap-msg-empty" data-i18n="ir.cap.msgEmpty">Scan or type an EAN-13</span>
+                <span class="cap-msg cap-msg-ok" data-i18n="ir.cap.msgOk">Check digit valid</span>
+                <span class="cap-msg cap-msg-bad" data-i18n="ir.cap.msgBad">Check digit does not match</span>
+              </p>
+              <div class="cap-row">
+                <div class="cap-dim">
+                  <label class="cap-field" for="cap-w"><span data-i18n="ir.cap.width">Width (cm)</span></label>
+                  <input class="cap-input" id="cap-w" type="text" inputmode="decimal" value="8" autocomplete="off">
+                  <input class="cap-range" id="cap-w-range" type="range" min="1" max="40" step="0.5" value="8" aria-label="Width (cm)" data-i18n-aria="ir.cap.width">
+                </div>
+                <div class="cap-dim">
+                  <label class="cap-field" for="cap-h"><span data-i18n="ir.cap.height">Height (cm)</span></label>
+                  <input class="cap-input" id="cap-h" type="text" inputmode="decimal" value="20" autocomplete="off">
+                  <input class="cap-range" id="cap-h-range" type="range" min="1" max="40" step="0.5" value="20" aria-label="Height (cm)" data-i18n-aria="ir.cap.height">
+                </div>
+              </div>
+              <p class="cap-status" id="cap-status" data-state="incomplete">
+                <span class="cap-st cap-st-incomplete" data-i18n="ir.cap.stIncomplete">Incomplete</span>
+                <span class="cap-st cap-st-completed" data-i18n="ir.cap.stCompleted">Completed — saved to the survey</span>
+              </p>
+            </form>
+          </div>
+        </div>
+      </article>
+
+      <!-- 02 · recognise -->
+      <article class="ir-chapter" id="ir-recognise" aria-labelledby="ir-rec-h3">
+        <div class="ir-copy">
+          <p class="ir-num" aria-hidden="true">02</p>
+          <h3 id="ir-rec-h3" data-i18n="ir.rec.h3">Recognise — every shelf photo becomes a score</h3>
+          <p data-i18n="ir.rec.p">Recognition finds each SKU on the shelf; IR Insights then judges the visit against the client's hurdle rates. It replaced a stand-alone analytics prototype and reads each tenant's own database through fixed, read-only SQL — one business unit at a time.</p>
+          <ul class="ir-points">
+            <li data-i18n="ir.rec.pt1">Compliance against hurdle rates, appeals, photo traffic and Quick View</li>
+            <li data-i18n="ir.rec.pt2">Business units enforced on every query, not just hidden in the UI</li>
+            <li data-i18n="ir.rec.pt3">Visit photos streamed from each tenant's own blob storage</li>
+          </ul>
+          <p class="ir-try" data-i18n="ir.rec.try">Try it: switch the business unit.</p>
+        </div>
+
+        <div class="ir-device ir-browser" data-demo="recognise">
+          <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span class="browser-url">/w/sample/insights</span></div>
+          <div class="rec-body">
+            <div class="rec-photo" data-cursor="scan">
+              <div class="rec-shelf" id="rec-shelf" aria-hidden="true"></div>
+              <span class="rec-sweep" aria-hidden="true"></span>
+              <p class="rec-found"><b id="rec-count">0</b> / <span id="rec-total">21</span> <span data-i18n="ir.rec.found">SKUs recognised</span></p>
+            </div>
+            <div class="rec-panel">
+              <div class="rec-units" role="group" aria-label="Business unit">
+                <button class="is-on" type="button" data-unit="a" aria-pressed="true" data-i18n="ir.rec.unitA">Unit A</button>
+                <button type="button" data-unit="b" aria-pressed="false" data-i18n="ir.rec.unitB">Unit B</button>
+              </div>
+              <ul class="rec-kpis" id="rec-kpis">
+                <li data-kpi="osa"><span class="rec-k" data-i18n="ir.rec.osa">On-shelf availability</span><b class="rec-v">0%</b><span class="rec-bar"><i></i><em></em></span></li>
+                <li data-kpi="sos"><span class="rec-k" data-i18n="ir.rec.sos">Share of shelf</span><b class="rec-v">0%</b><span class="rec-bar"><i></i><em></em></span></li>
+                <li data-kpi="promo"><span class="rec-k" data-i18n="ir.rec.promo">Promotion compliance</span><b class="rec-v">0%</b><span class="rec-bar"><i></i><em></em></span></li>
+              </ul>
+              <p class="rec-legend"><em></em><span data-i18n="ir.rec.hurdle">Hurdle rate</span></p>
+              <div class="rec-traffic">
+                <span data-i18n="ir.rec.traffic">Photo traffic · last 7 days</span>
+                <div class="rec-spark" id="rec-spark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <!-- 03 · resolve -->
+      <article class="ir-chapter" id="ir-resolve" aria-labelledby="ir-res-h3">
+        <div class="ir-copy">
+          <p class="ir-num" aria-hidden="true">03</p>
+          <h3 id="ir-res-h3" data-i18n="ir.res.h3">Resolve — appeals and audits, closed in one screen</h3>
+          <p data-i18n="ir.res.p">When a merchandiser disputes a score, the IR team rules on it. Each appeal line shows its evidence and exactly what approving it would change; verdicts land in one transaction, and an audit issue becomes a tracked task whose closure writes Completed back to the tenant.</p>
+          <ul class="ir-points">
+            <li data-i18n="ir.res.pt1">Approve or reject per line, or up to 200 appeals at once</li>
+            <li data-i18n="ir.res.pt2">One screen at 1366 × 768 — evidence, KPIs and verdicts, no page scroll</li>
+            <li data-i18n="ir.res.pt3">Audit issues open tasks in the IR Workforce app and write back on close</li>
+          </ul>
+          <p class="ir-try" data-i18n="ir.res.try">Try it: tick a few lines, then approve.</p>
+        </div>
+
+        <div class="ir-device ir-browser" data-demo="resolve">
+          <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span class="browser-url">/w/sample/audits/final-appeals</span></div>
+          <div class="res-body">
+            <div class="res-head">
+              <b data-i18n="ir.res.title">Final appeal · Visit 0412 · Sample outlet</b>
+              <span class="res-tally" id="res-tally" aria-live="polite"><span data-i18n="ir.res.pending">Pending</span> <b data-t="pending">5</b> · <span data-i18n="ir.res.approved">Approved</span> <b data-t="approve">0</b> · <span data-i18n="ir.res.rejected">Rejected</span> <b data-t="reject">0</b></span>
+            </div>
+            <div class="res-kpis" id="res-kpis">
+              <div data-kpi="osa"><span>OSA</span><b>78</b></div>
+              <div data-kpi="sos"><span>SOS</span><b>41</b></div>
+              <div data-kpi="cta"><span>CTA</span><b>62</b></div>
+              <div data-kpi="gold"><span>Gold</span><b>70</b></div>
+            </div>
+            <div class="res-main">
+              <div class="res-evidence" aria-hidden="true"><i></i><i></i></div>
+              <ul class="res-lines" id="res-lines">
+                <li data-id="l1" data-kpi="osa" data-restores="6"><label><input type="checkbox" value="l1"><span class="res-kind">OSA-NPD</span><span class="res-why" data-i18n="ir.res.l1">On the shelf, not recognised</span></label><span class="res-gain">+6</span></li>
+                <li data-id="l2" data-kpi="sos" data-restores="4"><label><input type="checkbox" value="l2"><span class="res-kind">SOS</span><span class="res-why" data-i18n="ir.res.l2">Facings miscounted</span></label><span class="res-gain">+4</span></li>
+                <li data-id="l3" data-kpi="cta" data-restores="5"><label><input type="checkbox" value="l3"><span class="res-kind">CTA</span><span class="res-why" data-i18n="ir.res.l3">End-cap display missed</span></label><span class="res-gain">+5</span></li>
+                <li data-id="l4" data-kpi="gold" data-restores="3"><label><input type="checkbox" value="l4"><span class="res-kind">Gold Promo</span><span class="res-why" data-i18n="ir.res.l4">Promo tag out of frame</span></label><span class="res-gain">+3</span></li>
+                <li data-id="l5" data-kpi="osa" data-restores="2"><label><input type="checkbox" value="l5"><span class="res-kind">OSA-NPD</span><span class="res-why" data-i18n="ir.res.l5">Claimed: not there</span></label><span class="res-gain">+2</span></li>
+              </ul>
+            </div>
+            <div class="res-actions">
+              <button class="res-btn res-approve" id="res-approve" type="button" disabled><span data-i18n="ir.res.approve">Approve selected</span> <b class="res-n">0</b></button>
+              <button class="res-btn res-reject" id="res-reject" type="button" disabled><span data-i18n="ir.res.reject">Reject selected</span></button>
+              <button class="res-btn res-reset" id="res-reset" type="button" data-i18n="ir.res.reset">Reset</button>
+            </div>
+            <div class="res-task" id="res-task" hidden>
+              <span class="res-task-tag">IR Workforce</span>
+              <b data-i18n="ir.res.taskTitle">Audit issue closed</b>
+              <span data-i18n="ir.res.taskBody">Completed written back to the tenant · task moved to Done</span>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <p class="ir-note" data-i18n="ir.note">Illustrative recreations with sample data. The production app is private to the IR team, behind its sign-in.</p>
+    </div>
+
+    <!-- under the hood -->
+    <div class="ir-engine wrap">
+      <div class="ir-engine-head reveal">
+        <p class="eyebrow" data-i18n="ir.eng.eyebrow">Under the hood</p>
+        <h3 data-i18n="ir.eng.h3">One site, one release, <em>every test first</em>.</h3>
+      </div>
+      <div class="ir-numbers">
+        <div class="ir-number reveal"><b data-count="1100">1,100+</b><span data-i18n="ir.eng.tests">automated tests gate every deploy — xUnit for the APIs, Playwright end to end</span></div>
+        <div class="ir-number reveal"><b data-count="13">13</b><span data-i18n="ir.eng.steps">steps in the Azure DevOps release, from push to smoke-checked production</span></div>
+        <div class="ir-number reveal"><b data-count="3">3</b><span data-i18n="ir.eng.legacy">legacy prototypes — analytics, appeals, product survey — retired into one platform</span></div>
+        <div class="ir-number reveal"><b data-count="1">1</b><span data-i18n="ir.eng.site">.NET 10 host serving the APIs and every web app from a single App Service</span></div>
+      </div>
+      <div class="ir-agents reveal">
+        <div>
+          <p class="eyebrow" data-i18n="ir.ai.eyebrow">AI-native engineering</p>
+          <h4 data-i18n="ir.ai.h4">One rulebook for every AI coding agent.</h4>
+        </div>
+        <p data-i18n="ir.ai.p">The workspace behind IR is run with Claude Code, Codex and others from a single <code>AGENTS.md</code>: every task is sized quick, standard or significant; significant work stops at a written plan for a human “go”; and a guard hook blocks destructive commands and asks before any production write.</p>
+      </div>
+      <ul class="ir-stack reveal" aria-label="Technologies">
+        <li>.NET 10</li><li>ASP.NET Core</li><li>EF Core 10</li><li>SQL Server</li><li>SvelteKit 2</li><li>Svelte 5</li>
+        <li>TypeScript</li><li>Tailwind 4</li><li>GSAP</li><li>three.js</li><li>Playwright</li><li>xUnit</li>
+        <li>Azure App Service</li><li>Azure Blob Storage</li><li>Azure DevOps</li>
+      </ul>
     </div>
   </section>
 
@@ -702,9 +948,26 @@
         <p class="era-desc" data-i18n="era6.desc">Sole developer of <b>RetailAIM® Plus</b> — a multi-tenant ASP.NET Core SaaS
           platform serving 20+ FMCG brands and DemoPower's field operations across four countries.
           Currently rebuilding the back office in <b>React + FastAPI</b>, migrating the Abbott CRM to a
-          <b>.NET 10 clean-architecture</b> monorepo, and running every Azure DevOps pipeline that ships it all.</p>
+          <b>.NET 10 clean-architecture</b> monorepo, building the <b>RetailAIM IR</b> platform for the
+          Intelligent Recognition team, and running every Azure DevOps pipeline that ships it all.</p>
 
         <div class="cards">
+          <div class="card card-feature">
+            <div class="shot"><img src="assets/img/projects/retailaim-ir.jpg" alt="Illustrative recreation of the RetailAIM IR final-appeal screen with sample data" loading="lazy" width="1003" height="717"></div>
+            <div class="card-body">
+              <p class="card-client" data-i18n="rair.client">RetailAIM · Intelligent Recognition team</p>
+              <h4 data-i18n="rair.title">RetailAIM IR Platform</h4>
+              <p data-i18n="rair.desc">One .NET 10 site for the IR team — a SvelteKit work-management app, a phone-first product
+                 survey with a barcode reader and a live 3D pack, and the insights and final-appeal screens, shipped by an
+                 Azure DevOps release that runs 1,100+ automated tests first.</p>
+              <div class="tags"><span>.NET 10</span><span>SvelteKit</span><span>three.js</span><span>Playwright</span><span>Azure</span></div>
+            </div>
+            <div class="card-foot">
+              <span class="badge badge-private"><span class="dot"></span><span data-i18n="badge.live-private">Live · Private</span></span>
+              <a class="card-link" href="#work" data-i18n="rair.see">See the workflows ↑</a>
+            </div>
+          </div>
+
           <div class="card">
             <div class="shot"><img src="assets/img/projects/retailaim-plus.jpg" alt="RetailAIM Plus deployment scheduling interface" loading="lazy" width="1000" height="513"></div>
             <div class="card-body">
@@ -789,34 +1052,46 @@
       <h2 data-i18n="skills.h2">Everything it takes to ship — <em>and keep it running</em>.</h2>
     </div>
     <div class="skills-grid">
-      <div class="skill-group reveal">
+      <div class="skill-group skill-wide reveal">
+        <span class="skill-idx" aria-hidden="true">01</span>
         <h3 data-i18n="skills.web">Web &amp; Backend</h3>
-        <p>ASP.NET Core (MVC), ASP.NET Framework, C#, Entity Framework, Python (FastAPI),
+        <p>ASP.NET Core (MVC), .NET 10, ASP.NET Framework, C#, Entity Framework, Python (FastAPI),
            REST &amp; SOAP APIs, Laravel/PHP</p>
       </div>
       <div class="skill-group reveal">
+        <span class="skill-idx" aria-hidden="true">02</span>
         <h3 data-i18n="skills.frontend">Frontend &amp; UI/UX</h3>
-        <p>React, TypeScript, Vite, TailwindCSS, ShadCN/Radix, React Query, DevExpress,
-           Bootstrap, JavaScript, HTML5/CSS3</p>
+        <p>React, Svelte 5 / SvelteKit, TypeScript, Vite, TailwindCSS, ShadCN/Radix, React Query,
+           GSAP, three.js, DevExpress, Bootstrap, HTML5/CSS3</p>
       </div>
       <div class="skill-group reveal">
+        <span class="skill-idx" aria-hidden="true">03</span>
         <h3 data-i18n="skills.mobile">Mobile</h3>
         <p data-i18n="skills.mobile.desc">Flutter/Dart, Android (Kotlin, Java), iOS (Swift), Ionic Framework —
            published to Google Play &amp; the App Store</p>
       </div>
       <div class="skill-group reveal">
+        <span class="skill-idx" aria-hidden="true">04</span>
         <h3 data-i18n="skills.data">Data &amp; Databases</h3>
         <p data-i18n="skills.data.desc">MS SQL Server, Azure SQL, MySQL, SQLite, stored-procedure → Entity Framework migration</p>
       </div>
       <div class="skill-group reveal">
+        <span class="skill-idx" aria-hidden="true">05</span>
         <h3 data-i18n="skills.cloud">Cloud &amp; DevOps</h3>
-        <p>Azure DevOps (Repos, Pipelines, YAML CI/CD), Azure App Service, ARM/Bicep IaC,
-           Git/GitHub/Bitbucket</p>
+        <p>Azure DevOps (Repos, Pipelines, YAML CI/CD), Azure App Service, Azure Blob Storage, ARM/Bicep IaC,
+           Playwright &amp; xUnit test gates, Git/GitHub/Bitbucket</p>
       </div>
       <div class="skill-group reveal">
+        <span class="skill-idx" aria-hidden="true">06</span>
         <h3 data-i18n="skills.integrations">Integrations</h3>
         <p>Salesforce CRM API, SAP, AutoCount ERP, iPay88, SenangPay, eGHL, PayPal,
            WhatsApp Business API, FCM/Pushwoosh</p>
+      </div>
+      <div class="skill-group skill-ai reveal">
+        <span class="skill-idx" aria-hidden="true">07</span>
+        <h3 data-i18n="skills.ai">AI-assisted engineering</h3>
+        <p data-i18n="skills.ai.desc">Claude Code and Codex workflows with shared agent rules and guard hooks; shipped AI features
+           such as AIMeer on this site — on-device WebLLM with a Cloudflare Workers AI fallback</p>
       </div>
     </div>
 
@@ -850,6 +1125,10 @@
 
   <!-- ================= CONTACT ================= -->
   <footer class="contact wrap" id="contact">
+    <a class="contact-big" href="mailto:ameeradhwa92@gmail.com" data-cursor="write">
+      <span class="contact-big-track" aria-hidden="true"><span data-i18n="contact.big">Let's build the next one</span><i>✦</i><span data-i18n="contact.big">Let's build the next one</span><i>✦</i><span data-i18n="contact.big">Let's build the next one</span><i>✦</i></span>
+      <span class="sr-only">ameeradhwa92@gmail.com</span>
+    </a>
     <div class="contact-grid">
       <div class="contact-photo reveal">
         <img src="assets/img/portrait-seated.jpg" alt="Ameer Adhwa seated in a dark study, deep in thought" loading="lazy" width="900" height="1200">
@@ -996,14 +1275,22 @@
     </form>
   </section>
 
-  <script src="assets/js/i18n.js?v=2026-09-05d" defer></script>
-  <script src="assets/js/main.js?v=2026-09-05d" defer></script>
-  <script src="assets/js/aimeer-device.js?v=2026-09-05d" defer></script>
-  <script src="assets/js/jd-extractor.js?v=2026-09-05d" defer></script>
-  <script src="assets/js/jd-matcher.js?v=2026-09-05d" defer></script>
-  <script src="assets/js/jd-reasoning.js?v=2026-09-05d" defer></script>
-  <script src="assets/js/chatbot.js?v=2026-09-05d" defer></script>
-  <script src="assets/js/route-globe-core.js?v=2026-09-05d" defer></script>
-  <script src="assets/js/route-globe.js?v=2026-09-05d" defer></script>
+  <script src="assets/js/i18n.js?v=2026-10-02a" defer></script>
+  <script src="assets/js/main.js?v=2026-10-02a" defer></script>
+  <script src="assets/js/aimeer-device.js?v=2026-10-02a" defer></script>
+  <script src="assets/js/jd-extractor.js?v=2026-10-02a" defer></script>
+  <script src="assets/js/jd-matcher.js?v=2026-10-02a" defer></script>
+  <script src="assets/js/jd-reasoning.js?v=2026-10-02a" defer></script>
+  <script src="assets/js/chatbot.js?v=2026-10-02a" defer></script>
+  <script src="assets/js/route-globe-core.js?v=2026-10-02a" defer></script>
+  <script src="assets/js/route-globe.js?v=2026-10-02a" defer></script>
+  <!-- GSAP is pinned by path (assets/vendor/README.md); motion.js and ir-showcase.js
+       treat a missing window.gsap as "no motion" and leave the page static. -->
+  <script src="assets/vendor/gsap/gsap.min.js" defer></script>
+  <script src="assets/vendor/gsap/ScrollTrigger.min.js" defer></script>
+  <script src="assets/vendor/gsap/SplitText.min.js" defer></script>
+  <script src="assets/js/ir-core.js?v=2026-10-02a" defer></script>
+  <script src="assets/js/ir-showcase.js?v=2026-10-02a" defer></script>
+  <script src="assets/js/motion.js?v=2026-10-02a" defer></script>
 </body>
 </html>

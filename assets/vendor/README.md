@@ -10,7 +10,22 @@ Vendored renderer for the route globe (`assets/js/route-globe.js`):
   relatively, so the two files must stay side by side.
 - `three/three.core.min.js`
 
+Vendored animation library for the page choreography (`assets/js/motion.js`) and the
+RetailAIM IR showcase (`assets/js/ir-showcase.js`):
+
+- `gsap/gsap.min.js` — the core; its UMD build sets `window.gsap`.
+- `gsap/ScrollTrigger.min.js`, `gsap/SplitText.min.js` — plugins, registered by `motion.js`.
+
+  Plain classic `<script defer>` tags, loaded after `route-globe.js` and before `motion.js`.
+  Like three.js they are pinned by path, not by `?v=`: a version bump replaces the files and
+  this README. Both consumer scripts treat a missing `window.gsap` as "no motion" and leave
+  the page in its static, fully visible state.
+
 Pinned versions:
+
+- GSAP `3.15.0` — `dist/gsap.min.js`, `dist/ScrollTrigger.min.js` and `dist/SplitText.min.js`
+  copied unmodified from the npm tarball `gsap-3.15.0.tgz`
+  (sha512 `dMW4CWBTUK1AEEDeZc1g4xpPGIrSf9fJF960qbTZmN/QwZIWY5wgliS6JWl9/25fpTGJrMRtSjGtOmPnfjZB+A==`).
 
 - PDF.js `4.10.38`
 - JSZip `3.10.1`
@@ -69,6 +84,21 @@ JSZip uses the library pako released under the MIT license :
 https://github.com/nodeca/pako/blob/main/LICENSE
 */
 ```
+
+```text
+GSAP
+/*!
+ * GSAP 3.15.0
+ * https://gsap.com
+ *
+ * @license Copyright 2026, GreenSock. All rights reserved.
+ * Subject to the terms at https://gsap.com/standard-license.
+ * @author: Jack Doyle, jack@greensock.com
+ */
+```
+
+GSAP's standard license is the "no charge" license (all plugins, including SplitText, free
+for commercial and personal use since 3.13): https://gsap.com/standard-license.
 
 ```text
 three.js
