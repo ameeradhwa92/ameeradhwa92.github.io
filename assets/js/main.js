@@ -41,6 +41,11 @@
       var k = el.getAttribute("data-i18n");
       if (dict[k] != null) el.innerHTML = dict[k];
     });
+    /* controls with no visible text of their own borrow a key's text as their name */
+    document.querySelectorAll("[data-i18n-aria]").forEach(function (el) {
+      var k = el.getAttribute("data-i18n-aria");
+      if (dict[k] != null) el.setAttribute("aria-label", String(dict[k]).replace(/<[^>]*>/g, ""));
+    });
     document.title = dict["meta.title"] || EN["meta.title"];
     var meta = document.querySelector('meta[name="description"]');
     if (meta) meta.content = dict["meta.desc"] || EN["meta.desc"];
@@ -48,6 +53,7 @@
     root.dataset.lang = lang;
     if (langBtn) langBtn.textContent = lang === "ms" ? "EN" : "BM";
     try { localStorage.setItem("lang", lang); } catch (e) {}
+    document.dispatchEvent(new CustomEvent("site:lang", { detail: { lang: lang } }));
   }
   var initialLang = root.dataset.lang === "ms" ? "ms" : "en";
   if (initialLang === "ms") setLang("ms");

@@ -89,6 +89,7 @@ If regenerating the site from scratch, feed this whole document to the builder.
 | Project | Era | URL | Status |
 |---|---|---|---|
 | RetailAIM® Plus | RetailAIM | (private SaaS — no public URL; card links to retailaim.com company site if desired) | Live |
+| RetailAIM IR Platform (Intelligent Recognition team) | RetailAIM | private, sign-in only (card links to the on-page #work showcase) | Live (private) |
 | RetailAIM Plus BackOffice (React+FastAPI) | RetailAIM | private | In development |
 | Abbott CRM Platform + Salesforce integration | RetailAIM | private | Live |
 | Promoter Payment System | RetailAIM | private | Live |
