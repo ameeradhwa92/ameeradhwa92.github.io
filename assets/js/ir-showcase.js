@@ -1,12 +1,14 @@
-/* RetailAIM IR showcase — the DOM half. Wires the three workflow demos in
-   #work (capture, recognise, resolve) to the rules in ir-core.js, and renders
-   the capture demo's pack with the vendored three.js when the device can.
-   Everything here runs on sample data; the production app is private.
+/* RetailAIM IR showcase — the DOM half. #work shows real IR Workforce screens
+   (demo mode, sample data); this script adds the one live piece: the product
+   survey's 3D pack from IR Ops, floating over those screens.
 
-   Off the happy path (no WebGL2, save-data, a failed import) the pack stays
-   the CSS 3D box it renders without JS and the reason is written to
-   #cap-stage's data-pack. Reduced motion keeps every demo working, without
-   the idle spin, sweeps or count-ups. */
+   The pack sits on the first chapter's screenshot by default. Where the chapters
+   stack (the same query as style.css and motion.js) it moves to #ir-pack-rail, an
+   overlay above every chapter where it sticks, so each screen slides in under it and the
+   pack turns as the chapter changes. Off the happy path (no WebGL2, save-data, a
+   failed import) it stays the CSS 3D box it renders without JS, and the reason is
+   written to #cap-stage's data-pack. Reduced motion keeps drag and "Next pack",
+   without the idle spin. */
 (function () {
   "use strict";
 
@@ -18,6 +20,7 @@
   var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var saveData = !!(navigator.connection && navigator.connection.saveData);
   var root = document.documentElement;
+  var STACK_QUERY = "(min-width: 1101px) and (min-height: 820px)";
 
   /* Same base-URL discipline as route-globe.js: three.js is imported by the very
      same absolute URL, so the module cache hands both scripts one copy. */
@@ -37,105 +40,87 @@
     }, opts || { threshold: 0.35 });
     io.observe(el);
   }
-  /* count a number up (or down) in place; instant under reduced motion */
-  function countTo(el, to, opts) {
-    if (!el) return;
-    var o = opts || {};
-    var from = parseFloat(el.textContent) || 0;
-    var fmt = function (v) { return (o.decimals ? v.toFixed(o.decimals) : String(Math.round(v))) + (o.suffix || ""); };
-    if (!gsap || reduced) { el.textContent = fmt(to); return; }
-    var box = { v: from };
-    gsap.to(box, { v: to, duration: o.duration || 0.9, ease: "power3.out", overwrite: true,
-      onUpdate: function () { el.textContent = fmt(box.v); } });
+
+  var packEl = $("ir-pack"), stage = $("cap-stage"), canvas = $("cap-canvas"), box = $("cap-box");
+  var dims = $("cap-dims"), nextBtn = $("cap-next"), rail = $("ir-pack-rail"), slot = $("ir-pack-slot");
+  if (!packEl || !stage || !box) return;
+
+  var pack = null;   /* the three.js adapter, once loaded */
+  var current = 0;   /* index into core.SAMPLE_PACKS */
+
+  /* ======================= the survey pack ======================= */
+  function sizeFor(i) {
+    var p = core.SAMPLE_PACKS[i];
+    return { w: p[0], h: p[1], size: core.packSize(String(p[0]), String(p[1]), 2.2) };
+  }
+  function showSize(i, instant) {
+    var s = sizeFor(i);
+    if (!s.size) return;
+    /* CSS fallback box: 2.2 world units ≈ 56% of the stage height */
+    var k = (stage.clientHeight || 200) * 0.56 / 2.2;
+    box.style.setProperty("--bw", (s.size.x * k).toFixed(1) + "px");
+    box.style.setProperty("--bh", (s.size.y * k).toFixed(1) + "px");
+    box.style.setProperty("--bd", (s.size.z * k).toFixed(1) + "px");
+    if (dims) dims.textContent = s.w + " × " + s.h + " × " + s.size.depthCm + " cm";
+    if (pack) pack.resize(s.size, instant);
+  }
+  if (nextBtn) {
+    nextBtn.addEventListener("click", function () {
+      current = core.nextPack(current);
+      showSize(current);
+      if (pack) pack.celebrate();
+    });
   }
 
-  /* ======================= 01 · capture ======================= */
-  (function capture() {
-    var stage = $("cap-stage"), canvas = $("cap-canvas"), box = $("cap-box"), dims = $("cap-dims");
-    var barcode = $("cap-barcode"), scanBtn = $("cap-scan"), check = $("cap-check"), status = $("cap-status");
-    var w = $("cap-w"), h = $("cap-h"), wr = $("cap-w-range"), hr = $("cap-h-range");
-    var inc = $("cap-inc"), done = $("cap-done"), form = $("cap-form");
-    if (!stage || !barcode || !w || !h) return;
+  /* ---- where the pack lives: on the first screen, or riding above the stack ---- */
+  var stackMq = window.matchMedia(STACK_QUERY);
+  function placeInRail() {
+    var chapter = slot.closest(".ir-chapter");
+    var shots = slot.parentNode;
+    if (!chapter || !shots) return;
+    /* offsets ignore transforms, so the chapter's scale-down does not skew this */
+    var w = Math.round(Math.max(170, Math.min(240, shots.offsetWidth * 0.28)));
+    packEl.style.setProperty("--pack-w", w + "px");
+    var h = packEl.offsetHeight || w * 1.4;
+    var left = shots.offsetLeft - w * 0.18;
+    /* every chapter passes under the pack, so it has to fit inside the shortest */
+    var floor = Math.min.apply(null, Array.prototype.map.call(section.querySelectorAll(".ir-chapter"), function (c) { return c.offsetHeight; }));
+    var top = Math.min(shots.offsetTop + shots.offsetHeight - h * 0.82, floor - h - 30);
+    packEl.style.setProperty("--pack-left", Math.round(left) + "px");
+    packEl.style.setProperty("--pack-top", Math.round(Math.max(0, top)) + "px");
+  }
+  function place() {
+    var floating = !!(rail && stackMq.matches);
+    var host = floating ? rail : slot;
+    if (packEl.parentNode !== host) host.appendChild(packEl);
+    packEl.classList.toggle("is-floating", floating);
+    if (floating) placeInRail();
+    else ["--pack-w", "--pack-left", "--pack-top"].forEach(function (k) { packEl.style.removeProperty(k); });
+    showSize(current, true);
+    if (pack) pack.fit();
+  }
+  if (stackMq.addEventListener) stackMq.addEventListener("change", place);
+  else if (stackMq.addListener) stackMq.addListener(place);
+  window.addEventListener("resize", function () { if (packEl.classList.contains("is-floating")) placeInRail(); });
+  place();
 
-    var SAMPLE_CODE = "9551234000706";   /* a valid EAN-13 under the Malaysian GS1 prefix */
-    var BASE_INC = 3, BASE_DONE = 9;
-    var pack = null;                     /* the three.js adapter, once loaded */
-    var scanning = false;
-
-    function update() {
-      var size = core.packSize(w.value, h.value, 2.2);
-      if (size) {
-        /* CSS fallback box: the stage is ~170px tall, so 2.2 world units ≈ 124px */
-        var k = 124 / 2.2;
-        box.style.setProperty("--bw", (size.x * k).toFixed(1) + "px");
-        box.style.setProperty("--bh", (size.y * k).toFixed(1) + "px");
-        box.style.setProperty("--bd", (size.z * k).toFixed(1) + "px");
-        dims.textContent = core.parseCm(w.value) + " × " + core.parseCm(h.value) + " × " + size.depthCm + " cm";
-        if (pack) pack.resize(size);
-      }
-      var code = barcode.value.replace(/\s+/g, "");
-      check.setAttribute("data-state", code === "" ? "empty" : core.isValidGtin(code) ? "ok" : "bad");
-      var state = core.surveyStatus({ barcode: code, width: w.value, height: h.value });
-      if (status.getAttribute("data-state") !== state) {
-        status.setAttribute("data-state", state);
-        var completed = state === "completed";
-        inc.textContent = String(BASE_INC - (completed ? 1 : 0));
-        done.textContent = String(BASE_DONE + (completed ? 1 : 0));
-        if (completed && gsap && !reduced) {
-          gsap.fromTo(status, { scale: 0.94 }, { scale: 1, duration: 0.6, ease: "back.out(3)" });
-          if (pack) pack.celebrate();
-        }
-      }
-    }
-
-    function syncFromText(text, range) {
-      var v = core.parseCm(text.value);
-      if (v != null) range.value = String(Math.min(Number(range.max), v));
-      update();
-    }
-    function syncFromRange(range, text) { text.value = range.value; update(); }
-    w.addEventListener("input", function () { syncFromText(w, wr); });
-    h.addEventListener("input", function () { syncFromText(h, hr); });
-    wr.addEventListener("input", function () { syncFromRange(wr, w); });
-    hr.addEventListener("input", function () { syncFromRange(hr, h); });
-    barcode.addEventListener("input", function () {
-      barcode.value = barcode.value.replace(/[^\d]/g, "").slice(0, 13);
-      update();
-    });
-    form.addEventListener("submit", function (e) { e.preventDefault(); });
-
-    scanBtn.addEventListener("click", function () {
-      if (scanning) return;
-      if (reduced) { barcode.value = SAMPLE_CODE; update(); return; }
-      scanning = true;
-      barcode.value = "";
-      update();
-      stage.classList.remove("is-scanning");
-      void stage.offsetWidth;
-      stage.classList.add("is-scanning");
-      var i = 0;
-      setTimeout(function type() {
-        barcode.value = SAMPLE_CODE.slice(0, ++i);
-        update();
-        if (i < SAMPLE_CODE.length) setTimeout(type, 45);
-        else { stage.classList.remove("is-scanning"); scanning = false; }
-      }, 1300);
-    });
-
-    update();
-
-    /* ---- the three.js pack ---- */
-    function probeWebGL2() {
-      try {
-        var gl = window.WebGL2RenderingContext && document.createElement("canvas").getContext("webgl2");
-        if (!gl) return false;
-        var lose = gl.getExtension("WEBGL_lose_context");
-        if (lose) lose.loseContext();
-        return true;
-      } catch (e) { return false; }
-    }
-    if (saveData) { stage.dataset.pack = "save-data"; return; }
-    onVisible(stage, function () {
+  /* ---- the three.js pack ---- */
+  function probeWebGL2() {
+    try {
+      var gl = window.WebGL2RenderingContext && document.createElement("canvas").getContext("webgl2");
+      if (!gl) return false;
+      var lose = gl.getExtension("WEBGL_lose_context");
+      if (lose) lose.loseContext();
+      return true;
+    } catch (e) { return false; }
+  }
+  function packFail(err) {
+    stage.dataset.pack = "error";
+    if (window.console && console.warn) console.warn("[ir-showcase] pack: " + (err && err.message ? err.message : String(err)));
+  }
+  if (saveData) stage.dataset.pack = "save-data";
+  else {
+    onVisible(section.querySelector(".ir-chapters") || stage, function () {
       if (!probeWebGL2()) { stage.dataset.pack = "no-webgl2"; return; }
       stage.dataset.pack = "loading";
       import(THREE_URL).then(function (THREE) {
@@ -143,16 +128,11 @@
           pack = buildPack(THREE, stage, canvas);
           stage.classList.add("is-webgl");
           stage.dataset.pack = "live";
-          update();
-          pack.resize(core.packSize(w.value, h.value, 2.2), true);
+          showSize(current, true);
         } catch (err) { packFail(err); }
       }, packFail);
-    }, { rootMargin: "400px 0px" });
-    function packFail(err) {
-      stage.dataset.pack = "error";
-      if (window.console && console.warn) console.warn("[ir-showcase] pack: " + (err && err.message ? err.message : String(err)));
-    }
-  })();
+    }, { rootMargin: "400px 0px", threshold: 0 });
+  }
 
   /* A small on-demand three.js scene: one carton, its edges, a contact shadow.
      Frames draw only while the stage is on screen and something moves. */
@@ -283,6 +263,18 @@
     } else { visible = true; }
     window.addEventListener("resize", function () { sizeCanvas(); kick(); });
 
+    /* scrolling past gives the pack a push, in the direction of travel */
+    var lastScroll = window.scrollY;
+    if (!reduced) {
+      window.addEventListener("scroll", function () {
+        var dy = window.scrollY - lastScroll;
+        lastScroll = window.scrollY;
+        if (!visible || dragging) return;
+        vel = Math.max(-6, Math.min(6, vel + dy * 0.006));
+        kick();
+      }, { passive: true });
+    }
+
     /* palette follows the theme toggle and the OS preference */
     function recolor() {
       colors = readColors();
@@ -304,6 +296,7 @@
     draw();
 
     return {
+      fit: function () { sizeCanvas(); kick(); draw(); },
       resize: function (size, instant) {
         if (!size) return;
         if (!gsap || reduced || instant) {
@@ -321,182 +314,6 @@
     };
   }
 
-  /* ======================= 02 · recognise ======================= */
-  (function recognise() {
-    var shelf = $("rec-shelf"), photo = shelf && shelf.parentNode;
-    var countEl = $("rec-count"), totalEl = $("rec-total"), list = $("rec-kpis"), spark = $("rec-spark");
-    if (!shelf || !list) return;
-    var units = section.querySelectorAll(".rec-units button");
-    var ROWS = 3, PER_ROW = 7, TOTAL = ROWS * PER_ROW;
-    /* sample data: which facings are empty, the KPIs and the client's hurdle rates */
-    var DATA = {
-      a: { gaps: [3, 9, 16], sos: 44, promo: 78, hurdle: { osa: 80, sos: 40, promo: 75 }, traffic: [42, 55, 48, 61, 70, 52, 78] },
-      b: { gaps: [1, 5, 8, 12, 19], sos: 37, promo: 69, hurdle: { osa: 85, sos: 35, promo: 70 }, traffic: [30, 38, 51, 44, 36, 58, 63] }
-    };
-    var facings = [];
-    var seed = 7;
-    function rand() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
-    for (var r = 0; r < ROWS; r++) {
-      var row = document.createElement("div");
-      row.className = "rec-row";
-      for (var i = 0; i < PER_ROW; i++) {
-        var f = document.createElement("span");
-        f.className = "facing";
-        f.style.setProperty("--h", (58 + Math.round(rand() * 34)) + "%");
-        f.style.setProperty("--a", (0.35 + rand() * 0.45).toFixed(2));
-        row.appendChild(f);
-        facings.push(f);
-      }
-      shelf.appendChild(row);
-    }
-    if (totalEl) totalEl.textContent = String(TOTAL);
-    var timers = [];
-    function clearTimers() { timers.forEach(clearTimeout); timers = []; }
-
-    function run(unit) {
-      var d = DATA[unit];
-      clearTimers();
-      units.forEach(function (b) {
-        var on = b.getAttribute("data-unit") === unit;
-        b.classList.toggle("is-on", on);
-        b.setAttribute("aria-pressed", on ? "true" : "false");
-      });
-      var gapSet = {};
-      d.gaps.forEach(function (g) { gapSet[g] = true; });
-      var found = TOTAL - d.gaps.length;
-      var osa = core.compliance(found, TOTAL, d.hurdle.osa);
-      var kpis = {
-        osa: { pct: osa.pct, pass: osa.pass, hurdle: d.hurdle.osa },
-        sos: { pct: d.sos, pass: d.sos >= d.hurdle.sos, hurdle: d.hurdle.sos },
-        promo: { pct: d.promo, pass: d.promo >= d.hurdle.promo, hurdle: d.hurdle.promo }
-      };
-      function finish() {
-        Array.prototype.forEach.call(list.children, function (li) {
-          var k = kpis[li.getAttribute("data-kpi")];
-          var bar = li.querySelector(".rec-bar");
-          bar.style.setProperty("--v", k.pct + "%");
-          bar.style.setProperty("--hurdle", k.hurdle + "%");
-          li.classList.toggle("is-under", !k.pass);
-          countTo(li.querySelector(".rec-v"), k.pct, { suffix: "%", decimals: k.pct % 1 ? 1 : 0 });
-        });
-        Array.prototype.forEach.call(spark.children, function (bar, i) {
-          bar.style.setProperty("--h", d.traffic[i] + "%");
-        });
-      }
-      facings.forEach(function (f, i) {
-        f.classList.remove("is-hit");
-        f.classList.toggle("is-gap", !!gapSet[i]);
-      });
-      if (reduced) {
-        facings.forEach(function (f) { f.classList.add("is-hit"); });
-        countEl.textContent = String(found);
-        finish();
-        return;
-      }
-      countEl.textContent = "0";
-      photo.classList.remove("is-scanning");
-      void photo.offsetWidth;
-      photo.classList.add("is-scanning");
-      var hits = 0;
-      facings.forEach(function (f, i) {
-        timers.push(setTimeout(function () {
-          f.classList.add("is-hit");
-          if (!gapSet[i]) countEl.textContent = String(++hits);
-        }, 420 + i * 55));
-      });
-      timers.push(setTimeout(finish, 420 + TOTAL * 55 - 300));
-    }
-
-    units.forEach(function (b) {
-      b.addEventListener("click", function () { run(b.getAttribute("data-unit")); });
-    });
-    onVisible(photo, function () { run("a"); });
-  })();
-
-  /* ======================= 03 · resolve ======================= */
-  (function resolve() {
-    var listEl = $("res-lines"), tiles = $("res-kpis"), tallyEl = $("res-tally"), task = $("res-task");
-    var approveBtn = $("res-approve"), rejectBtn = $("res-reject"), resetBtn = $("res-reset");
-    if (!listEl || !tiles) return;
-    var items = Array.prototype.slice.call(listEl.children);
-    var baseline = {};
-    Array.prototype.forEach.call(tiles.children, function (t) {
-      baseline[t.getAttribute("data-kpi")] = Number(t.querySelector("b").textContent);
-    });
-    function fresh() {
-      return items.map(function (li) {
-        return { id: li.getAttribute("data-id"), kpi: li.getAttribute("data-kpi"), restores: Number(li.getAttribute("data-restores")) };
-      });
-    }
-    var lines = fresh(), selected = [];
-
-    function render(prevKpis) {
-      var byId = {};
-      lines.forEach(function (l) { byId[l.id] = l; });
-      items.forEach(function (li) {
-        var line = byId[li.getAttribute("data-id")];
-        var box = li.querySelector("input");
-        if (line.verdict) li.setAttribute("data-verdict", line.verdict); else li.removeAttribute("data-verdict");
-        box.disabled = !!line.verdict;
-        box.checked = selected.indexOf(line.id) >= 0;
-        li.classList.toggle("is-selected", box.checked);
-      });
-      approveBtn.disabled = rejectBtn.disabled = selected.length === 0;
-      approveBtn.querySelector(".res-n").textContent = String(selected.length);
-      var kpis = core.kpisAfter(baseline, lines);
-      Array.prototype.forEach.call(tiles.children, function (t) {
-        var k = t.getAttribute("data-kpi");
-        var changed = prevKpis && prevKpis[k] !== kpis[k];
-        countTo(t.querySelector("b"), kpis[k]);
-        if (changed) {
-          t.classList.add("is-bumped");
-          setTimeout(function () { t.classList.remove("is-bumped"); }, 1400);
-        }
-      });
-      var tally = core.tally(lines);
-      ["pending", "approve", "reject"].forEach(function (key) {
-        var el = tallyEl.querySelector('[data-t="' + key + '"]');
-        if (el) el.textContent = String(tally[key]);
-      });
-      var closed = tally.pending === 0;
-      if (closed && task.hidden) {
-        task.hidden = false;
-        if (gsap && !reduced) gsap.from(task, { y: 16, opacity: 0, duration: 0.7, ease: "power3.out" });
-      } else if (!closed) {
-        task.hidden = true;
-      }
-      return kpis;
-    }
-
-    listEl.addEventListener("change", function (e) {
-      if (!e.target || e.target.type !== "checkbox") return;
-      selected = core.toggleSelection(selected, e.target.value);
-      render();
-    });
-    function judge(verdict) {
-      if (!selected.length) return;
-      var before = core.kpisAfter(baseline, lines);
-      var judged = selected.slice();
-      lines = core.applyVerdict(lines, selected, verdict);
-      selected = [];
-      render(before);
-      if (gsap && !reduced) {
-        judged.forEach(function (id, i) {
-          var li = listEl.querySelector('[data-id="' + id + '"]');
-          if (li) gsap.fromTo(li, { x: verdict === "approve" ? 10 : -10 }, { x: 0, duration: 0.5, delay: i * 0.05, ease: "power3.out" });
-        });
-      }
-    }
-    approveBtn.addEventListener("click", function () { judge("approve"); });
-    rejectBtn.addEventListener("click", function () { judge("reject"); });
-    resetBtn.addEventListener("click", function () {
-      var before = core.kpisAfter(baseline, lines);
-      lines = fresh(); selected = [];
-      render(before);
-    });
-    render();
-  })();
-
   /* ======================= step pills follow the chapter in view ======================= */
   /* The chapters stack (sticky) on tall screens, so "in view" is ambiguous: the
      active one is the last whose top has passed the middle of the viewport. */
@@ -504,14 +321,17 @@
     var links = Array.prototype.slice.call(section.querySelectorAll(".ir-steps a"));
     var chapters = Array.prototype.slice.call(section.querySelectorAll(".ir-chapter"));
     if (!links.length || !chapters.length) return;
-    var current = -1, queued = false;
+    var shown = -1, queued = false;
     function sync() {
       queued = false;
       var mid = window.innerHeight * 0.55, active = 0;
       chapters.forEach(function (c, i) { if (c.getBoundingClientRect().top <= mid) active = i; });
-      if (active === current) return;
-      current = active;
+      if (active === shown) return;
+      var first = shown < 0;
+      shown = active;
       links.forEach(function (a, i) { a.classList.toggle("is-active", i === active); });
+      /* a new screen slid in under the floating pack: give it a turn */
+      if (!first && pack && packEl.classList.contains("is-floating")) pack.celebrate();
     }
     window.addEventListener("scroll", function () {
       if (!queued) { queued = true; requestAnimationFrame(sync); }

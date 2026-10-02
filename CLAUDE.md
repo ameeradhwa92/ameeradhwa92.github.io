@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 career timeline (2010 → present) for Ameer Adhwa Bin Mohamad in the "Monsoon" palette
 (indigo night / lilac day, iris interface accent, coral journey thread — design of record
 in `docs/superpowers/specs/2026-09-05-monsoon-palette-and-loader-design.md`), redesigned in
-2026-10 around a vendored-GSAP motion layer and an interactive showcase of the newest project,
+2026-10 around a vendored-GSAP motion layer and a screen showcase of the newest project,
 RetailAIM IR (see "Motion layer and the RetailAIM IR showcase"). Hand-written HTML/CSS/JS,
 **no framework, no build step, no package manager**. GitHub Pages publishes the repo root
 directly; `.nojekyll` disables Jekyll processing. Pushing to `main` *is* the deploy.
@@ -93,8 +93,8 @@ asset lacks one, and names the offending file. While iterating locally, tick
 | `assets/js/chatbot.js` | AIMeer, the three-tier chatbot, plus the recruiter JD match report UI and its cloud-scoring request flow |
 | `assets/js/route-globe-core.js` | Route globe, pure half: sphere geometry, camera keyframes/scrub, coastline decoding, capability gate, load state machine. UMD, tested by plain `require()` |
 | `assets/js/route-globe.js` | Route globe, DOM/WebGL adapter: reads the stops `<ol>`, gates, lazy-imports vendored three.js, owns the canvas/scroll/drag/theme wiring |
-| `assets/js/ir-core.js` | RetailAIM IR showcase, pure half: GTIN check digits, pack sizing, compliance vs hurdle, appeal verdicts/KPIs/bulk ceiling. UMD, tested by plain `require()` |
-| `assets/js/ir-showcase.js` | RetailAIM IR showcase, DOM half: the capture / recognise / resolve demos in `#work`, and the capture demo's three.js pack (lazy, same import URL as the globe) |
+| `assets/js/ir-core.js` | RetailAIM IR showcase, pure half: the survey pack's sample sizes and sizing rules. UMD, tested by plain `require()` |
+| `assets/js/ir-showcase.js` | RetailAIM IR showcase, DOM half: the IR Ops survey pack floating over the `#work` screens (three.js, lazy, same import URL as the globe), where it lives, and the step pills |
 | `assets/js/motion.js` | GSAP choreography: split-line headings, count-ups, stacked IR chapters, velocity marquees, magnetic buttons, custom cursor, nav hide/current dot, the MYT clock |
 | `assets/data/route-globe-coastlines.json` | Generated country outlines for the globe (never hand-edited — see Regenerating the globe coastlines) |
 | `assets/vendor/` | Self-hosted libraries, pins and hashes recorded in `assets/vendor/README.md`: `pdfjs/` 4.10.38 and `jszip/` 3.10.1 (lazily `import()`ed by `jd-extractor.js` for PDF/DOCX), `gsap/` 3.15.0 (core, ScrollTrigger, SplitText — classic `defer` tags), `three/` r185 (`three.module.min.js` + `three.core.min.js`, kept side by side) and its `lines/` fat-line addon, whose bare `three` import the `<head>` import map resolves |
@@ -104,7 +104,7 @@ asset lacks one, and names the offending file. While iterating locally, tick
 | `docs/superpowers/specs/2026-07-24-portfolio-site-design.md` | Design spec + canonical project/URL/status registry |
 | `docs/superpowers/specs/2026-07-30-recruiter-copilot-ai-scoring-design.md` | Design of record for AI-led JD scoring — two-call split, clamp band, privacy screen, model-output tolerance, Worker diagnosability. Read before touching either JD validator |
 | `docs/resume-source/resume.html` | Source for the downloadable résumé PDF |
-| `tests/*.test.js` | `node --test` suite — run before anything ships (see Running locally); `ir-core.test.js` covers the showcase rules |
+| `tests/*.test.js` | `node --test` suite — run before anything ships (see Running locally); `ir-core.test.js` covers the pack's sizing rules |
 | `tools/` | Five extra harnesses `tests/*.test.js` does not cover (JD extractor/matcher/cloud-payload contracts, recruiter profile/KB drift, recruiter UI exact copy) — see Running locally |
 | `docs/superpowers/plans/` | Implementation plans that pair with the specs; `docs/mockups/*.html` are the standalone proposals a spec was approved from (they pull Fraunces from Google Fonts for convenience — the live site never does); `.superpowers/sdd/` holds tracked per-task subagent reports |
 
@@ -140,10 +140,10 @@ element and snapshots its `innerHTML` into an in-memory `EN` dict; switching to 
 - Bahasa Melayu follows **Dewan Bahasa dan Pustaka** conventions — formal register, DBP
   istilah (*pemberitahuan tolak*, *hujung belakang*, *penyenggaraan*, *berbilang penyewa*).
 - Strings that JS generates rather than reads from the DOM live in the `T` table in
-  `chatbot.js` (both `en` and `ms` branches), not in `i18n.js`. The IR demos avoid generated
-  copy altogether: every state message is in the markup with its own key, and CSS shows the
-  one matching the element's `data-state`.
-- A control with no visible text of its own (the showcase's range sliders) carries
+  `chatbot.js` (both `en` and `ms` branches), not in `i18n.js`. The IR showcase avoids generated
+  copy altogether: everything it shows is in the markup with its own key (the pack's size
+  readout is digits only).
+- A control with no visible text of its own carries
   `data-i18n-aria="key"`; `setLang()` writes that key's text, tags stripped, into `aria-label`.
   `setLang()` also dispatches `site:lang` on `document` after every swap.
 
@@ -235,23 +235,31 @@ toggle, and a capture-phase click listener reverts any heading still mid-flight 
 The `.reveal` fade stays plain CSS (`main.js` adds `.in`); GSAP does not own it.
 
 `#work` sits between the stats strip and `#route`. Its three `.ir-chapter`s are sticky and
-stack only under `(min-width: 1101px) and (min-height: 820px)` — the same query in `style.css`
-and in `motion.js`'s `gsap.matchMedia()`; change both. The covered chapter darkens through its
+stack only under `(min-width: 1101px) and (min-height: 820px)` — the same query in `style.css`,
+in `motion.js`'s `gsap.matchMedia()` and in `ir-showcase.js`; change all three. The covered chapter darkens through its
 `::after` overlay (`--dim`), not `opacity`, so a chapter never shows through the one above it.
 
-Everything in the showcase is **sample data**, recreated from the project's own docs because
-the production app is private, sign-in only, and was not reachable from the build
-environment. Keep it that way: no real outlet, merchandiser, tenant or
-client names, no internal hostnames, IPs or database names, and the "Illustrative recreations"
-note (`ir.note`) stays. The project card's image `assets/img/projects/retailaim-ir.jpg` is an
-element capture of the resolve demo (`.ir-browser[data-demo="resolve"]`, DPR 1.6, reduced
-motion, chat and nav hidden), and its alt text says so — recapture it when that demo changes,
-or replace it with a real, scrubbed screenshot. The card links to `#work`, not to the live app.
+The chapters show real **IR Workforce** screens, supplied by the owner and captured in the
+app's demo mode: `assets/img/projects/ir-workforce/{dashboard,board,task,timeline,reports}-{dark,light}.jpg`,
+1280×800, the switcher's client logo blurred. Each `<figure>` carries both themes as
+`.ir-img-dark` / `.ir-img-light`, swapped by the same three theme blocks as the route posters.
+They hold demo data only (sample projects and people); keep it that way: no real outlet,
+merchandiser or client names, no internal hostnames, IPs or database names, and the demo-mode
+note (`ir.note`) stays. A replacement screen is cropped to 16:10 with the browser scrollbar
+removed and the logo tile blurred before it lands here. The project card's image
+`assets/img/projects/retailaim-ir.jpg` is the dark dashboard at 1000×625; the card links to
+`#work`, not to the live app.
 
-The capture demo's pack loads the vendored three.js through `import()` of the **same absolute
-URL** `route-globe.js` uses, so the module cache shares one copy. Off the happy path (save-data,
-no WebGL2, a failed import) the CSS 3D box stays; `#cap-stage`'s `data-pack` names the reason,
-the same convention as `section.dataset.globe`.
+The one live piece is the product-survey pack from IR Ops. Its home (and its no-JS place) is
+`#ir-pack-slot` on the first screen; under the stacking query `ir-showcase.js` (`STACK_QUERY`,
+a third copy of that query) moves `#ir-pack` into `#ir-pack-rail`, a full-height overlay on
+`.ir-chapters` where the pack is sticky, so each screen slides in under it and the pack turns on
+every chapter change. Its offsets come from the first chapter's `.ir-shots`, clamped to the
+shortest chapter, and every chapter's `.ir-shots` keeps one aspect ratio so the corner matches.
+Below 641px it sits under the screen in a row instead. It loads the vendored three.js through
+`import()` of the **same absolute URL** `route-globe.js` uses, so the module cache shares one
+copy. Off the happy path (save-data, no WebGL2, a failed import) the CSS 3D box stays;
+`#cap-stage`'s `data-pack` names the reason, the same convention as `section.dataset.globe`.
 
 ## Content rules
 

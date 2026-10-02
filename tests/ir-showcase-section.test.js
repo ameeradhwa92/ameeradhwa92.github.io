@@ -24,29 +24,43 @@ test('the newest-work section sits after the stats strip and before the journey'
 
 test('every keyed string in the showcase has a Bahasa Melayu translation', () => {
   const keys = [...section.matchAll(/data-i18n(?:-aria)?="([^"]+)"/g)].map((m) => m[1]);
-  assert.ok(keys.length >= 60, `expected the three demos to be keyed, found ${keys.length}`);
+  assert.ok(keys.length >= 30, `expected the three chapters to be keyed, found ${keys.length}`);
   for (const key of keys) {
     assert.equal(typeof I18N_MS[key], 'string', `missing MS entry for ${key}`);
     assert.ok(I18N_MS[key].trim().length > 0, `empty MS entry for ${key}`);
   }
 });
 
-test('the three workflows are present, in order, with their interactive hooks', () => {
-  const order = ['id="ir-capture"', 'id="ir-recognise"', 'id="ir-resolve"'].map((id) => section.indexOf(id));
+test('the three chapters are present, in order, each with real screens for both themes', () => {
+  const order = ['id="ir-overview"', 'id="ir-plan"', 'id="ir-track"'].map((id) => section.indexOf(id));
   assert.ok(order.every((i) => i > -1) && order[0] < order[1] && order[1] < order[2]);
-  for (const id of ['cap-stage', 'cap-canvas', 'cap-barcode', 'cap-scan', 'cap-w', 'cap-h', 'cap-status',
-    'rec-shelf', 'rec-kpis', 'res-lines', 'res-approve', 'res-reject', 'res-reset', 'res-task']) {
-    assert.match(section, new RegExp(`id="${id}"`), `#${id} is in the markup`);
+  const shots = [...section.matchAll(/<img class="ir-img ir-img-(dark|light)" src="([^"]+)" alt="([^"]+)" loading="lazy" width="1280" height="800">/g)];
+  assert.equal(shots.length, 10, 'five screens, each in dark and light');
+  for (const [, theme, src, alt] of shots) {
+    assert.match(src, new RegExp(`^assets/img/projects/ir-workforce/[a-z]+-${theme}\\.jpg$`));
+    assert.ok(fs.existsSync(path.join(root, src)), `${src} exists`);
+    assert.ok(alt.length > 20, `${src} has a real alt text`);
   }
+  assert.match(css, /:root\[data-theme="light"\] \.ir-img-dark \{ display: none; \}/, 'the explicit light theme swaps the screens');
+  assert.match(css, /:root:not\(\[data-theme="dark"\]\) \.ir-img-light \{ display: block; \}/, 'so does the OS light preference');
 });
 
-test('the showcase stays honest: sample data, labelled, no link to the private app', () => {
-  assert.match(section, /data-i18n="ir\.note">Illustrative recreations with sample data\./);
+test('the survey pack keeps its hooks, its home slot and the rail it floats on', () => {
+  for (const id of ['ir-pack-rail', 'ir-pack-slot', 'ir-pack', 'cap-stage', 'cap-canvas', 'cap-box', 'cap-dims', 'cap-next']) {
+    assert.match(section, new RegExp(`id="${id}"`), `#${id} is in the markup`);
+  }
+  const slot = section.indexOf('id="ir-pack-slot"');
+  assert.ok(slot > section.indexOf('id="ir-overview"') && slot < section.indexOf('id="ir-plan"'), 'the pack lives on the first screen without JS');
+  assert.ok(section.indexOf('id="ir-pack-rail"') < section.indexOf('id="ir-overview"'), 'the rail comes before the chapters');
+});
+
+test('the showcase stays honest: demo data, labelled, no link to the private app', () => {
+  assert.match(section, /data-i18n="ir\.note">Screens from IR Workforce in demo mode, with sample projects and people\./);
   assert.doesNotMatch(html, /azurewebsites\.net/, 'the private app is not linked or named by host');
   assert.match(section, /badge badge-private/, 'status is Live · Private');
   const card = html.match(/<div class="card card-feature">[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/);
   assert.ok(card, 'the IR card leads the RetailAIM era');
-  assert.match(card[0], /alt="Illustrative recreation of the RetailAIM IR final-appeal screen with sample data"/);
+  assert.match(card[0], /alt="RetailAIM IR Workforce dashboard in demo mode, with sample data"/);
   assert.match(card[0], /href="#work"/);
   assert.ok(fs.existsSync(path.join(root, 'assets', 'img', 'projects', 'retailaim-ir.jpg')));
 });
@@ -69,6 +83,8 @@ test('the stacking query is one query in CSS and in motion.js', () => {
   const query = '(min-width: 1101px) and (min-height: 820px)';
   assert.ok(css.includes(`@media ${query} {`), 'style.css makes the chapters sticky under the query');
   assert.ok(motion.includes(`mm.add("${query}"`), 'motion.js scrubs the stack under the same query');
+  const showcase = fs.readFileSync(path.join(root, 'assets', 'js', 'ir-showcase.js'), 'utf8');
+  assert.ok(showcase.includes(`STACK_QUERY = "${query}"`), 'ir-showcase.js floats the pack under the same query');
   assert.match(css, /\.ir-chapter::after \{[^}]*opacity: var\(--dim, 0\)/, 'covered chapters dim by overlay, not opacity');
 });
 
