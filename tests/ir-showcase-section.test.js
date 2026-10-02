@@ -31,15 +31,21 @@ test('every keyed string in the showcase has a Bahasa Melayu translation', () =>
   }
 });
 
-test('the three chapters are present, in order, each with real screens for both themes', () => {
-  const order = ['id="ir-overview"', 'id="ir-plan"', 'id="ir-track"'].map((id) => section.indexOf(id));
-  assert.ok(order.every((i) => i > -1) && order[0] < order[1] && order[1] < order[2]);
+test('the four chapters are present, in order, each with real screens for both themes', () => {
+  const order = ['id="ir-overview"', 'id="ir-plan"', 'id="ir-track"', 'id="ir-survey"'].map((id) => section.indexOf(id));
+  assert.ok(order.every((i) => i > -1) && order.every((v, i) => i === 0 || order[i - 1] < v));
   const shots = [...section.matchAll(/<img class="ir-img ir-img-(dark|light)" src="([^"]+)" alt="([^"]+)" loading="lazy" width="1280" height="800">/g)];
   assert.equal(shots.length, 10, 'five screens, each in dark and light');
   for (const [, theme, src, alt] of shots) {
     assert.match(src, new RegExp(`^assets/img/projects/ir-workforce/[a-z]+-${theme}\\.jpg$`));
     assert.ok(fs.existsSync(path.join(root, src)), `${src} exists`);
     assert.ok(alt.length > 20, `${src} has a real alt text`);
+  }
+  const phones = [...section.matchAll(/<img class="ir-img ir-img-(dark|light)" src="([^"]+)" alt="([^"]+)" loading="lazy" width="360" height="780">/g)];
+  assert.equal(phones.length, 8, 'four IR Ops phone screens, each in dark and light');
+  for (const [, theme, src] of phones) {
+    assert.match(src, new RegExp(`^assets/img/projects/ir-ops/[a-z]+-${theme}\\.jpg$`));
+    assert.ok(fs.existsSync(path.join(root, src)), `${src} exists`);
   }
   assert.match(css, /:root\[data-theme="light"\] \.ir-img-dark \{ display: none; \}/, 'the explicit light theme swaps the screens');
   assert.match(css, /:root:not\(\[data-theme="dark"\]\) \.ir-img-light \{ display: block; \}/, 'so does the OS light preference');
@@ -55,7 +61,7 @@ test('the survey pack keeps its hooks, its home slot and the rail it floats on',
 });
 
 test('the showcase stays honest: demo data, labelled, no link to the private app', () => {
-  assert.match(section, /data-i18n="ir\.note">Screens from IR Workforce in demo mode, with sample projects and people\./);
+  assert.match(section, /data-i18n="ir\.note">Screens from IR Workforce in demo mode, with sample projects and people, and from IR Ops with product details blurred\./);
   assert.doesNotMatch(html, /azurewebsites\.net/, 'the private app is not linked or named by host');
   assert.match(section, /badge badge-private/, 'status is Live · Private');
   const card = html.match(/<div class="card card-feature">[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/);

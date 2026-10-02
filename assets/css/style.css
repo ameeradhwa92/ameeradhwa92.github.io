@@ -761,6 +761,17 @@ html.revealed .portrait-frame img { transform: scale(1); }
   background: var(--ink); color: var(--muted); font-family: var(--mono); font-size: 0.64rem;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* IR Ops on the phone: four handsets in a staggered row, a shorter frame than the browser pairs */
+.ir-shots-phones { aspect-ratio: 1.62; }
+.ir-phone-shot {
+  position: absolute; width: 21.5%; margin: 0; padding: 4px; border-radius: 22px;
+  background: #0b0e20; box-shadow: 0 34px 60px -30px rgba(6, 8, 24, 0.75), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.ir-phone-shot .ir-img { border-radius: 18px; }
+.ir-shots-phones .ir-phone-shot:nth-child(1) { left: 8%;    top: 0; }
+.ir-shots-phones .ir-phone-shot:nth-child(2) { left: 31.5%; top: 8%; }
+.ir-shots-phones .ir-phone-shot:nth-child(3) { left: 55%;   top: 2%; }
+.ir-shots-phones .ir-phone-shot:nth-child(4) { left: 78.5%; top: 10%; }
 .ir-img { display: block; width: 100%; height: auto; }
 .ir-img-light { display: none; }
 @media (prefers-color-scheme: light) {
@@ -1233,6 +1244,12 @@ body.modal-open { overflow: hidden; }
   .ir-pack { display: flex; align-items: flex-end; gap: 10px; }
   .ir-pack .cap-stage { width: 112px; flex-shrink: 0; }
   .ir-pack-tag { flex: 1; justify-content: flex-start; text-align: left; margin: 0 0 6px; }
+  /* the four handsets become a swipeable strip */
+  .ir-shots-phones {
+    aspect-ratio: auto; display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory;
+    padding: 4px 2px 14px; scrollbar-width: thin;
+  }
+  .ir-shots-phones .ir-phone-shot { position: relative; left: auto; top: auto; flex: 0 0 46%; scroll-snap-align: start; }
   .ir-numbers { grid-template-columns: 1fr; }
   .ir-number, .ir-number + .ir-number { padding: 22px 0; border-left: none; border-bottom: 1px solid var(--line); }
   .contact-big { margin-bottom: 64px; }

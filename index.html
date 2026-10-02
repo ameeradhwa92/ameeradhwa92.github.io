@@ -17,7 +17,7 @@
   <!-- ?v= is the cache-busting tag. Bump it on every deploy that changes CSS or
        JS; chatbot.js reads this same tag off its own src and forwards it to the
        knowledge base and profile fetches, so this is the only place to edit. -->
-  <link rel="stylesheet" href="assets/css/style.css?v=2026-10-02b">
+  <link rel="stylesheet" href="assets/css/style.css?v=2026-10-02c">
   <script>
     document.documentElement.classList.replace('no-js', 'js');
     /* apply saved theme/language before first paint to avoid flashes */
@@ -389,6 +389,7 @@
         <li><a href="#ir-overview"><span>01</span><b data-i18n="ir.step1">Overview</b></a></li>
         <li><a href="#ir-plan"><span>02</span><b data-i18n="ir.step2">Plan</b></a></li>
         <li><a href="#ir-track"><span>03</span><b data-i18n="ir.step3">Track</b></a></li>
+        <li><a href="#ir-survey"><span>04</span><b data-i18n="ir.step4">Survey</b></a></li>
       </ol>
 
       <div class="ir-chapters">
@@ -487,9 +488,42 @@
             </figure>
           </div>
         </article>
+
+        <!-- 04 · survey (IR Ops, on the phone; product names, codes and photos blurred) -->
+        <article class="ir-chapter" id="ir-survey" aria-labelledby="ir-survey-h3">
+          <div class="ir-copy">
+            <p class="ir-num" aria-hidden="true">04</p>
+            <h3 id="ir-survey-h3" data-i18n="ir.survey.h3">Survey — every pack, measured on a phone</h3>
+            <p data-i18n="ir.survey.p">IR Ops rebuilt the legacy product survey for a merchandiser's phone. Find the product, scan or key in its barcode, type its width and height, and a 3D pack re-scales to match — the same pack that has been floating over these screens.</p>
+            <ul class="ir-points">
+              <li data-i18n="ir.survey.pt1">Camera barcode reader for 21 formats, on self-hosted WebAssembly</li>
+              <li data-i18n="ir.survey.pt2">A three.js pack that re-scales as sizes are typed, with the product photo to check against</li>
+              <li data-i18n="ir.survey.pt3">Category tabs, search and an Incomplete / Completed split across the whole catalogue</li>
+            </ul>
+          </div>
+
+          <div class="ir-shots ir-shots-phones">
+            <figure class="ir-phone-shot">
+              <img class="ir-img ir-img-dark" src="assets/img/projects/ir-ops/home-dark.jpg" alt="IR Ops home on a phone: the product survey, a 3D pack and the count of products left to survey" loading="lazy" width="360" height="780">
+              <img class="ir-img ir-img-light" src="assets/img/projects/ir-ops/home-light.jpg" alt="IR Ops home on a phone: the product survey, a 3D pack and the count of products left to survey" loading="lazy" width="360" height="780">
+            </figure>
+            <figure class="ir-phone-shot">
+              <img class="ir-img ir-img-dark" src="assets/img/projects/ir-ops/catalog-dark.jpg" alt="The IR Ops catalogue: search, category tabs and the incomplete products, with product names blurred" loading="lazy" width="360" height="780">
+              <img class="ir-img ir-img-light" src="assets/img/projects/ir-ops/catalog-light.jpg" alt="The IR Ops catalogue: search, category tabs and the incomplete products, with product names blurred" loading="lazy" width="360" height="780">
+            </figure>
+            <figure class="ir-phone-shot">
+              <img class="ir-img ir-img-dark" src="assets/img/projects/ir-ops/measure-dark.jpg" alt="Measuring a product in IR Ops: the 3D pack above the product code, width and height fields" loading="lazy" width="360" height="780">
+              <img class="ir-img ir-img-light" src="assets/img/projects/ir-ops/measure-light.jpg" alt="Measuring a product in IR Ops: the 3D pack above the product code, width and height fields" loading="lazy" width="360" height="780">
+            </figure>
+            <figure class="ir-phone-shot">
+              <img class="ir-img ir-img-dark" src="assets/img/projects/ir-ops/photo-dark.jpg" alt="The product photo laid over the measuring screen for reference, with product details blurred" loading="lazy" width="360" height="780">
+              <img class="ir-img ir-img-light" src="assets/img/projects/ir-ops/photo-light.jpg" alt="The product photo laid over the measuring screen for reference, with product details blurred" loading="lazy" width="360" height="780">
+            </figure>
+          </div>
+        </article>
       </div>
 
-      <p class="ir-note" data-i18n="ir.note">Screens from IR Workforce in demo mode, with sample projects and people. The live app is private to the IR team, behind its sign-in.</p>
+      <p class="ir-note" data-i18n="ir.note">Screens from IR Workforce in demo mode, with sample projects and people, and from IR Ops with product details blurred. Both apps are private to the IR team, behind their sign-in.</p>
     </div>
 
     <!-- under the hood -->
@@ -1213,22 +1247,22 @@
     </form>
   </section>
 
-  <script src="assets/js/i18n.js?v=2026-10-02b" defer></script>
-  <script src="assets/js/main.js?v=2026-10-02b" defer></script>
-  <script src="assets/js/aimeer-device.js?v=2026-10-02b" defer></script>
-  <script src="assets/js/jd-extractor.js?v=2026-10-02b" defer></script>
-  <script src="assets/js/jd-matcher.js?v=2026-10-02b" defer></script>
-  <script src="assets/js/jd-reasoning.js?v=2026-10-02b" defer></script>
-  <script src="assets/js/chatbot.js?v=2026-10-02b" defer></script>
-  <script src="assets/js/route-globe-core.js?v=2026-10-02b" defer></script>
-  <script src="assets/js/route-globe.js?v=2026-10-02b" defer></script>
+  <script src="assets/js/i18n.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/main.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/aimeer-device.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/jd-extractor.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/jd-matcher.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/jd-reasoning.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/chatbot.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/route-globe-core.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/route-globe.js?v=2026-10-02c" defer></script>
   <!-- GSAP is pinned by path (assets/vendor/README.md); motion.js and ir-showcase.js
        treat a missing window.gsap as "no motion" and leave the page static. -->
   <script src="assets/vendor/gsap/gsap.min.js" defer></script>
   <script src="assets/vendor/gsap/ScrollTrigger.min.js" defer></script>
   <script src="assets/vendor/gsap/SplitText.min.js" defer></script>
-  <script src="assets/js/ir-core.js?v=2026-10-02b" defer></script>
-  <script src="assets/js/ir-showcase.js?v=2026-10-02b" defer></script>
-  <script src="assets/js/motion.js?v=2026-10-02b" defer></script>
+  <script src="assets/js/ir-core.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/ir-showcase.js?v=2026-10-02c" defer></script>
+  <script src="assets/js/motion.js?v=2026-10-02c" defer></script>
 </body>
 </html>

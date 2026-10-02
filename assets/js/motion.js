@@ -152,6 +152,13 @@
       y: -16, ease: "none",
       scrollTrigger: { trigger: chapter, start: "top bottom", end: "bottom top", scrub: 0.6 }
     });
+    /* the handsets rise at slightly different speeds, like cards dealt onto the table */
+    gsap.utils.toArray(shots.querySelectorAll(".ir-phone-shot")).forEach(function (phone, i) {
+      gsap.fromTo(phone, { y: 40 + i * 18 }, {
+        y: -i * 4, ease: "none",
+        scrollTrigger: { trigger: chapter, start: "top bottom", end: "center center", scrub: 0.8 }
+      });
+    });
     var front = shots.querySelector(".ir-shot-front");
     if (front) {
       gsap.fromTo(front, { y: 50, x: 24 }, {

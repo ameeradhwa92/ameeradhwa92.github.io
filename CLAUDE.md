@@ -255,7 +255,7 @@ The one live piece is the product-survey pack from IR Ops. Its home (and its no-
 a third copy of that query) moves `#ir-pack` into `#ir-pack-rail`, a full-height overlay on
 `.ir-chapters` where the pack is sticky, so each screen slides in under it and the pack turns on
 every chapter change. Its offsets come from the first chapter's `.ir-shots`, clamped to the
-shortest chapter, and every chapter's `.ir-shots` keeps one aspect ratio so the corner matches.
+shortest chapter, and the browser chapters' `.ir-shots` keep one aspect ratio so the corner matches (the phone row in `#ir-survey` is shorter).
 Below 641px it sits under the screen in a row instead. It loads the vendored three.js through
 `import()` of the **same absolute URL** `route-globe.js` uses, so the module cache shares one
 copy. Off the happy path (save-data, no WebGL2, a failed import) the CSS 3D box stays;
