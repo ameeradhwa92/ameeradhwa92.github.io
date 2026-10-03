@@ -393,9 +393,6 @@
       </ol>
 
       <div class="ir-chapters">
-        <!-- on tall desktops the survey pack rides here, sticky above every chapter (ir-showcase.js moves it) -->
-        <div class="ir-pack-rail" id="ir-pack-rail"></div>
-
         <!-- 01 · overview -->
         <article class="ir-chapter" id="ir-overview" aria-labelledby="ir-ov-h3">
           <div class="ir-copy">
@@ -407,7 +404,6 @@
               <li data-i18n="ir.ov.pt2">Team workload, so no one carries the whole board</li>
               <li data-i18n="ir.ov.pt3">One-click switcher across the IR workspaces, in English and Bahasa Melayu</li>
             </ul>
-            <p class="ir-try" data-i18n="ir.pack.try">The pack is from IR Ops, the product survey: <b>drag</b> it to turn it, or try the next pack.</p>
           </div>
 
           <div class="ir-shots ir-shots-one">
@@ -416,22 +412,6 @@
               <img class="ir-img ir-img-dark" src="assets/img/projects/ir-workforce/dashboard-dark.jpg" alt="IR Workforce dashboard with sample data: task totals, project health, team workload and what is coming up next" loading="lazy" width="1280" height="800">
               <img class="ir-img ir-img-light" src="assets/img/projects/ir-workforce/dashboard-light.jpg" alt="IR Workforce dashboard with sample data: task totals, project health, team workload and what is coming up next" loading="lazy" width="1280" height="800">
             </figure>
-
-            <div class="ir-pack-slot" id="ir-pack-slot">
-              <div class="ir-pack" id="ir-pack">
-                <div class="cap-stage" id="cap-stage" data-cursor="drag">
-                  <canvas class="cap-canvas" id="cap-canvas" aria-hidden="true"></canvas>
-                  <div class="cap-box" id="cap-box" aria-hidden="true">
-                    <i class="f-front"></i><i class="f-back"></i><i class="f-left"></i><i class="f-right"></i><i class="f-top"></i><i class="f-bottom"></i>
-                  </div>
-                </div>
-                <div class="ir-pack-tag">
-                  <span><b>IR Ops</b> · <span data-i18n="ir.pack.tag">product survey</span></span>
-                  <span class="cap-dims" id="cap-dims">8 × 20 × 3.4 cm</span>
-                  <button class="ir-pack-next" id="cap-next" type="button" data-i18n="ir.pack.next">Next pack</button>
-                </div>
-              </div>
-            </div>
           </div>
         </article>
 
@@ -494,7 +474,7 @@
           <div class="ir-copy">
             <p class="ir-num" aria-hidden="true">04</p>
             <h3 id="ir-survey-h3" data-i18n="ir.survey.h3">Survey — every pack, measured on a phone</h3>
-            <p data-i18n="ir.survey.p">IR Ops rebuilt the legacy product survey for a merchandiser's phone. Find the product, scan or key in its barcode, type its width and height, and a 3D pack re-scales to match — the same pack that has been floating over these screens.</p>
+            <p data-i18n="ir.survey.p">IR Ops rebuilt the legacy product survey for a merchandiser's phone. Find the product, scan or key in its barcode, type its width and height, and a 3D pack re-scales to match. Try it below.</p>
             <ul class="ir-points">
               <li data-i18n="ir.survey.pt1">Camera barcode reader for 21 formats, on self-hosted WebAssembly</li>
               <li data-i18n="ir.survey.pt2">A three.js pack that re-scales as sizes are typed, with the product photo to check against</li>
@@ -502,23 +482,51 @@
             </ul>
           </div>
 
-          <div class="ir-shots ir-shots-phones">
-            <figure class="ir-phone-shot">
-              <img class="ir-img ir-img-dark" src="assets/img/projects/ir-ops/home-dark.jpg" alt="IR Ops home on a phone: the product survey, a 3D pack and the count of products left to survey" loading="lazy" width="360" height="780">
-              <img class="ir-img ir-img-light" src="assets/img/projects/ir-ops/home-light.jpg" alt="IR Ops home on a phone: the product survey, a 3D pack and the count of products left to survey" loading="lazy" width="360" height="780">
-            </figure>
-            <figure class="ir-phone-shot">
-              <img class="ir-img ir-img-dark" src="assets/img/projects/ir-ops/catalog-dark.jpg" alt="The IR Ops catalogue: search, category tabs and the incomplete products, with product names blurred" loading="lazy" width="360" height="780">
-              <img class="ir-img ir-img-light" src="assets/img/projects/ir-ops/catalog-light.jpg" alt="The IR Ops catalogue: search, category tabs and the incomplete products, with product names blurred" loading="lazy" width="360" height="780">
-            </figure>
-            <figure class="ir-phone-shot">
-              <img class="ir-img ir-img-dark" src="assets/img/projects/ir-ops/measure-dark.jpg" alt="Measuring a product in IR Ops: the 3D pack above the product code, width and height fields" loading="lazy" width="360" height="780">
-              <img class="ir-img ir-img-light" src="assets/img/projects/ir-ops/measure-light.jpg" alt="Measuring a product in IR Ops: the 3D pack above the product code, width and height fields" loading="lazy" width="360" height="780">
-            </figure>
-            <figure class="ir-phone-shot">
-              <img class="ir-img ir-img-dark" src="assets/img/projects/ir-ops/photo-dark.jpg" alt="The product photo laid over the measuring screen for reference, with product details blurred" loading="lazy" width="360" height="780">
-              <img class="ir-img ir-img-light" src="assets/img/projects/ir-ops/photo-light.jpg" alt="The product photo laid over the measuring screen for reference, with product details blurred" loading="lazy" width="360" height="780">
-            </figure>
+          <div class="ir-survey-stage">
+            <div class="ir-shots ir-shots-phones">
+              <figure class="ir-phone-shot">
+                <img class="ir-img ir-img-dark" src="assets/img/projects/ir-ops/home-dark.jpg" alt="IR Ops home on a phone: the product survey, a 3D pack and the count of products left to survey" loading="lazy" width="360" height="780">
+                <img class="ir-img ir-img-light" src="assets/img/projects/ir-ops/home-light.jpg" alt="IR Ops home on a phone: the product survey, a 3D pack and the count of products left to survey" loading="lazy" width="360" height="780">
+              </figure>
+              <figure class="ir-phone-shot">
+                <img class="ir-img ir-img-dark" src="assets/img/projects/ir-ops/catalog-dark.jpg" alt="The IR Ops catalogue: search, category tabs and the incomplete products, with product names blurred" loading="lazy" width="360" height="780">
+                <img class="ir-img ir-img-light" src="assets/img/projects/ir-ops/catalog-light.jpg" alt="The IR Ops catalogue: search, category tabs and the incomplete products, with product names blurred" loading="lazy" width="360" height="780">
+              </figure>
+              <figure class="ir-phone-shot">
+                <img class="ir-img ir-img-dark" src="assets/img/projects/ir-ops/measure-dark.jpg" alt="Measuring a product in IR Ops: the 3D pack above the product code, width and height fields" loading="lazy" width="360" height="780">
+                <img class="ir-img ir-img-light" src="assets/img/projects/ir-ops/measure-light.jpg" alt="Measuring a product in IR Ops: the 3D pack above the product code, width and height fields" loading="lazy" width="360" height="780">
+              </figure>
+              <figure class="ir-phone-shot">
+                <img class="ir-img ir-img-dark" src="assets/img/projects/ir-ops/photo-dark.jpg" alt="The product photo laid over the measuring screen for reference, with product details blurred" loading="lazy" width="360" height="780">
+                <img class="ir-img ir-img-light" src="assets/img/projects/ir-ops/photo-light.jpg" alt="The product photo laid over the measuring screen for reference, with product details blurred" loading="lazy" width="360" height="780">
+              </figure>
+            </div>
+
+            <!-- the one live piece: the product-survey pack from IR Ops, measured like the real screen -->
+            <div class="ir-bench" id="ir-pack">
+              <div class="cap-stage" id="cap-stage" data-cursor="drag">
+                <canvas class="cap-canvas" id="cap-canvas" aria-hidden="true"></canvas>
+                <div class="cap-box" id="cap-box" aria-hidden="true">
+                  <i class="f-front"></i><i class="f-back"></i><i class="f-left"></i><i class="f-right"></i><i class="f-top"></i><i class="f-bottom"></i>
+                </div>
+              </div>
+              <div class="ir-bench-controls">
+                <p class="ir-bench-title"><b>IR Ops</b> · <span data-i18n="ir.bench.title">try it — measure a pack</span></p>
+                <div class="ir-bench-fields">
+                  <label class="ir-field" for="cap-w"><span data-i18n="ir.bench.w">Width</span>
+                    <span class="ir-field-box"><input id="cap-w" type="text" inputmode="decimal" autocomplete="off" maxlength="5" value="8"><i>cm</i></span>
+                  </label>
+                  <label class="ir-field" for="cap-h"><span data-i18n="ir.bench.h">Height</span>
+                    <span class="ir-field-box"><input id="cap-h" type="text" inputmode="decimal" autocomplete="off" maxlength="5" value="20"><i>cm</i></span>
+                  </label>
+                </div>
+                <div class="ir-bench-row">
+                  <span class="cap-dims" id="cap-dims" aria-live="polite">8 × 20 × 3.4 cm</span>
+                  <button class="ir-pack-next" id="cap-next" type="button" data-i18n="ir.pack.next">Next pack</button>
+                </div>
+                <p class="ir-bench-hint" data-i18n="ir.bench.hint">Type a width and height from 1 to 60 cm, or drag the pack to turn it.</p>
+              </div>
+            </div>
           </div>
         </article>
       </div>

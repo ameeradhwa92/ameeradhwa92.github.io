@@ -1,14 +1,12 @@
 /* RetailAIM IR showcase — the DOM half. #work shows real IR Workforce screens
    (demo mode, sample data); this script adds the one live piece: the product
-   survey's 3D pack from IR Ops, floating over those screens.
+   survey's 3D pack from IR Ops, on a measuring bench in the Survey chapter.
 
-   The pack sits on the first chapter's screenshot by default. Where the chapters
-   stack (the same query as style.css and motion.js) it moves to #ir-pack-rail, an
-   overlay above every chapter where it sticks, so each screen slides in under it and the
-   pack turns as the chapter changes. Off the happy path (no WebGL2, save-data, a
-   failed import) it stays the CSS 3D box it renders without JS, and the reason is
-   written to #cap-stage's data-pack. Reduced motion keeps drag and "Next pack",
-   without the idle spin. */
+   The bench works like the real measure screen: type a width and height and the
+   pack re-scales (ir-core.js parses and range-checks the fields), or cycle the
+   sample packs. Off the happy path (no WebGL2, save-data, a failed import) it stays
+   the CSS 3D box it renders without JS, and the reason is written to #cap-stage's
+   data-pack. Reduced motion keeps drag, typing and "Next pack", without the idle spin. */
 (function () {
   "use strict";
 
@@ -20,7 +18,6 @@
   var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   var saveData = !!(navigator.connection && navigator.connection.saveData);
   var root = document.documentElement;
-  var STACK_QUERY = "(min-width: 1101px) and (min-height: 820px)";
 
   /* Same base-URL discipline as route-globe.js: three.js is imported by the very
      same absolute URL, so the module cache hands both scripts one copy. */
@@ -42,67 +39,56 @@
   }
 
   var packEl = $("ir-pack"), stage = $("cap-stage"), canvas = $("cap-canvas"), box = $("cap-box");
-  var dims = $("cap-dims"), nextBtn = $("cap-next"), rail = $("ir-pack-rail"), slot = $("ir-pack-slot");
+  var dims = $("cap-dims"), nextBtn = $("cap-next"), wField = $("cap-w"), hField = $("cap-h");
   if (!packEl || !stage || !box) return;
 
   var pack = null;   /* the three.js adapter, once loaded */
   var current = 0;   /* index into core.SAMPLE_PACKS */
 
   /* ======================= the survey pack ======================= */
-  function sizeFor(i) {
-    var p = core.SAMPLE_PACKS[i];
-    return { w: p[0], h: p[1], size: core.packSize(String(p[0]), String(p[1]), 2.2) };
-  }
-  function showSize(i, instant) {
-    var s = sizeFor(i);
-    if (!s.size) return;
+  function showSize(w, h, instant) {
+    var size = core.packSize(String(w), String(h), 2.2);
+    if (!size) return false;
     /* CSS fallback box: 2.2 world units ≈ 56% of the stage height */
     var k = (stage.clientHeight || 200) * 0.56 / 2.2;
-    box.style.setProperty("--bw", (s.size.x * k).toFixed(1) + "px");
-    box.style.setProperty("--bh", (s.size.y * k).toFixed(1) + "px");
-    box.style.setProperty("--bd", (s.size.z * k).toFixed(1) + "px");
-    if (dims) dims.textContent = s.w + " × " + s.h + " × " + s.size.depthCm + " cm";
-    if (pack) pack.resize(s.size, instant);
+    box.style.setProperty("--bw", (size.x * k).toFixed(1) + "px");
+    box.style.setProperty("--bh", (size.y * k).toFixed(1) + "px");
+    box.style.setProperty("--bd", (size.z * k).toFixed(1) + "px");
+    if (dims) dims.textContent = core.parseCm(w) + " × " + core.parseCm(h) + " × " + size.depthCm + " cm";
+    if (pack) pack.resize(size, instant);
+    return true;
   }
+  /* the last size both fields agreed on; a half-typed or out-of-range field keeps it */
+  var lastGood = { w: core.SAMPLE_PACKS[0][0], h: core.SAMPLE_PACKS[0][1] };
+  function fromFields(instant) {
+    var w = wField ? wField.value : lastGood.w, h = hField ? hField.value : lastGood.h;
+    var okW = core.parseCm(w) != null, okH = core.parseCm(h) != null;
+    if (wField) wField.setAttribute("aria-invalid", okW ? "false" : "true");
+    if (hField) hField.setAttribute("aria-invalid", okH ? "false" : "true");
+    if (okW && okH && showSize(w, h, instant)) lastGood = { w: w, h: h };
+  }
+  [wField, hField].forEach(function (field) {
+    if (!field) return;
+    field.addEventListener("input", function () { fromFields(false); });
+    /* leaving a bad field puts the last good size back, so the readout and the fields agree */
+    field.addEventListener("blur", function () {
+      if (core.parseCm(field.value) != null) return;
+      field.value = field === wField ? lastGood.w : lastGood.h;
+      field.setAttribute("aria-invalid", "false");
+    });
+  });
   if (nextBtn) {
     nextBtn.addEventListener("click", function () {
       current = core.nextPack(current);
-      showSize(current);
+      var p = core.SAMPLE_PACKS[current];
+      if (wField) wField.value = p[0];
+      if (hField) hField.value = p[1];
+      fromFields(false);
       if (pack) pack.celebrate();
     });
   }
-
-  /* ---- where the pack lives: on the first screen, or riding above the stack ---- */
-  var stackMq = window.matchMedia(STACK_QUERY);
-  function placeInRail() {
-    var chapter = slot.closest(".ir-chapter");
-    var shots = slot.parentNode;
-    if (!chapter || !shots) return;
-    /* offsets ignore transforms, so the chapter's scale-down does not skew this */
-    var w = Math.round(Math.max(170, Math.min(240, shots.offsetWidth * 0.28)));
-    packEl.style.setProperty("--pack-w", w + "px");
-    var h = packEl.offsetHeight || w * 1.4;
-    var left = shots.offsetLeft - w * 0.18;
-    /* every chapter passes under the pack, so it has to fit inside the shortest */
-    var floor = Math.min.apply(null, Array.prototype.map.call(section.querySelectorAll(".ir-chapter"), function (c) { return c.offsetHeight; }));
-    var top = Math.min(shots.offsetTop + shots.offsetHeight - h * 0.82, floor - h - 30);
-    packEl.style.setProperty("--pack-left", Math.round(left) + "px");
-    packEl.style.setProperty("--pack-top", Math.round(Math.max(0, top)) + "px");
-  }
-  function place() {
-    var floating = !!(rail && stackMq.matches);
-    var host = floating ? rail : slot;
-    if (packEl.parentNode !== host) host.appendChild(packEl);
-    packEl.classList.toggle("is-floating", floating);
-    if (floating) placeInRail();
-    else ["--pack-w", "--pack-left", "--pack-top"].forEach(function (k) { packEl.style.removeProperty(k); });
-    showSize(current, true);
-    if (pack) pack.fit();
-  }
-  if (stackMq.addEventListener) stackMq.addEventListener("change", place);
-  else if (stackMq.addListener) stackMq.addListener(place);
-  window.addEventListener("resize", function () { if (packEl.classList.contains("is-floating")) placeInRail(); });
-  place();
+  window.addEventListener("resize", function () { showSize(lastGood.w, lastGood.h, true); });
+  fromFields(true);
 
   /* ---- the three.js pack ---- */
   function probeWebGL2() {
@@ -120,7 +106,7 @@
   }
   if (saveData) stage.dataset.pack = "save-data";
   else {
-    onVisible(section.querySelector(".ir-chapters") || stage, function () {
+    onVisible($("ir-survey") || stage, function () {
       if (!probeWebGL2()) { stage.dataset.pack = "no-webgl2"; return; }
       stage.dataset.pack = "loading";
       import(THREE_URL).then(function (THREE) {
@@ -128,7 +114,7 @@
           pack = buildPack(THREE, stage, canvas);
           stage.classList.add("is-webgl");
           stage.dataset.pack = "live";
-          showSize(current, true);
+          showSize(lastGood.w, lastGood.h, true);
         } catch (err) { packFail(err); }
       }, packFail);
     }, { rootMargin: "400px 0px", threshold: 0 });
@@ -327,11 +313,8 @@
       var mid = window.innerHeight * 0.55, active = 0;
       chapters.forEach(function (c, i) { if (c.getBoundingClientRect().top <= mid) active = i; });
       if (active === shown) return;
-      var first = shown < 0;
       shown = active;
       links.forEach(function (a, i) { a.classList.toggle("is-active", i === active); });
-      /* a new screen slid in under the floating pack: give it a turn */
-      if (!first && pack && packEl.classList.contains("is-floating")) pack.celebrate();
     }
     window.addEventListener("scroll", function () {
       if (!queued) { queued = true; requestAnimationFrame(sync); }

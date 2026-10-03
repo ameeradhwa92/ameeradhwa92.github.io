@@ -286,7 +286,7 @@ The `.reveal` fade stays plain CSS (`main.js` adds `.in`); GSAP does not own it.
 
 `#work` sits between the stats strip and `#route`. Its three `.ir-chapter`s are sticky and
 stack only under `(min-width: 1101px) and (min-height: 820px)` — the same query in `style.css`,
-in `motion.js`'s `gsap.matchMedia()` and in `ir-showcase.js`; change all three. The covered chapter darkens through its
+and in `motion.js`'s `gsap.matchMedia()`; change both. The covered chapter darkens through its
 `::after` overlay (`--dim`), not `opacity`, so a chapter never shows through the one above it.
 
 The chapters show real **IR Workforce** screens, supplied by the owner and captured in the
@@ -300,16 +300,18 @@ removed and the logo tile blurred before it lands here. The project card's image
 `assets/img/projects/retailaim-ir.jpg` is the dark dashboard at 1000×625; the card links to
 `#work`, not to the live app.
 
-The one live piece is the product-survey pack from IR Ops. Its home (and its no-JS place) is
-`#ir-pack-slot` on the first screen; under the stacking query `ir-showcase.js` (`STACK_QUERY`,
-a third copy of that query) moves `#ir-pack` into `#ir-pack-rail`, a full-height overlay on
-`.ir-chapters` where the pack is sticky, so each screen slides in under it and the pack turns on
-every chapter change. Its offsets come from the first chapter's `.ir-shots`, clamped to the
-shortest chapter, and the browser chapters' `.ir-shots` keep one aspect ratio so the corner matches (the phone row in `#ir-survey` is shorter).
-Below 641px it sits under the screen in a row instead. It loads the vendored three.js through
-`import()` of the **same absolute URL** `route-globe.js` uses, so the module cache shares one
-copy. Off the happy path (save-data, no WebGL2, a failed import) the CSS 3D box stays;
-`#cap-stage`'s `data-pack` names the reason, the same convention as `section.dataset.globe`.
+The one live piece is the product-survey pack from IR Ops, on a measuring bench (`#ir-pack`,
+`.ir-bench`) under the phone row in `#ir-survey`, where the copy describes it. It works like the
+real measure screen: `#cap-w` / `#cap-h` re-size the pack through `ir-core.js`'s `packSize`
+(decimal comma accepted, 1–60 cm; a bad field is marked `aria-invalid` and the last good size
+stays), and "Next pack" cycles `SAMPLE_PACKS` into the fields. It used to float over chapters
+01–03 on a sticky rail; that landed in the gutter over the headings, so it stays put now — don't
+lay it over the screens again. The phone row is kept shallow (`aspect-ratio: 2`) so chapter 04,
+bench included, still fits a stacked chapter at 1440×900. The pack lazy-loads the vendored
+three.js when `#ir-survey` nears the viewport, through `import()` of the **same absolute URL**
+`route-globe.js` uses, so the module cache shares one copy. Off the happy path (save-data, no
+WebGL2, a failed import) the CSS 3D box stays; `#cap-stage`'s `data-pack` names the reason, the
+same convention as `section.dataset.globe`.
 
 ## Content rules
 
