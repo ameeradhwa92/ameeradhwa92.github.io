@@ -1810,6 +1810,17 @@
       var id = ++localReqId;
       var streamed = "";
       var firstTimeout = 30000;
+      /* tokens land in the bubble at most once a frame; `open` stops a frame queued before the end
+         from painting the raw stream over cleanReply's grounded text */
+      var raf = window.requestAnimationFrame ? window.requestAnimationFrame.bind(window) : function (f) { f(); };
+      var open = true, queued = false;
+      function paint() {
+        queued = false;
+        if (!open) return;
+        bubble.textContent = streamed;
+        scrollLogToEnd();
+      }
+      function close() { open = false; bubble.classList.remove("is-streaming"); }
       return new Promise(function (resolve, reject) {
         var gotToken = false;
         function giveUp() {
@@ -1823,13 +1834,16 @@
         var cap = setTimeout(giveUp, 90000);
         localPending[id] = {
           onToken: function (piece) {
+            if (!open) return;
             gotToken = true;
             streamed += piece;
-            if (bubble.classList.contains("thinking")) settleBubbleContent(bubble, streamed);
-            else { bubble.textContent = streamed; scrollLogToEnd(); }
+            if (bubble.classList.contains("thinking")) {
+              settleBubbleContent(bubble, streamed);
+              bubble.classList.add("is-streaming");
+            } else if (!queued) { queued = true; raf(paint); }
           },
-          resolve: function (full) { clearTimeout(timer); clearTimeout(cap); resolve(full || streamed); },
-          reject: function (err) { clearTimeout(timer); clearTimeout(cap); reject(err); }
+          resolve: function (full) { close(); clearTimeout(timer); clearTimeout(cap); resolve(full || streamed); },
+          reject: function (err) { close(); clearTimeout(timer); clearTimeout(cap); reject(err); }
         };
         localWorker.postMessage({ type: "generate", id: id, messages: messages, options: core.MODEL.generation });
       }).then(function (full) {
@@ -1844,11 +1858,15 @@
   }
 
   function answerLocally(bubble, text) {
+    /* marks the bubble as made here: the thinking bits, the caret, the small lock once settled */
+    bubble.classList.add("chat-msg-local");
     var ready = localState === "ready" ? Promise.resolve(true) : whenLocalReady(25000);
     ready.then(function (ok) {
       if (!ok) throw new Error("local-unavailable");
       return askLocal(text, bubble);
     }).then(function (answer) {
+      /* the salary and handoff answers are curated copy, not something the model made */
+      if (answer.action !== "answer") bubble.classList.remove("chat-msg-local");
       applyCloudAnswer(bubble, answer, text);
       if (answer.action === "answer" && lang() === "ms" && !englishNoted) {
         englishNoted = true;
@@ -1856,6 +1874,7 @@
       }
     }).catch(function (err) {
       if (window.console && console.warn) console.warn("On-device AI failed:", err);
+      bubble.classList.remove("chat-msg-local", "is-streaming");
       answerInstantly(bubble, text);
     });
   }
@@ -1882,16 +1901,77 @@
     return b;
   }
 
+  /* What the visitor sees, in two words: the switch (off | on | loading | ready) and the box's
+     view. motion.js choreographs each change between them (aimeer:private); style.css owns
+     every end state, so nothing depends on the event being heard. */
+  var renderedSw = null, renderedView = null, renderedLang = "", progressNodes = null;
+  function switchState() {
+    if (!privateMode) return "off";
+    return localState === "loading" ? "loading" : localState === "ready" ? "ready" : "on";
+  }
+  function announcePrivate(from, to) {
+    try {
+      document.dispatchEvent(new CustomEvent("aimeer:private", { detail: { from: from, to: to } }));
+    } catch (e) { }
+  }
+
+  function buildChip() {
+    var chip = document.createElement("div");
+    chip.className = "chat-private-chip";
+    chip.setAttribute("aria-hidden", "true");
+    var cube = document.createElement("div");
+    cube.className = "chat-private-cube";
+    ["front", "back", "right", "left", "top", "bottom"].forEach(function (face) {
+      var i = document.createElement("i");
+      i.className = "f-" + face;
+      cube.appendChild(i);
+    });
+    chip.appendChild(cube);
+    return chip;
+  }
+
+  /* decimal MB, the unit the offer's size uses */
+  function progressCopy() {
+    var mb = function (bytes) { return Math.round(bytes / 1e6); };
+    return localProgress.total && localProgress.loaded < localProgress.total
+      ? formatT("privateDownloading", { loaded: mb(localProgress.loaded), total: mb(localProgress.total) })
+      : t("privateStarting");
+  }
+  function paintProgress() {
+    var pct = localPercent();
+    progressNodes.copy.textContent = progressCopy();
+    progressNodes.bar.setAttribute("aria-valuenow", String(pct));
+    progressNodes.fill.style.setProperty("--pct", pct + "%");
+    progressNodes.chip.style.setProperty("--p", String(pct / 100));
+  }
+
   function renderPrivate() {
     if (!privateBtn) return;
     var available = !!localCore();
+    var view = privateView;
+    if (privateMode && localState === "loading") view = "progress";
+    if (!privateBox) view = "";
+    var sw = switchState();
+    /* before the DOM moves, so motion.js can still measure the chip and the box it is leaving */
+    if (available && renderedSw !== null && (sw !== renderedSw || view !== renderedView)) {
+      announcePrivate({ sw: renderedSw, view: renderedView }, { sw: sw, view: view });
+    }
     privateBtn.hidden = !available;
     privateBtn.setAttribute("aria-checked", privateMode ? "true" : "false");
     privateBtn.classList.toggle("is-on", privateMode);
-    privateBtn.classList.toggle("is-loading", privateMode && localState === "loading");
+    privateBtn.classList.toggle("is-loading", sw === "loading");
+    privateBtn.classList.toggle("is-ready", sw === "ready");
+    panel.classList.toggle("is-private", privateMode);
+    panel.classList.toggle("is-private-ready", sw === "ready");
+    launcher.classList.toggle("is-private", sw === "ready");
+    var sameView = view === renderedView && lang() === renderedLang;
+    renderedSw = available ? sw : null;
+    renderedView = view;
+    renderedLang = lang();
     if (!privateBox) return;
-    var view = privateView;
-    if (privateMode && localState === "loading") view = "progress";
+    /* a progress tick repaints in place: rebuilding would restart the chip's spin every tick */
+    if (view === "progress" && sameView && progressNodes) { paintProgress(); return; }
+    progressNodes = null;
     privateBox.innerHTML = "";
     privateBox.hidden = !view;
     privateBox.className = "chat-private-box" + (view ? " is-" + view : "");
@@ -1917,22 +1997,19 @@
       privateBox.appendChild(copy);
       actions.appendChild(boxButton(t("privateClose"), function () { privateView = ""; renderPrivate(); }));
     } else if (view === "progress") {
-      /* decimal MB, the unit the offer's size uses */
-      var mb = function (bytes) { return Math.round(bytes / 1e6); };
-      copy.textContent = localProgress.total && localProgress.loaded < localProgress.total
-        ? formatT("privateDownloading", { loaded: mb(localProgress.loaded), total: mb(localProgress.total) })
-        : t("privateStarting");
+      var chip = buildChip();
+      privateBox.appendChild(chip);
       privateBox.appendChild(copy);
       var bar = document.createElement("div");
       bar.className = "chat-private-bar";
       bar.setAttribute("role", "progressbar");
       bar.setAttribute("aria-valuemin", "0");
       bar.setAttribute("aria-valuemax", "100");
-      bar.setAttribute("aria-valuenow", String(localPercent()));
       var fill = document.createElement("span");
-      fill.style.setProperty("--pct", localPercent() + "%");
       bar.appendChild(fill);
       privateBox.appendChild(bar);
+      progressNodes = { chip: chip, copy: copy, bar: bar, fill: fill };
+      paintProgress();
       actions.appendChild(boxButton(t("privateCancel"), cancelLocal));
     } else if (view === "failed") {
       copy.textContent = t("privateFailed");

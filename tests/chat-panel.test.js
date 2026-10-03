@@ -1864,6 +1864,12 @@ test('the retired WebLLM tier stays gone; Private mode is a same-origin Worker b
   assert.doesNotMatch(html, /aimeer-device\.js/);
   assert.doesNotMatch(chatbot, /web-llm|esm\.run|CreateMLCEngine|cdn\.jsdelivr|unpkg/);
   assert.match(header[1], /<button class="chat-private" id="chat-private" type="button" role="switch" aria-checked="false"/);
+  /* the padlock is one SVG posed by CSS: a shackle that swings, a body, a keyhole, a pulse ring */
+  assert.match(header[1], /<span class="chat-private-icon" aria-hidden="true">/);
+  assert.match(header[1], /<svg class="chat-private-lock"[^>]*focusable="false"/);
+  for (const part of ['lk-ring', 'lk-shackle', 'lk-body', 'lk-key']) assert.match(header[1], new RegExp(`class="${part}"`));
+  assert.match(header[1], /<g clip-path="url\(#lk-clip\)"><path class="lk-shackle"/);
+  assert.match(header[1], /<span class="chat-private-label" data-i18n="chat\.private\.label">Private<\/span>/);
   assert.match(html, /id="chat-private-box"[^>]*role="status"/);
   assert.match(chatbot, /new Worker\(scriptUrl\("aimeer-local-worker\.js" \+ ASSET_VERSION_QUERY\), \{ type: "module" \}\)/);
   assert.match(chatbot, /scriptUrl\("\.\.\/vendor\/transformers\/transformers\.min\.js"\)/);
@@ -1878,7 +1884,7 @@ const KB_TEXT = fs.readFileSync(path.join(__dirname, '..', 'assets', 'data', 'ai
 
 /* A browser with WebGPU, a stub model Worker that answers every prompt with `reply`, and a
    recorder for every Worker-relay (workers.dev) request. */
-function createPrivateContext({ reply = 'He pioneered Flutter adoption at TRM Nett Systems.', storage = {}, cloudFails = false } = {}) {
+function createPrivateContext({ reply = 'He pioneered Flutter adoption at TRM Nett Systems.', storage = {}, cloudFails = false, autoLoad = true, tokens = null } = {}) {
   const cloudBodies = [];
   const workers = [];
   const harness = createChatContext({
@@ -1901,8 +1907,12 @@ function createPrivateContext({ reply = 'He pioneered Flutter adoption at TRM Ne
     postMessage(msg) {
       this.posted.push(msg);
       const send = (data) => Promise.resolve().then(() => this.onmessage && this.onmessage({ data }));
-      if (msg.type === 'load') send({ type: 'progress', loaded: 50, total: 100 }).then(() => send({ type: 'ready', device: msg.device, dtype: msg.dtype }));
-      if (msg.type === 'generate') send({ type: 'token', id: msg.id, text: reply }).then(() => send({ type: 'done', id: msg.id, text: reply }));
+      if (msg.type === 'load' && autoLoad) send({ type: 'progress', loaded: 50, total: 100 }).then(() => send({ type: 'ready', device: msg.device, dtype: msg.dtype }));
+      if (msg.type === 'generate') {
+        const pieces = tokens || [reply];
+        pieces.reduce((chain, text) => chain.then(() => send({ type: 'token', id: msg.id, text })), Promise.resolve())
+          .then(() => send({ type: 'done', id: msg.id, text: pieces.join('') }));
+      }
     }
     terminate() { this.terminated = true; }
   }
@@ -1993,6 +2003,149 @@ test('a model already on disk answers when the cloud fails, before the instant t
   assert.equal(harness.cloudBodies.length, 1, 'the cloud was tried first');
   assert.equal(harness.workers.length, 1, 'then the cached model');
   assert.ok(botTexts(harness.elements).some((text) => /pioneered Flutter adoption/.test(text)));
+});
+
+/* ---- Private mode motion: chatbot.js toggles classes and announces; motion.js choreographs ---- */
+
+function recordPrivateEvents(harness) {
+  const log = [];
+  harness.context.CustomEvent = class { constructor(type, init) { this.type = type; this.detail = init && init.detail; } };
+  harness.context.document.dispatchEvent = (e) => {
+    if (e.type !== 'aimeer:private') return;
+    const box = harness.elements['chat-private-box'];
+    log.push({ ...e.detail, chipBefore: box.children.some((c) => /chat-private-chip/.test(c.className)), boxHidden: box.hidden });
+  };
+  return log;
+}
+
+function clickBoxButton(harness, index) {
+  const actions = harness.elements['chat-private-box'].children.find((c) => /chat-private-actions/.test(c.className));
+  actions.children[index].dispatch('click');
+}
+
+test('Private mode announces each visible change to motion.js before the DOM moves', async () => {
+  const harness = createPrivateContext();
+  const log = recordPrivateEvents(harness);
+  await loadChat(harness.context);
+  harness.elements['chat-launcher'].dispatch('click');
+  harness.elements['chat-private'].dispatch('click');
+  await flushAsync();
+  clickBoxButton(harness, 0);
+  await flushAsync();
+  harness.setLanguage('ms');
+  harness.elements['chat-private'].dispatch('click');
+  await flushAsync();
+  const steps = log.map((e) => `${e.from.sw}/${e.from.view} > ${e.to.sw}/${e.to.view}`);
+  assert.deepEqual(steps, [
+    'off/ > off/offer',
+    'off/offer > on/progress',
+    'on/progress > loading/progress',
+    'loading/progress > ready/',
+    'ready/ > off/'
+  ]);
+  const ready = log[3];
+  assert.equal(ready.chipBefore, true, 'the chip is still in the box when motion.js hears about ready');
+  assert.equal(ready.boxHidden, false);
+});
+
+test('with nobody listening, the switch, panel and launcher still land in their final states', async () => {
+  const harness = createPrivateContext({ autoLoad: false });
+  await loadChat(harness.context);
+  const { elements } = harness;
+  elements['chat-launcher'].dispatch('click');
+  elements['chat-private'].dispatch('click');
+  await flushAsync();
+  clickBoxButton(harness, 0);
+  await flushAsync();
+  const sw = elements['chat-private'].classList, panelClasses = elements['chat-panel'].classList;
+  assert.ok(sw.contains('is-on') && sw.contains('is-loading') && !sw.contains('is-ready'));
+  assert.ok(panelClasses.contains('is-private') && !panelClasses.contains('is-private-ready'));
+  harness.workers[0].onmessage({ data: { type: 'ready', device: 'webgpu', dtype: 'q4f16' } });
+  await flushAsync();
+  assert.ok(sw.contains('is-on') && sw.contains('is-ready') && !sw.contains('is-loading'));
+  assert.equal(elements['chat-private'].getAttribute('aria-checked'), 'true');
+  assert.ok(panelClasses.contains('is-private') && panelClasses.contains('is-private-ready'));
+  assert.ok(elements['chat-launcher'].classList.contains('is-private'));
+  elements['chat-private'].dispatch('click');
+  await flushAsync();
+  assert.ok(!sw.contains('is-on') && !sw.contains('is-ready'));
+  assert.equal(elements['chat-private'].getAttribute('aria-checked'), 'false');
+  assert.ok(!panelClasses.contains('is-private') && !panelClasses.contains('is-private-ready'));
+  assert.ok(!elements['chat-launcher'].classList.contains('is-private'));
+});
+
+test('download progress repaints the chip and the bar in place instead of rebuilding the box', async () => {
+  const harness = createPrivateContext({ autoLoad: false });
+  await loadChat(harness.context);
+  harness.elements['chat-launcher'].dispatch('click');
+  harness.elements['chat-private'].dispatch('click');
+  await flushAsync();
+  clickBoxButton(harness, 0);
+  await flushAsync();
+  const box = harness.elements['chat-private-box'];
+  const worker = harness.workers[0];
+  worker.onmessage({ data: { type: 'progress', loaded: 10, total: 100 } });
+  const chip = box.children[0];
+  const bar = box.children.find((c) => c.className === 'chat-private-bar');
+  assert.match(chip.className, /chat-private-chip/);
+  assert.equal(bar.getAttribute('aria-valuenow'), '10');
+  worker.onmessage({ data: { type: 'progress', loaded: 60, total: 100 } });
+  assert.equal(box.children[0], chip, 'the same chip node: its spin never restarts');
+  assert.equal(bar.getAttribute('aria-valuenow'), '60');
+});
+
+test('a sentence the filter drops never comes back from a late animation frame', async () => {
+  const frames = [];
+  const harness = createPrivateContext({
+    storage: { 'aimeer-private': '1', 'aimeer-local-ready': '1' },
+    tokens: ['He knows Flutter well.', ' He also built apps at liveaim.com.']
+  });
+  harness.context.window.requestAnimationFrame = (f) => frames.push(f);
+  await loadChat(harness.context);
+  harness.elements['chat-launcher'].dispatch('click');
+  await flushAsync();
+  await ask(harness, 'Does he know Flutter?');
+  frames.splice(0).forEach((f) => f());
+  /* the stub's classList is its own set, separate from className */
+  const bubble = harness.elements['chat-log'].children.find((c) => c.classList.contains('chat-msg-local'));
+  assert.ok(bubble, 'the answer is marked as made on this device');
+  assert.equal(bubble.textContent, 'He knows Flutter well.');
+  assert.ok(!bubble.classList.contains('is-streaming'));
+});
+
+test('only answers the model made carry the on-device mark', async () => {
+  const fallback = createPrivateContext({ storage: { 'aimeer-private': '1', 'aimeer-local-ready': '1' }, reply: 'He built it at liveaim.com.' });
+  await loadChat(fallback.context);
+  fallback.elements['chat-launcher'].dispatch('click');
+  await flushAsync();
+  await ask(fallback, 'Does he know Flutter?');
+  await ask(fallback, 'What is his expected salary?');
+  const bots = fallback.elements['chat-log'].children.filter((c) => /chat-msg-bot/.test(c.className));
+  assert.ok(bots.length >= 4, 'greeting, promo and two answers');
+  assert.equal(bots.filter((c) => c.classList.contains('chat-msg-local')).length, 0,
+    'neither the instant fallback nor the curated salary answer is marked');
+  const made = createPrivateContext({ storage: { 'aimeer-private': '1', 'aimeer-local-ready': '1' } });
+  await loadChat(made.context);
+  made.elements['chat-launcher'].dispatch('click');
+  await flushAsync();
+  await ask(made, 'Does he know Flutter?');
+  assert.equal(made.elements['chat-log'].children.filter((c) => c.classList.contains('chat-msg-local')).length, 1);
+});
+
+test('Private-mode motion is frozen under reduced motion, stays iris, and the narrow head clips only the label', () => {
+  const reduced = [...css.matchAll(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\n\}/g)].map((m) => m[0]).join('\n');
+  for (const sel of ['.chat-private-cube', '.chat-private.is-loading .lk-key', '.chat-msg-local.thinking .chat-typing i',
+    '.chat-msg-local.is-streaming::after', '.chat-msg-local:not(.thinking):not(.is-streaming)::after',
+    '.chat-private-cube i::before', '.chat-head::before']) {
+    assert.ok(reduced.includes(sel), `${sel} is frozen under reduced motion`);
+  }
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .filter((m) => /\.lk-|chat-private-chip|chat-private-cube|chat-seal|chat-msg-local|is-sealing|badge-lock/.test(m[1]));
+  assert.ok(rules.length > 10);
+  for (const [, sel, body] of rules) assert.doesNotMatch(body, /--thread|--amber/, `${sel.trim()} stays on the interface accent`);
+  const narrow = css.match(/@media \(max-width: 390px\) \{([\s\S]*?)\n\}/);
+  assert.ok(narrow && narrow[1].includes('.chat-private-label {'));
+  assert.doesNotMatch(narrow[1], /\.chat-private span/);
 });
 
 test('a browser without WebGPU is told why, and nothing downloads', async () => {
