@@ -2038,7 +2038,7 @@ test('jd-decide relays Clef decisions in the shape the browser validator already
   const request = buildDecideRequest();
   const result = await callWorker(request, { freshWorker: true, aiImpl: decideAi() });
   assert.equal(result.status, 200, JSON.stringify(result.json));
-  assert.equal(result.json.revision, '2026-10-03-clef-2');
+  assert.equal(result.json.revision, '2026-10-03-clef-3');
 
   const reasoning = JSON.parse(result.json.reasoning);
   assert.equal(reasoning.engine, 'clef');
@@ -2113,8 +2113,12 @@ test('jd-decide demotes a level its evidence cannot back, and never calls a demo
   assert.equal(third.matchLevel, 'explicit-gap');
   assert.deepEqual(third.evidenceRefs, []);
   assert.equal(third.confidence, 'medium');
-  assert.equal(fourth.matchLevel, 'unverified');
+  /* An unreadable level falls back to the keyword verdict: Bicep is a strong professional keyword
+     match citing the Azure delivery record. Reported as low confidence with no probability. */
+  assert.equal(fourth.matchLevel, 'direct-professional');
+  assert.deepEqual(fourth.evidenceRefs, ['professional.azure-delivery']);
   assert.equal(fourth.confidence, 'low');
+  assert.equal(fourth.probability, undefined);
 
   const { validated } = browserCheck(request, result.json);
   assert.equal(validated.ok, true, validated.error);
@@ -2154,6 +2158,51 @@ test('jd-decide trims an over-long narrative at a sentence, never mid-word', asy
   const short = 'Ameer brings adjacent Azure delivery to this role, with one area to confirm.';
   const kept = JSON.parse((await callWorker(buildDecideRequest(), { freshWorker: true, aiImpl: decideAi({ narrative: short }) })).json.reasoning).narrative;
   assert.equal(kept, short);
+});
+
+test('an unsure Clef decision gives way to the keyword verdict; a confident one stands', async () => {
+  /* Requirements: 0 Kubernetes (keyword: unverified), 1 Azure (strong, no keyword ref),
+     2 Azure DevOps (strong, cites production-delivery + azure-delivery), 3 Bicep (strong, cites
+     azure-delivery), 4 Production delivery (strong, cites production-delivery). */
+  const request = buildDecideRequest();
+  const level = (choice, p) => ({ type: 'choice', choice, probabilities: { [choice]: p } });
+  const none = { type: 'choice', choice: 'none', probabilities: { none: 0.9 } };
+  const clef = clefAnswerer((name, question, payload) => {
+    const azure = payload.state.publishedEvidence.find((record) => record.id === 'professional.azure-delivery');
+    switch (name) {
+      case 'level_0': return level('direct-professional', 0.3);   /* unsure, keyword says unverified */
+      case 'evidence_0': return { type: 'choice', choice: azure.id, probabilities: { [azure.id]: 0.6 } };
+      case 'level_1': return level('explicit-gap', 0.35);         /* unsure; keyword strong, no ref of its own */
+      case 'evidence_1': return { type: 'choice', choice: azure.id, probabilities: { [azure.id]: 0.5 } };
+      case 'level_2': return level('explicit-gap', 0.25);         /* the live FastAPI case */
+      case 'evidence_2': return none;
+      case 'level_3': return level('learning-bridge', 0.4);       /* exactly at the bar: stands */
+      case 'evidence_3': return { type: 'choice', choice: azure.id, probabilities: { [azure.id]: 0.7 } };
+      case 'level_4': return level('explicit-gap', 0.92);         /* confident: stands, even against the keyword pass */
+      default: return undefined;
+    }
+  });
+  const result = await callWorker(request, { freshWorker: true, aiImpl: decideAi({ clef }) });
+  assert.equal(result.status, 200, JSON.stringify(result.json));
+  const [kubernetes, azure, devops, bicep, delivery] = JSON.parse(result.json.reasoning).requirements;
+
+  assert.equal(kubernetes.matchLevel, 'unverified');
+  assert.deepEqual(kubernetes.evidenceRefs, []);
+  assert.equal(azure.matchLevel, 'direct-professional', 'no keyword ref, so Clef\'s evidence pick is cited');
+  assert.deepEqual(azure.evidenceRefs, ['professional.azure-delivery']);
+  assert.equal(devops.matchLevel, 'direct-professional');
+  assert.deepEqual(devops.evidenceRefs, ['professional.production-delivery'], 'the keyword pass\'s own first ref');
+  for (const guarded of [kubernetes, azure, devops]) {
+    assert.equal(guarded.confidence, 'low');
+    assert.equal(guarded.probability, undefined, 'a keyword verdict carries no Clef probability');
+  }
+  assert.equal(bicep.matchLevel, 'learning-bridge');
+  assert.equal(bicep.probability, 0.4);
+  assert.equal(delivery.matchLevel, 'explicit-gap');
+  assert.equal(delivery.confidence, 'high');
+
+  const { validated } = browserCheck(request, result.json);
+  assert.equal(validated.ok, true, validated.error);
 });
 
 test('jd-decide maps the overall rubric onto the fit bands, and falls back to the decisions without it', async () => {
@@ -2306,7 +2355,7 @@ test('clef-probe reports which model id answered, and the revision', async () =>
     freshWorker: true,
     aiImpl: (model) => ({ answers: { urgent: { type: 'noul', noul: 0.81 } } })
   });
-  assert.deepEqual(ok.json, { revision: '2026-10-03-clef-2', ok: true, model: '@cf/cloudflare/clef-flash', reason: '', urgent: 0.81 });
+  assert.deepEqual(ok.json, { revision: '2026-10-03-clef-3', ok: true, model: '@cf/cloudflare/clef-flash', reason: '', urgent: 0.81 });
 
   const down = await callWorker({ mode: 'clef-probe' }, {
     freshWorker: true,
@@ -2409,7 +2458,7 @@ test('text-probe reports the model, the response shape and the fixed reply, neve
   });
   assert.equal(ok.status, 200);
   assert.deepEqual(ok.json, {
-    revision: '2026-10-03-clef-2',
+    revision: '2026-10-03-clef-3',
     ok: true,
     model: '@cf/openai/gpt-oss-20b',
     effort: 'low',

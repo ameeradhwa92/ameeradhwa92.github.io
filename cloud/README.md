@@ -57,7 +57,7 @@ curl -s -X POST https://aimeer-ai.<your-subdomain>.workers.dev/ \
   -H 'Content-Type: application/json' \
   -H 'Origin: https://ameeradhwa92.github.io' \
   -d '{"mode":"version"}'
-# {"revision":"2026-10-03-clef-2","aiBinding":true}
+# {"revision":"2026-10-03-clef-3","aiBinding":true}
 ```
 
 If `revision` does not match the constant in the file you just pasted, the deploy
@@ -74,13 +74,13 @@ curl -s -X POST https://aimeer-ai.<your-subdomain>.workers.dev/ \
   -H 'Content-Type: application/json' \
   -H 'Origin: https://ameeradhwa92.github.io' \
   -d '{"mode":"clef-probe"}'
-# {"revision":"2026-10-03-clef-2","ok":true,"model":"@cf/cloudflare/clef-flash","reason":"","urgent":0.93}
+# {"revision":"2026-10-03-clef-3","ok":true,"model":"@cf/cloudflare/clef-flash","reason":"","urgent":0.93}
 
 curl -s -X POST https://aimeer-ai.<your-subdomain>.workers.dev/ \
   -H 'Content-Type: application/json' \
   -H 'Origin: https://ameeradhwa92.github.io' \
   -d '{"mode":"text-probe"}'
-# {"revision":"2026-10-03-clef-2","ok":true,"model":"@cf/openai/gpt-oss-20b","effort":"low","shape":["id","choices","usage"],"reply":"ready","reason":""}
+# {"revision":"2026-10-03-clef-3","ok":true,"model":"@cf/openai/gpt-oss-20b","effort":"low","shape":["id","choices","usage"],"reply":"ready","reason":""}
 ```
 
 `clef-probe` with `ok:false` and `reason: clef-run-failed:...` means Clef is not
@@ -128,7 +128,10 @@ Because a choice answer can only be one of the labels offered, the failures
 evidence ids, missing fields, truncated JSON — cannot happen. The Worker still
 applies the browser validator's provenance rules before relaying (an evidence-based
 level must cite a compatible record above probability 0.15, otherwise it is demoted,
-and a demoted decision is never reported as confident). Per-requirement copy is
+and a demoted decision is never reported as confident). A level Clef chose with
+less than 0.4 probability (`CLEF_DECISION_MIN`) does not stand at all: the keyword
+pass's verdict for that requirement is used instead, under the same citation
+rules, reported as low confidence with no probability. Per-requirement copy is
 templated in English and Bahasa Melayu; gpt-oss writes only the narrative, as plain
 text, from the decisions — and a narrative that looks like JSON, markup or a
 percentage of its own is replaced by a templated one.

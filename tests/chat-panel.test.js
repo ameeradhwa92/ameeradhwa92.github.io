@@ -2040,6 +2040,7 @@ test('JD analysis asks for Clef decisions first and renders the decision confide
   const rendered = collectText(harness.elements['chat-jd-result']);
   assert.match(rendered, /Good fit/);
   assert.match(rendered, /decided by Clef, Cloudflare's decision model/);
+  assert.match(rendered, /where it was unsure, the keyword match stands instead/);
   assert.match(rendered, /93% decision confidence/);
   assert.match(rendered, /71% decision confidence/);
   assert.match(rendered, /Owns release pipelines and cloud delivery workflows\./, 'adjacent evidence resolves from the decision registry');

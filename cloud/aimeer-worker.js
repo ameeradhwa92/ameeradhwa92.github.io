@@ -23,7 +23,7 @@
    deployed by hand, and a paste that silently does not take effect looks exactly like a fix that
    did not work. That cost several rounds of debugging: the same failures kept coming back because
    the revision under test was never the revision deployed. */
-const WORKER_REVISION = "2026-10-03-clef-2";
+const WORKER_REVISION = "2026-10-03-clef-3";
 
 const SITE = "https://ameeradhwa92.github.io";
 const KB_URL = SITE + "/assets/data/aimeer-kb.txt";
@@ -401,6 +401,14 @@ const CLEF_OVERALL_POINTS = [30, 50, 67, 85];
 
 /* An evidence pick below this probability is a guess, not a citation. */
 const CLEF_EVIDENCE_MIN = 0.15;
+
+/* Below this weight on its chosen level, Clef's decision does not stand: the keyword pass's verdict
+   for that requirement is used instead (see keywordMatchLevel). The first live clef-1 report put
+   "Python FastAPI" at explicit-gap with 0.25 while the profile's own project-history record lists
+   FastAPI and the keyword pass had found it; the narrative then contradicted itself. The keyword
+   pass is literal but never invents provenance, which is the right fallback for an unsure call.
+   Same spirit as the chat gates: only a confident decision acts. */
+const CLEF_DECISION_MIN = 0.4;
 
 const JD_DECIDE_NARRATIVE_MAX_TOKENS = 220;
 const JD_DECIDE_NARRATIVE_MAX = 600;
@@ -1021,16 +1029,24 @@ function assembleJdDecisions(input, registry, answers) {
    unverified), never left to fail validation, and a demoted decision is never reported as
    confident. */
 function decideRequirement(requirement, level, evidence, registryById, vocabulary, language) {
-  let matchLevel = level ? level.choice : "unverified";
-  const probability = level ? level.probability : null;
-  let demoted = !level;
+  /* An unreadable or unsure Clef answer falls back to the keyword verdict, and is reported like a
+     demotion: low confidence, no probability, so the card shows no confidence bar for it. */
+  const guarded = !level || level.probability < CLEF_DECISION_MIN;
+  let matchLevel = guarded ? keywordMatchLevel(requirement) : level.choice;
+  const probability = guarded ? null : level.probability;
+  let demoted = guarded;
 
-  const ranked = evidence
+  const clefRanked = evidence
     ? Object.keys(evidence.probabilities)
       .filter((id) => id !== "none" && registryById.has(id) && evidence.probabilities[id] >= CLEF_EVIDENCE_MIN)
       .sort((left, right) => evidence.probabilities[right] - evidence.probabilities[left])
       .map((id) => registryById.get(id))
     : [];
+  /* A keyword verdict cites the keyword pass's own evidence first, then whatever Clef picked. */
+  const keywordCited = guarded
+    ? requirement.evidenceRefs.filter((id) => registryById.has(id)).map((id) => registryById.get(id))
+    : [];
+  const ranked = keywordCited.concat(clefRanked.filter((record) => !keywordCited.includes(record)));
 
   let cited = null;
   const allowedTypes = JD_REASONING_MATCH_EVIDENCE_TYPES[matchLevel];
@@ -1072,6 +1088,21 @@ function decideRequirement(requirement, level, evidence, registryById, vocabular
   };
   if (!demoted && probability !== null) decision.probability = Math.round(probability * 1000) / 1000;
   return decision;
+}
+
+/* The keyword pass's verdict as a match level, for requirements Clef was unsure about. strong and
+   partial keep the provenance the keyword pass recorded (professional or academic); anything it
+   could not place stays unverified. The citation rules in decideRequirement still apply, so an
+   evidence-based level with nothing compatible to cite is demoted exactly like a Clef decision. */
+function keywordMatchLevel(requirement) {
+  const professional = requirement.evidenceType === "professional";
+  const academic = requirement.evidenceType === "academic";
+  switch (requirement.classification) {
+    case "strong": return professional ? "direct-professional" : academic ? "academic-foundation" : "unverified";
+    case "partial": return professional ? "adjacent-professional" : academic ? "academic-foundation" : "unverified";
+    case "gap": return "explicit-gap";
+    default: return "unverified";
+  }
 }
 
 /* Per-requirement copy is templated, not generated: it is the same sentence for the same

@@ -231,6 +231,13 @@ unknown chat request (`400 empty`). Never make the browser depend on `jd-decide`
 The probability on each requirement card is Clef's weight on the level it chose — "how sure the
 decision model was", never the odds that Ameer can do the job. Keep the copy that way.
 
+Below `CLEF_DECISION_MIN` (0.4) on its chosen level, Clef's decision does not stand: the Worker
+uses the keyword pass's verdict for that requirement (`keywordMatchLevel`), citing the keyword
+pass's own evidence first, and reports it as low confidence with no probability, so the card
+shows no confidence bar. The first live report had Clef-flash call "Python FastAPI" a gap at 0.25
+while the profile lists FastAPI, and the narrative contradicted itself. The status line copy
+(`jdReasonStatusClef`, EN/MS) says unsure calls fall back to the keyword match; keep it true.
+
 ### Recruiter JD scoring runs two model calls
 
 `jd-scoring` is the fallback mode, and it calls Workers AI **twice**: the
