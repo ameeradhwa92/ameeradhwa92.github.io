@@ -229,6 +229,8 @@ window.I18N_MS = {
   "footer.built": "Dibina dengan tangan — satu fail HTML, tanpa rangka kerja.",
 
   "chat.title": "<em>AI</em>Meer",
+  "chat.private.label": "Peribadi",
+  "chat.private.desc": "Jawab pada peranti ini, tanpa menghantar apa-apa ke awan",
   "chat.callout": "Kenali <b>AIMeer</b> — kembar AI saya. Tanyakannya tentang perjalanan 16 tahun saya, atau padankan huraian jawatan dengan profil saya mengikut setiap keperluan.",
   "chat.chip1": "Apakah pengalaman terkuat Ameer?",
   "chat.chip2": "Terangkan pengalaman awan &amp; Azure beliau",

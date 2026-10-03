@@ -1855,16 +1855,156 @@ test('the typing dots are styled and staggered', () => {
     'the whole-bubble pulse should be gone');
 });
 
-/* ---------------- two tiers: instant + cloud (the on-device WebLLM tier is retired) ---------------- */
+/* ---------------- private mode: the opt-in on-device model ---------------- */
 
-test('the chat ships no on-device model: no switcher, no download box, no WebLLM import, no device gate', () => {
+test('the retired WebLLM tier stays gone; Private mode is a same-origin Worker behind a switch', () => {
   const header = html.match(/<header class="chat-head">([\s\S]*?)<\/header>/);
   assert.ok(header, 'the chat header should exist');
   assert.doesNotMatch(html, /chat-model-switch|chat-model-cloud|chat-model-local|id="chat-ai"|chat-progress/);
   assert.doesNotMatch(html, /aimeer-device\.js/);
-  assert.doesNotMatch(chatbot, /web-llm|esm\.run|CreateMLCEngine|navigator\.gpu/);
-  assert.doesNotMatch(i18n, /chat\.model\./);
-  assert.doesNotMatch(css, /\.chat-model-|\.chat-ai\b|\.chat-ai-|ai-downloading|ai-pending/);
+  assert.doesNotMatch(chatbot, /web-llm|esm\.run|CreateMLCEngine|cdn\.jsdelivr|unpkg/);
+  assert.match(header[1], /<button class="chat-private" id="chat-private" type="button" role="switch" aria-checked="false"/);
+  assert.match(html, /id="chat-private-box"[^>]*role="status"/);
+  assert.match(chatbot, /new Worker\(scriptUrl\("aimeer-local-worker\.js" \+ ASSET_VERSION_QUERY\), \{ type: "module" \}\)/);
+  assert.match(chatbot, /scriptUrl\("\.\.\/vendor\/transformers\/transformers\.min\.js"\)/);
+  for (const key of ['chat.private.label', 'chat.private.desc']) {
+    assert.match(html, new RegExp(`data-i18n="${key.replace(/\./g, '\\.')}"`));
+    assert.match(i18n, new RegExp(`"${key.replace(/\./g, '\\.')}":`), `${key} has a Bahasa Melayu string`);
+  }
+});
+
+const localCore = require(path.join(__dirname, '..', 'assets', 'js', 'aimeer-local-core.js'));
+const KB_TEXT = fs.readFileSync(path.join(__dirname, '..', 'assets', 'data', 'aimeer-kb.txt'), 'utf8');
+
+/* A browser with WebGPU, a stub model Worker that answers every prompt with `reply`, and a
+   recorder for every Worker-relay (workers.dev) request. */
+function createPrivateContext({ reply = 'He pioneered Flutter adoption at TRM Nett Systems.', storage = {}, cloudFails = false } = {}) {
+  const cloudBodies = [];
+  const workers = [];
+  const harness = createChatContext({
+    storage,
+    fetchImpl(url, init) {
+      const target = String(url);
+      if (target.includes('workers.dev')) {
+        cloudBodies.push(JSON.parse(init.body));
+        if (cloudFails) return Promise.reject(new Error('offline'));
+        return Promise.resolve(makeJsonResponse({ reply: 'cloud answer', action: 'answer' }));
+      }
+      if (target.includes('aimeer-kb.txt')) return Promise.resolve(makeTextResponse(KB_TEXT));
+      if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
+      return Promise.resolve(makeTextResponse(''));
+    }
+  });
+  ['chat-private', 'chat-private-box'].forEach((id) => { harness.elements[id] = createElement(); harness.elements[id].id = id; });
+  class StubWorker {
+    constructor(url, options) { this.url = url; this.options = options; this.posted = []; workers.push(this); }
+    postMessage(msg) {
+      this.posted.push(msg);
+      const send = (data) => Promise.resolve().then(() => this.onmessage && this.onmessage({ data }));
+      if (msg.type === 'load') send({ type: 'progress', loaded: 50, total: 100 }).then(() => send({ type: 'ready', device: msg.device, dtype: msg.dtype }));
+      if (msg.type === 'generate') send({ type: 'token', id: msg.id, text: reply }).then(() => send({ type: 'done', id: msg.id, text: reply }));
+    }
+    terminate() { this.terminated = true; }
+  }
+  const { context } = harness;
+  context.window.AIMEER_LOCAL = localCore;
+  context.window.Worker = StubWorker;
+  context.window.WebAssembly = {};
+  context.Worker = StubWorker;
+  context.WebAssembly = {};
+  context.URL = URL;
+  context.location = { href: 'http://127.0.0.1:8080/' };
+  context.navigator.gpu = { requestAdapter: () => Promise.resolve({ features: new Set(['shader-f16']) }) };
+  return { ...harness, cloudBodies, workers };
+}
+
+test('the Private switch offers the download with its size before anything loads', async () => {
+  const harness = createPrivateContext();
+  await loadChat(harness.context);
+  harness.elements['chat-launcher'].dispatch('click');
+  assert.equal(harness.elements['chat-private'].hidden, false, 'the switch shows once the core is present');
+  harness.elements['chat-private'].dispatch('click');
+  await flushAsync();
+  assert.equal(harness.workers.length, 0, 'no Worker before consent');
+  const box = harness.elements['chat-private-box'];
+  assert.equal(box.hidden, false);
+  assert.match(collectText(box), /about 259 MB/, 'the q4f16 size for an f16-capable GPU is stated');
+  const start = box.children.find((child) => /chat-private-actions/.test(child.className)).children[0];
+  start.dispatch('click');
+  await flushAsync();
+  assert.equal(harness.workers.length, 1);
+  const load = harness.workers[0].posted[0];
+  assert.equal(load.type, 'load');
+  assert.equal(load.device, 'webgpu');
+  assert.equal(load.dtype, 'q4f16');
+  assert.equal(load.model, 'onnx-community/LFM2.5-350M-ONNX');
+  assert.match(harness.workers[0].url, /^http:\/\/127\.0\.0\.1:8080\/assets\/js\/aimeer-local-worker\.js$/);
+  assert.equal(harness.workers[0].options.type, 'module');
+  assert.equal(harness.stored.get('aimeer-private'), '1');
+  assert.equal(harness.stored.get('aimeer-local-ready'), '1');
+  assert.equal(harness.statusText.textContent, 'AI mode · on this device');
+});
+
+test('with Private mode on, chat and the handoff summary never reach the Worker relay', async () => {
+  const harness = createPrivateContext({ storage: { 'aimeer-private': '1', 'aimeer-local-ready': '1' } });
+  await loadChat(harness.context);
+  harness.elements['chat-launcher'].dispatch('click');
+  await flushAsync();
+  assert.equal(harness.workers.length, 1, 'a stored choice warms the model when the chat opens');
+  await ask(harness, 'Does he know Flutter?');
+  const texts = botTexts(harness.elements);
+  assert.ok(texts.some((text) => /pioneered Flutter adoption/.test(text)), texts.join(' | '));
+  const generate = harness.workers[0].posted.find((msg) => msg.type === 'generate');
+  assert.match(generate.messages[0].content, /Flutter/, 'the retrieved KB lines reach the prompt');
+
+  await ask(harness, 'What is his expected salary?');
+  assert.ok(botTexts(harness.elements).some((text) => /prefers to discuss compensation directly/.test(text)), 'salary is the curated answer');
+  assert.equal(harness.workers[0].posted.filter((msg) => msg.type === 'generate').length, 1, 'salary never reaches the model');
+  const handoff = harness.elements['chat-log'].children.find((child) => /chat-handoff/.test(child.className));
+  assert.ok(handoff, 'salary still offers the handoff');
+  harness.context.window.open = () => {};
+  handoff.children.find((child) => /chat-handoff-btns/.test(child.className)).children[0].dispatch('click');
+  await flushAsync();
+  assert.deepEqual(harness.cloudBodies, [], 'no chat, triage or summary request left the device');
+});
+
+test('an invented name is filtered out of an on-device answer, and an all-invented one falls back', async () => {
+  const harness = createPrivateContext({
+    storage: { 'aimeer-private': '1', 'aimeer-local-ready': '1' },
+    reply: 'He knows Flutter well. He also built apps at liveaim.com.'
+  });
+  await loadChat(harness.context);
+  harness.elements['chat-launcher'].dispatch('click');
+  await flushAsync();
+  await ask(harness, 'Does he know Flutter?');
+  const texts = botTexts(harness.elements);
+  assert.ok(texts.includes('He knows Flutter well.'), texts.join(' | '));
+  assert.ok(!texts.some((text) => /liveaim/.test(text)));
+});
+
+test('a model already on disk answers when the cloud fails, before the instant table does', async () => {
+  const harness = createPrivateContext({ storage: { 'aimeer-local-ready': '1' }, cloudFails: true });
+  await loadChat(harness.context);
+  harness.elements['chat-launcher'].dispatch('click');
+  await flushAsync();
+  assert.equal(harness.workers.length, 0, 'Private mode is off, so nothing loads up front');
+  await ask(harness, 'Does he know Flutter?');
+  await flushAsync();
+  assert.equal(harness.cloudBodies.length, 1, 'the cloud was tried first');
+  assert.equal(harness.workers.length, 1, 'then the cached model');
+  assert.ok(botTexts(harness.elements).some((text) => /pioneered Flutter adoption/.test(text)));
+});
+
+test('a browser without WebGPU is told why, and nothing downloads', async () => {
+  const harness = createPrivateContext();
+  delete harness.context.navigator.gpu;
+  await loadChat(harness.context);
+  harness.elements['chat-launcher'].dispatch('click');
+  harness.elements['chat-private'].dispatch('click');
+  await flushAsync();
+  assert.match(collectText(harness.elements['chat-private-box']), /needs WebGPU/);
+  assert.equal(harness.workers.length, 0);
+  assert.equal(harness.stored.get('aimeer-private'), undefined);
 });
 
 test('the status line reads secure cloud when the Worker is configured and instant answers when it is not', async () => {

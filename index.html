@@ -17,7 +17,7 @@
   <!-- ?v= is the cache-busting tag. Bump it on every deploy that changes CSS or
        JS; chatbot.js reads this same tag off its own src and forwards it to the
        knowledge base and profile fetches, so this is the only place to edit. -->
-  <link rel="stylesheet" href="assets/css/style.css?v=2026-10-03e">
+  <link rel="stylesheet" href="assets/css/style.css?v=2026-10-03f">
   <script>
     document.documentElement.classList.replace('no-js', 'js');
     /* apply saved theme/language before first paint to avoid flashes */
@@ -1174,11 +1174,18 @@
           <span class="dot" aria-hidden="true"></span><span class="chat-status-text">Instant answers · works offline</span>
         </p>
       </div>
+      <!-- Private mode: the on-device model (aimeer-local-core.js + aimeer-local-worker.js); chatbot.js unhides it -->
+      <button class="chat-private" id="chat-private" type="button" role="switch" aria-checked="false" aria-describedby="chat-private-desc" hidden>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        <span data-i18n="chat.private.label">Private</span>
+      </button>
+      <span class="sr-only" id="chat-private-desc" data-i18n="chat.private.desc">Answer on this device, with nothing sent to the cloud</span>
       <button class="icon-btn chat-close" type="button" aria-label="Close chat">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>
       </button>
     </header>
 
+    <div class="chat-private-box" id="chat-private-box" role="status" aria-live="polite" hidden></div>
     <div class="chat-log" id="chat-log" aria-live="polite"></div>
 
     <div class="chat-chips" id="chat-chips">
@@ -1235,21 +1242,23 @@
     </form>
   </section>
 
-  <script src="assets/js/i18n.js?v=2026-10-03e" defer></script>
-  <script src="assets/js/main.js?v=2026-10-03e" defer></script>
-  <script src="assets/js/jd-extractor.js?v=2026-10-03e" defer></script>
-  <script src="assets/js/jd-matcher.js?v=2026-10-03e" defer></script>
-  <script src="assets/js/jd-reasoning.js?v=2026-10-03e" defer></script>
-  <script src="assets/js/chatbot.js?v=2026-10-03e" defer></script>
-  <script src="assets/js/route-globe-core.js?v=2026-10-03e" defer></script>
-  <script src="assets/js/route-globe.js?v=2026-10-03e" defer></script>
+  <script src="assets/js/i18n.js?v=2026-10-03f" defer></script>
+  <script src="assets/js/main.js?v=2026-10-03f" defer></script>
+  <script src="assets/js/jd-extractor.js?v=2026-10-03f" defer></script>
+  <script src="assets/js/jd-matcher.js?v=2026-10-03f" defer></script>
+  <script src="assets/js/jd-reasoning.js?v=2026-10-03f" defer></script>
+  <script src="assets/js/chatbot.js?v=2026-10-03f" defer></script>
+  <script src="assets/js/route-globe-core.js?v=2026-10-03f" defer></script>
+  <script src="assets/js/route-globe.js?v=2026-10-03f" defer></script>
+  <!-- Private mode's pure half; chatbot.js reads window.AIMEER_LOCAL lazily, so it may load after it -->
+  <script src="assets/js/aimeer-local-core.js?v=2026-10-03f" defer></script>
   <!-- GSAP is pinned by path (assets/vendor/README.md); motion.js and ir-showcase.js
        treat a missing window.gsap as "no motion" and leave the page static. -->
   <script src="assets/vendor/gsap/gsap.min.js" defer></script>
   <script src="assets/vendor/gsap/ScrollTrigger.min.js" defer></script>
   <script src="assets/vendor/gsap/SplitText.min.js" defer></script>
-  <script src="assets/js/ir-core.js?v=2026-10-03e" defer></script>
-  <script src="assets/js/ir-showcase.js?v=2026-10-03e" defer></script>
-  <script src="assets/js/motion.js?v=2026-10-03e" defer></script>
+  <script src="assets/js/ir-core.js?v=2026-10-03f" defer></script>
+  <script src="assets/js/ir-showcase.js?v=2026-10-03f" defer></script>
+  <script src="assets/js/motion.js?v=2026-10-03f" defer></script>
 </body>
 </html>

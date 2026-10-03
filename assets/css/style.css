@@ -1362,6 +1362,41 @@ body.modal-open { overflow: hidden; }
 .chat-status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
 .chat-status-cloud { color: var(--accent); }
 .chat-status-cloud .dot { background: var(--accent); box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.8); animation: pulse 2.4s infinite; }
+.chat-status-local, .chat-status-local-loading { color: var(--accent); }
+.chat-status-local .dot { background: var(--accent); box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.25); }
+.chat-status-local-loading .dot { background: transparent; border: 1px solid var(--accent); animation: pulse 1.2s infinite; }
+
+/* Private mode: a switch in the head, and a box under it for consent, progress and errors */
+.chat-private {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 9px;
+  border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--muted);
+  font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase;
+  cursor: pointer; flex-shrink: 0; transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+.chat-private[hidden] { display: none; }
+.chat-private:hover { color: var(--accent); border-color: var(--accent-deep); }
+.chat-private.is-on { color: var(--ink); background: var(--accent); border-color: var(--accent); }
+.chat-private.is-loading { color: var(--accent); background: rgba(var(--accent-rgb), 0.12); border-color: var(--accent-deep); }
+.chat-private-box {
+  display: grid; gap: 10px; padding: 12px 18px 14px; flex-shrink: 0;
+  border-bottom: 1px solid var(--line); background: rgba(var(--accent-rgb), 0.06);
+  font-size: 0.8rem; line-height: 1.5; color: var(--paper);
+}
+.chat-private-box[hidden] { display: none; }
+.chat-private-copy { margin: 0; }
+.chat-private-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.chat-private-btn {
+  padding: 6px 13px; border-radius: 999px; border: 1px solid var(--line); background: none;
+  color: var(--paper); font: inherit; font-size: 0.74rem; cursor: pointer; transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+.chat-private-btn:hover { border-color: var(--accent); color: var(--accent); }
+.chat-private-btn.is-primary { background: var(--accent); border-color: var(--accent); color: var(--ink); font-weight: 600; }
+.chat-private-btn.is-primary:hover { background: transparent; color: var(--accent); }
+.chat-private-bar { height: 4px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.chat-private-bar span {
+  display: block; height: 100%; width: var(--pct, 0%); border-radius: inherit;
+  background: var(--accent); transition: width 0.3s var(--ease-out);
+}
 
 .chat-log {
   flex: 1; overflow-y: auto; overscroll-behavior: contain;
@@ -1754,13 +1789,17 @@ body.modal-open { overflow: hidden; }
 }
 @media (max-width: 390px) {
   .chat-head { gap: 6px; padding-left: 12px; padding-right: 12px; }
-  .chat-chips, .chat-form { padding-left: 12px; padding-right: 12px; }
+  .chat-chips, .chat-form, .chat-private-box { padding-left: 12px; padding-right: 12px; }
+  /* the lock alone; the label is clipped, not removed, so the switch keeps its name */
+  .chat-private span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  .chat-private { padding: 0 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .chat-panel, .chat-callout { transition: none; transform: none; }
   .chat-launcher { transition: none; }
   .chat-launcher-ring, .chat-launcher::after,
-  .chat-status-cloud .dot { animation: none; }
+  .chat-status-cloud .dot, .chat-status-local-loading .dot { animation: none; }
+  .chat-private, .chat-private-bar span { transition: none; }
   .chat-jd-upload, .chat-jd-meter-bar, .chat-jd-file-btn, .chat-jd-action, .chat-jd-promo-action { transition: none; }
   .chat-jd-promo-action:active { transform: none; }
   .chat-jd-requirement-summary { scroll-behavior: auto; }
