@@ -1,5 +1,10 @@
 # AIMeer local default and JD matcher promotion
 
+> **Superseded (2026-10).** The on-device WebLLM tier, the model switcher and the
+> Local/Cloud preference this spec describes were retired — AIMeer is now instant answers
+> plus the cloud Worker. See `docs/superpowers/specs/2026-10-02-aimeer-jev-decisions-design.md`.
+> Kept as a dated record.
+
 ## Goal
 
 Make on-device AI the default AIMeer preference on every page load, show the AIMeer welcome callout on every page load, and make the existing recruiter JD matcher discoverable inside the chat conversation.

@@ -2,7 +2,7 @@
    decoding, the capability gate and the load state machine. No DOM, no
    three.js; assets/js/route-globe.js is the adapter that owns those and calls
    in here for every decision. UMD so tests/route-globe-core.test.js can
-   require() it directly, the same way aimeer-device.js is tested. */
+   require() it directly, the same way ir-core.js is tested. */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) {
     module.exports = factory();

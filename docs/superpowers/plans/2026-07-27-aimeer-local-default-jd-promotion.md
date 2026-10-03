@@ -1,5 +1,10 @@
 # AIMeer local default and JD promotion Implementation Plan
 
+> **Superseded (2026-10).** The on-device WebLLM tier, the model switcher and the
+> Local/Cloud preference this plan describes were retired — AIMeer is now instant answers
+> plus the cloud Worker. See `docs/superpowers/specs/2026-10-02-aimeer-jev-decisions-design.md`.
+> Kept as a dated record.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Reset AIMeer to Local preference on every refresh, show its welcome callout on every page load, and promote the JD matcher inside the chat.

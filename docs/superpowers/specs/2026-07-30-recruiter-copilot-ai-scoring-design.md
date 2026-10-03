@@ -9,6 +9,12 @@
 > "Two-call scoring" and "Model-output tolerance", which did not exist in the approved
 > design and are now load-bearing.
 
+> **2026-10-03.** `jd-scoring` is now the **fallback**: the browser tries `jd-decide` (Clef
+> decisions) first and falls through to this flow unchanged — see
+> `2026-10-02-aimeer-jev-decisions-design.md`. The text model is `@cf/openai/gpt-oss-20b`, not
+> Llama 3.1 8B; the two-call split stays because it has not been re-tested against it. The
+> on-device WebLLM tier named below was retired in 2026-10.
+
 ## Goal
 
 Reposition AIMeer's JD matcher as a recruiter copilot. The AI model — not the
