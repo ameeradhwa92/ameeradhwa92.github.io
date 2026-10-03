@@ -439,8 +439,8 @@
     },
     {
       keys: /\b(abbott|salesforce|crm|whatsapp|otp|bird)\b/,
-      en: "The Abbott CRM is a React PWA on a .NET 10 clean-architecture monorepo, live (private) for Abbott Nutrition. It runs a 14-step conditional Salesforce API v60.0 workflow across dual clouds, with duplicate detection, WhatsApp OTP via the Bird API, and digital consent capture. Infrastructure is defined in Bicep IaC.",
-      ms: "CRM Abbott ialah React PWA di atas monorepo seni bina bersih .NET 10, kini beroperasi (persendirian) untuk Abbott Nutrition. Ia menjalankan aliran kerja bersyarat 14 langkah API Salesforce v60.0 merentas dua awan, dengan pengesanan pendua, OTP WhatsApp menerusi API Bird dan rakaman keizinan digital. Infrastrukturnya ditakrifkan dalam Bicep IaC."
+      en: "The Abbott CRM, live (private) for Abbott Nutrition, is being re-architected and redesigned as a React PWA on a .NET 10 clean-architecture monorepo, with GSAP and three.js micro-animations across its three core flows: customer registration, product purchase and receipt upload. It runs a 14-step conditional Salesforce API v60.0 workflow across dual clouds, with duplicate detection, WhatsApp OTP via the Bird API, and digital consent capture. Infrastructure is defined in Bicep IaC.",
+      ms: "CRM Abbott, yang beroperasi (persendirian) untuk Abbott Nutrition, sedang dirombak seni bina dan reka bentuknya sebagai React PWA di atas monorepo seni bina bersih .NET 10, dengan animasi mikro GSAP dan three.js merentas tiga aliran teras: pendaftaran pelanggan, pembelian produk dan muat naik resit. Ia menjalankan aliran kerja bersyarat 14 langkah API Salesforce v60.0 merentas dua awan, dengan pengesanan pendua, OTP WhatsApp menerusi API Bird dan rakaman keizinan digital. Infrastrukturnya ditakrifkan dalam Bicep IaC."
     },
     {
       keys: /\b(government|kerajaan|trm|cidb|span|sirim|kastam|customs|port klang|lppeh|marii|gov)\b/,
