@@ -295,6 +295,29 @@
       "evidenceType": "professional"
     },
     {
+      "name": "GSAP",
+      "aliases": [
+        "gsap",
+        "greensock"
+      ],
+      "evidence": [
+        "Abbott CRM Platform"
+      ],
+      "evidenceType": "professional"
+    },
+    {
+      "name": "three.js",
+      "aliases": [
+        "three.js",
+        "threejs",
+        "webgl"
+      ],
+      "evidence": [
+        "Abbott CRM Platform"
+      ],
+      "evidenceType": "professional"
+    },
+    {
       "name": "DevExpress",
       "aliases": [
         "devexpress"

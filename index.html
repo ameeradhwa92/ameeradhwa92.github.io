@@ -17,7 +17,7 @@
   <!-- ?v= is the cache-busting tag. Bump it on every deploy that changes CSS or
        JS; chatbot.js reads this same tag off its own src and forwards it to the
        knowledge base and profile fetches, so this is the only place to edit. -->
-  <link rel="stylesheet" href="assets/css/style.css?v=2026-10-03c">
+  <link rel="stylesheet" href="assets/css/style.css?v=2026-10-03d">
   <script>
     document.documentElement.classList.replace('no-js', 'js');
     /* apply saved theme/language before first paint to avoid flashes */
@@ -919,8 +919,8 @@
           Web Application Developer → <b>Full Stack Web Specialist</b> (effective 1 Aug 2025)</p>
         <p class="era-desc" data-i18n="era6.desc">Sole developer of <b>RetailAIM® Plus</b> — a multi-tenant ASP.NET Core SaaS
           platform serving 20+ FMCG brands and DemoPower's field operations across four countries.
-          Currently rebuilding the back office in <b>React + FastAPI</b>, migrating the Abbott CRM to a
-          <b>.NET 10 clean-architecture</b> monorepo, building the <b>RetailAIM IR</b> platform for the
+          Currently rebuilding the back office in <b>React + FastAPI</b>, re-architecting and redesigning the
+          Abbott CRM on a <b>.NET 10 clean-architecture</b> monorepo, building the <b>RetailAIM IR</b> platform for the
           Intelligent Recognition team, and running every Azure DevOps pipeline that ships it all.</p>
 
         <div class="cards">
@@ -989,10 +989,11 @@
             <div class="card-body">
               <p class="card-client" data-i18n="abbott.client">Abbott Nutrition · Healthcare</p>
               <h4 data-i18n="abbott.title">Abbott CRM + Salesforce Integration</h4>
-              <p data-i18n="abbott.desc">React PWA + .NET 10 clean-architecture monorepo, with a 14-step conditional
-                 Salesforce API v60.0 workflow across dual clouds — duplicate detection, WhatsApp OTP
-                 via Bird API, digital consent capture.</p>
-              <div class="tags"><span>React PWA</span><span>.NET 10</span><span>Salesforce</span><span>Bicep IaC</span></div>
+              <p data-i18n="abbott.desc">Being re-architected and redesigned as a React PWA + .NET 10 clean-architecture
+                 monorepo, with GSAP and three.js micro-animations across customer registration, product
+                 purchase and receipt upload. Runs a 14-step conditional Salesforce API v60.0 workflow across
+                 dual clouds — duplicate detection, WhatsApp OTP via Bird API, digital consent capture.</p>
+              <div class="tags"><span>React PWA</span><span>.NET 10</span><span>GSAP</span><span>Salesforce</span><span>Bicep IaC</span></div>
             </div>
             <div class="card-foot">
               <span class="badge badge-private"><span class="dot"></span><span data-i18n="badge.live-private">Live · Private</span></span>
@@ -1226,21 +1227,21 @@
     </form>
   </section>
 
-  <script src="assets/js/i18n.js?v=2026-10-03c" defer></script>
-  <script src="assets/js/main.js?v=2026-10-03c" defer></script>
-  <script src="assets/js/jd-extractor.js?v=2026-10-03c" defer></script>
-  <script src="assets/js/jd-matcher.js?v=2026-10-03c" defer></script>
-  <script src="assets/js/jd-reasoning.js?v=2026-10-03c" defer></script>
-  <script src="assets/js/chatbot.js?v=2026-10-03c" defer></script>
-  <script src="assets/js/route-globe-core.js?v=2026-10-03c" defer></script>
-  <script src="assets/js/route-globe.js?v=2026-10-03c" defer></script>
+  <script src="assets/js/i18n.js?v=2026-10-03d" defer></script>
+  <script src="assets/js/main.js?v=2026-10-03d" defer></script>
+  <script src="assets/js/jd-extractor.js?v=2026-10-03d" defer></script>
+  <script src="assets/js/jd-matcher.js?v=2026-10-03d" defer></script>
+  <script src="assets/js/jd-reasoning.js?v=2026-10-03d" defer></script>
+  <script src="assets/js/chatbot.js?v=2026-10-03d" defer></script>
+  <script src="assets/js/route-globe-core.js?v=2026-10-03d" defer></script>
+  <script src="assets/js/route-globe.js?v=2026-10-03d" defer></script>
   <!-- GSAP is pinned by path (assets/vendor/README.md); motion.js and ir-showcase.js
        treat a missing window.gsap as "no motion" and leave the page static. -->
   <script src="assets/vendor/gsap/gsap.min.js" defer></script>
   <script src="assets/vendor/gsap/ScrollTrigger.min.js" defer></script>
   <script src="assets/vendor/gsap/SplitText.min.js" defer></script>
-  <script src="assets/js/ir-core.js?v=2026-10-03c" defer></script>
-  <script src="assets/js/ir-showcase.js?v=2026-10-03c" defer></script>
-  <script src="assets/js/motion.js?v=2026-10-03c" defer></script>
+  <script src="assets/js/ir-core.js?v=2026-10-03d" defer></script>
+  <script src="assets/js/ir-showcase.js?v=2026-10-03d" defer></script>
+  <script src="assets/js/motion.js?v=2026-10-03d" defer></script>
 </body>
 </html>
