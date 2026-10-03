@@ -572,8 +572,15 @@
     el.className = "chat-msg chat-msg-" + role;
     el.textContent = text;
     log.appendChild(el);
-    log.scrollTop = log.scrollHeight;
+    scrollLogToEnd();
     return el;
+  }
+
+  /* Keeps the newest line in view. A reply bubble is appended as three dots and only grows to its
+     full height when the answer lands, so the scroll at append time is not enough on its own —
+     settleBubbleContent calls this again once the text is in. */
+  function scrollLogToEnd() {
+    log.scrollTop = log.scrollHeight;
   }
 
   /* Three dots instead of the literal "Thinking…" string. The string is not dropped — it becomes
@@ -607,6 +614,7 @@
     var wasThinking = bubble.classList.contains("thinking");
     bubble.classList.remove("thinking");
     bubble.textContent = text;
+    scrollLogToEnd();
     if (!wasThinking) return;
     /* chat-msg-settle now sets a plain low opacity; .chat-msg carries the opacity transition.
        Adding the class here is batched with the textContent write above (no reflow between them),
@@ -643,7 +651,7 @@
     promo.appendChild(action);
 
     log.appendChild(promo);
-    log.scrollTop = log.scrollHeight;
+    scrollLogToEnd();
   }
 
   function formatScore(value) {
@@ -1545,7 +1553,7 @@
     if (old) old.remove();
     var card = buildHandoffCard("chat-msg chat-msg-bot chat-handoff");
     log.appendChild(card);
-    log.scrollTop = log.scrollHeight;
+    scrollLogToEnd();
   }
 
   /* ---------------- send ---------------- */
@@ -1602,7 +1610,7 @@
     action.addEventListener("click", function () { setRecruiterOpen(true); });
     card.appendChild(action);
     log.appendChild(card);
-    log.scrollTop = log.scrollHeight;
+    scrollLogToEnd();
   }
 
   function send(text) {

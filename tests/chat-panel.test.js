@@ -1946,6 +1946,24 @@ test('a triaged out-of-knowledge question is handed to Ameer and recorded as una
   assert.match(decodeURIComponent(harness.opened[0]), /AIMeer couldn't answer this one: "What is his blood type\?"/);
 });
 
+/* A reply bubble is appended as three dots and only reaches its full height when the answer lands.
+   Scrolling at append time alone left a long answer running past the bottom of the log, so the
+   visitor had to scroll down to read what AIMeer just said. */
+test('the chat log scrolls to the bottom once an answer lands, not only when the dots appear', async () => {
+  const harness = createTriageContext({ reply: 'He led the .NET delivery for a retail audit platform across five markets.', action: 'answer', intent: 'experience' });
+  await loadChat(harness.context);
+  const log = harness.elements['chat-log'];
+  /* Height grows with the text in the log, the way a real bubble grows when its text lands. */
+  Object.defineProperty(log, 'scrollHeight', {
+    get() { return 100 + log.children.map((child) => collectText(child)).join('').length; }
+  });
+  harness.elements['chat-launcher'].dispatch('click');
+  await ask(harness, 'What did he build?');
+
+  assert.ok(botTexts(harness.elements).some((text) => /five markets/.test(text)), 'the answer should land');
+  assert.equal(log.scrollTop, log.scrollHeight, 'the log should end scrolled to the bottom of the settled answer');
+});
+
 test('a job-match question gets its answer plus a one-time offer of the JD matcher', async () => {
   const harness = createTriageContext({ reply: 'He has strong .NET delivery.', action: 'jd', intent: 'job-match' });
   await loadChat(harness.context);
