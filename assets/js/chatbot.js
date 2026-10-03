@@ -536,8 +536,6 @@
 
   var open = false, greeted = false, jdPromoAdded = false, busy = false;
   var jdPromoCopy = null, jdPromoAction = null;
-  /* Visitors from the WebLLM era may still carry its route preference; nothing reads it now. */
-  try { localStorage.removeItem("aimeer-route"); } catch (e) { }
   var aiState = cloudOk ? "cloud" : "off"; /* cloud | off (instant answers only) */
   var history = []; /* {role, content} — capped so prefill stays fast */
   var transcript = []; /* full visitor conversation, for the WhatsApp/email handoff */

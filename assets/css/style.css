@@ -165,7 +165,7 @@ img { max-width: 100%; display: block; }
   --r-lg: 28px;
   --r-md: 18px;
 }
-.wrap-wide, .hero-grid, .ir-flow, .ir-head-wrap { max-width: var(--wide); }
+.hero-grid, .ir-flow { max-width: var(--wide); }
 
 /* custom cursor: a ring that eases after the pointer and names what a click will do.
    motion.js adds html.has-cursor on fine pointers only; the native cursor stays. */
