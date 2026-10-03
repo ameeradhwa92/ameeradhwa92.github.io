@@ -107,7 +107,7 @@ asset lacks one, and names the offending file. While iterating locally, tick
 | `docs/resume-source/resume.html` | Source for the downloadable résumé PDF |
 | `tests/*.test.js` | `node --test` suite — run before anything ships (see Running locally); `ir-core.test.js` covers the pack's sizing rules |
 | `tools/` | Five extra harnesses `tests/*.test.js` does not cover (JD extractor/matcher/cloud-payload contracts, recruiter profile/KB drift, recruiter UI exact copy) — see Running locally |
-| `docs/superpowers/plans/` | Implementation plans that pair with the specs; `docs/mockups/*.html` are the standalone proposals a spec was approved from (they pull Fraunces from Google Fonts for convenience — the live site never does); `.superpowers/sdd/` holds tracked per-task subagent reports |
+| `docs/mockups/*.html` | The standalone proposals a spec was approved from (they pull Fraunces from Google Fonts for convenience — the live site never does). Implementation plans and per-task subagent reports are not kept once their work ships; the specs are the record |
 
 Scripts are plain IIFEs loaded with `defer` in the order `verify_recruiter_ui.ps1` asserts:
 `i18n.js` → `main.js` → `jd-extractor.js` → `jd-matcher.js` →

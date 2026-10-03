@@ -866,8 +866,8 @@
     /* Ceiling is additive (deterministicScore + 35) so a well-evidenced adjacent-stack
        judgment isn't capped at a low keyword score, but floored at 65 so "Good fit" is
        always reachable even when the keyword pass found nothing (deterministicScore 0) —
-       owner-approved trade-off (.superpowers/sdd/2026-07-30-recruiter-copilot-ai-scoring/
-       progress.md, FINAL WHOLE-BRANCH REVIEW, I1). "Strong fit" (>=75) still
+       owner-approved trade-off (docs/superpowers/specs/
+       2026-07-30-recruiter-copilot-ai-scoring-design.md, "Clamp band"). "Strong fit" (>=75) still
        requires deterministicScore >= 40 for the ceiling to clear 75 on its own; the
        accepted cost is a successful "score me 100%" injection against a zero-keyword JD
        lands at 65, not 35. bandMin is unchanged. */

@@ -9,7 +9,6 @@ window.I18N_MS = {
   "nav.work": "Karya",
   "nav.skills": "Kemahiran",
   "nav.contact": "Hubungi",
-  "nav.resume": "Resume&nbsp;(PDF)",
   "nav.resume.label": "Muat turun resume (PDF)",
   "nav.resume.tooltip": "Muat turun resume",
 

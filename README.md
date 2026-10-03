@@ -32,7 +32,7 @@ assets/fonts/           Self-hosted Fraunces (no CDN — the page renders fully 
 assets/resume/          Downloadable résumé (PDF)
 cloud/                  Cloudflare Worker for AIMeer's AI tier (deployed by hand, see cloud/README.md)
 tests/, tools/          node --test suite plus extra harnesses (see CLAUDE.md, "Running locally")
-docs/                   Design specs, plans, mockups, résumé source (not part of the published page)
+docs/                   Design specs, mockups, résumé source (not part of the published page)
 ```
 
 Hand-built static HTML/CSS/JS — no frameworks, no build step; libraries are vendored, not fetched. Published from
