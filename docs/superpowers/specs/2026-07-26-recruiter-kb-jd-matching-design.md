@@ -1,7 +1,8 @@
 # Recruiter Knowledge Base and JD Matching Design
 
 **Date:** 2026-07-26  
-**Status:** Approved for planning
+**Status:** Implemented. The AI tiers it assumes (instant, on-device, cloud) are now two: the
+on-device WebLLM tier was retired in 2026-10 — see `2026-10-02-aimeer-jev-decisions-design.md`.
 
 ## Goal
 

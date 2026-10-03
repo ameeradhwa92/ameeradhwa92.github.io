@@ -1,7 +1,7 @@
 # Route globe "Horizon" redesign — design
 
 **Date:** 2026-09-05
-**Status:** approved direction (A. Horizon + merged heading), spec awaiting review
+**Status:** implemented and live (A. Horizon + merged heading; posters recaptured in `cb84b57`)
 **Supersedes:** the globe paragraph (2b) in `2026-07-24-portfolio-site-design.md` for
 layout and rendering; the data model, gate, fallbacks and privacy rules there stay.
 

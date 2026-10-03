@@ -1,6 +1,6 @@
 # Monsoon palette and the sand loader — design of record
 
-**Date:** 2026-09-05 · **Status:** approved from mockups, implementing
+**Date:** 2026-09-05 · **Status:** implemented and live (`48f910a`)
 **Mockups:** `docs/mockups/palette-proposal.html`, `docs/mockups/loader-proposal.html`
 
 ## Why

@@ -1,7 +1,8 @@
 # AIMeer v2 — retire the on-device model, add Jev decisions
 
-Status: implemented on `claude/gracious-gates-d3amt2` · Worker revision `2026-10-02-jev-1`
-(not live until pasted into the Cloudflare dashboard — see Rollout).
+Status: implemented, merged to `main` (PR #3) · current Worker revision `2026-10-03-clef-3`
+(first shipped as `2026-10-02-jev-1`; a Worker change is not live until pasted into the
+Cloudflare dashboard — see Rollout).
 
 > **2026-10-03 — models swapped, design unchanged.** Revision `2026-10-02-jev-1` went live and
 > every Jev call failed with `2021 InsufficientAIGatewaycredits`: Jev is a third-party model on
@@ -11,6 +12,14 @@ Status: implemented on `claude/gracious-gates-d3amt2` · Worker revision `2026-1
 > **gpt-oss-20b** (`@cf/openai/gpt-oss-20b`) as the text model. Everything below that says Jev now
 > runs on Clef (`engine: "clef"`, `clef-probe`, `CLEF_*` constants); the rollout gains a
 > `{"mode":"text-probe"}` check for the text model. See `cloud/README.md` for the current probes.
+>
+> **Later the same day.** `2026-10-03-clef-2` trims report narratives at a sentence boundary
+> instead of mid-word (gpt-oss runs longer than Llama did). `2026-10-03-clef-3` adds a floor:
+> a level Clef chose with less than `CLEF_DECISION_MIN` (0.4) does not stand — the keyword
+> pass's verdict for that requirement is used instead (`keywordMatchLevel`), citing the keyword
+> pass's own evidence first, reported as low confidence with no probability, so the card shows
+> no confidence bar. The first live report had Clef call "Python FastAPI" a gap at 0.25 while
+> the profile lists FastAPI. The `jdReasonStatusClef` copy (EN/MS) says unsure calls fall back.
 
 ## Why
 
@@ -133,10 +142,10 @@ belongs in a full-screen report view (roadmap, 3).
 
 ## Roadmap — what else would improve it
 
-1. **A recorded-decision eval harness** (`tools/test_jev_fixtures.mjs`): a dozen real JDs with
+1. **A recorded-decision eval harness** (e.g. `tools/test_clef_fixtures.mjs`): a dozen real JDs with
    Ameer's own per-requirement verdicts, run against `jd-decide`, tracking agreement and how
    often a 0.6–0.8 "decision confidence" was wrong. This is how to know whether the 0.15
-   evidence floor and the 0.8 / 0.55 confidence bands are right, rather than guessing.
+   evidence floor, the 0.4 decision floor and the 0.8 / 0.55 confidence bands are right, rather than guessing.
 2. **Shareable report.** Encode the settled report in a URL fragment (no server, nothing stored)
    so a recruiter can forward it to a hiring manager; add "Copy as text".
 3. **Full-screen report view with an evidence constellation** (three.js, lazy, same import URL as
@@ -154,5 +163,6 @@ belongs in a full-screen report view (roadmap, 3).
    lesson of WebLLM is that on-device must beat the simple thing, not merely run.
 8. **Scanned PDFs.** The extractor reports "no readable text" for image-only PDFs; client-side
    OCR (Tesseract.js, lazily loaded) would close that gap.
-9. **Re-check the text model.** Llama 3.1 8B fast writes only short prose now; evaluate newer
-   Workers AI instruct models for the narrative and chat answers once Jev carries the structure.
+9. ~~**Re-check the text model.**~~ Done 2026-10-03: `gpt-oss-20b` replaced Llama 3.1 8B fast
+   (revision `2026-10-03-clef-1`). Still open: re-testing whether `jd-scoring`'s two-call split
+   is needed with it.

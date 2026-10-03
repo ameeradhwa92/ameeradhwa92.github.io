@@ -1,5 +1,10 @@
 # Résumé and AIMeer model controls
 
+> **Superseded (2026-10).** The on-device WebLLM tier, the model switcher and the
+> Local/Cloud preference this spec describes were retired — AIMeer is now instant answers
+> plus the cloud Worker. See `docs/superpowers/specs/2026-10-02-aimeer-jev-decisions-design.md`.
+> Kept as a dated record.
+
 ## Goal
 
 Improve the small-screen navigation and AIMeer controls without changing the site’s visual language or its three-tier answer fallback.

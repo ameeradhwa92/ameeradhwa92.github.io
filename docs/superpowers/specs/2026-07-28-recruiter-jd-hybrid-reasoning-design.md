@@ -1,7 +1,10 @@
 # Recruiter JD Hybrid Reasoning Design
 
 **Date:** 2026-07-28  
-**Status:** Approved for implementation planning
+**Status:** Implemented (`jd-reasoning` mode). Scoring later moved to the cloud model
+(`2026-07-30-recruiter-copilot-ai-scoring-design.md`) and then to Clef decisions with
+`jd-scoring` as the fallback (`2026-10-02-aimeer-jev-decisions-design.md`); the on-device
+WebLLM tier it mentions was retired in 2026-10.
 
 ## Goal
 
