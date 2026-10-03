@@ -719,29 +719,20 @@ html.revealed .portrait-frame img { transform: scale(1); }
 .ir-points li::before {
   content: ""; position: absolute; left: 0; top: 0.62em; width: 14px; height: 1px; background: var(--accent);
 }
-.ir-try {
-  margin-top: 24px;
-  font-family: var(--display); font-style: italic; color: var(--muted);
-}
-.ir-try::before { content: "↳ "; font-style: normal; color: var(--accent); }
-.ir-try b { color: var(--accent); font-weight: 600; font-style: normal; }
 .ir-note {
   margin: 8px 0 0; font-family: var(--display); font-style: italic; font-size: 0.92rem; color: var(--muted);
 }
 
 /* sticky stacking on tall desktop viewports only — a short or narrow one reads the
    chapters in plain flow, because a sticky panel taller than the viewport hides its foot */
-.ir-pack-rail { display: none; }
 @media (min-width: 1101px) and (min-height: 820px) {
   .ir-steps { position: sticky; top: 86px; z-index: 5; }
   .ir-chapter { position: sticky; top: 150px; min-height: min(640px, calc(100vh - 190px)); }
-  .ir-chapters { position: relative; }
-  .ir-pack-rail { display: block; position: absolute; inset: 0; z-index: 6; pointer-events: none; }
 }
 
 /* --- screens: real IR Workforce captures (demo mode), one per theme --- */
-/* .ir-shots keeps one aspect in every chapter, so a single screen and a pair
-   share a footprint and the floating pack lands on the same corner of each */
+/* .ir-shots keeps one aspect in every browser chapter, so a single screen and a pair
+   share a footprint and the stack reads as one frame */
 .ir-shots { position: relative; width: 100%; aspect-ratio: 1.36; perspective: 1400px; }
 .ir-shot { position: absolute; margin: 0; }
 .ir-shots-one .ir-shot { left: 0; right: 0; top: 50%; transform: translateY(-50%); }
@@ -761,17 +752,19 @@ html.revealed .portrait-frame img { transform: scale(1); }
   background: var(--ink); color: var(--muted); font-family: var(--mono); font-size: 0.64rem;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* IR Ops on the phone: four handsets in a staggered row, a shorter frame than the browser pairs */
-.ir-shots-phones { aspect-ratio: 1.62; }
+/* IR Ops on the phone: four handsets in a staggered row, shallow enough to leave the
+   measuring bench room beneath it inside one stacked chapter */
+.ir-survey-stage { display: grid; gap: 22px; }
+.ir-shots-phones { aspect-ratio: 2; }
 .ir-phone-shot {
-  position: absolute; width: 21.5%; margin: 0; padding: 4px; border-radius: 22px;
+  position: absolute; width: 19%; margin: 0; padding: 4px; border-radius: 22px;
   background: #0b0e20; box-shadow: 0 34px 60px -30px rgba(6, 8, 24, 0.75), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 .ir-phone-shot .ir-img { border-radius: 18px; }
 .ir-shots-phones .ir-phone-shot:nth-child(1) { left: 8%;    top: 0; }
-.ir-shots-phones .ir-phone-shot:nth-child(2) { left: 31.5%; top: 8%; }
-.ir-shots-phones .ir-phone-shot:nth-child(3) { left: 55%;   top: 2%; }
-.ir-shots-phones .ir-phone-shot:nth-child(4) { left: 78.5%; top: 10%; }
+.ir-shots-phones .ir-phone-shot:nth-child(2) { left: 29.5%; top: 11%; }
+.ir-shots-phones .ir-phone-shot:nth-child(3) { left: 51%;   top: 3%; }
+.ir-shots-phones .ir-phone-shot:nth-child(4) { left: 72.5%; top: 13%; }
 .ir-img { display: block; width: 100%; height: auto; }
 .ir-img-light { display: none; }
 @media (prefers-color-scheme: light) {
@@ -783,16 +776,37 @@ html.revealed .portrait-frame img { transform: scale(1); }
 :root[data-theme="dark"] .ir-img-dark { display: block; }
 :root[data-theme="dark"] .ir-img-light { display: none; }
 
-/* --- the product-survey pack, floating over the screens --- */
-/* home: the first screen's lower-left corner. On stacking desktops ir-showcase.js
-   moves it into .ir-pack-rail, a full-height overlay above every chapter. */
-.ir-pack-slot { position: absolute; left: -5%; bottom: -9%; z-index: 3; width: clamp(128px, 30%, 230px); }
-.ir-pack { --pack-w: 100%; width: var(--pack-w); }
-/* floating: sticky inside the full-height rail, so it can never outlive the last chapter */
-.ir-pack.is-floating {
-  position: sticky; top: calc(150px + var(--pack-top, 0px));
-  margin: var(--pack-top, 0px) 0 0 var(--pack-left, 0px); pointer-events: auto;
+/* --- the product-survey pack, on a measuring bench under the phones --- */
+/* The IR Ops measure screen in miniature: the pack on one side, the width/height
+   fields on the other. ir-showcase.js sizes the pack from the fields. */
+.ir-bench {
+  position: relative; display: grid; grid-template-columns: minmax(118px, 168px) minmax(0, 1fr);
+  gap: 8px 26px; align-items: center; padding: 14px 24px 14px 14px;
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--nav-bg);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 30px 60px -44px var(--shadow);
 }
+.ir-bench-controls { display: grid; gap: 12px; min-width: 0; }
+.ir-bench-title {
+  margin: 0; font-family: var(--display); font-style: italic; font-size: 1.02rem; color: var(--muted);
+}
+.ir-bench-title b { font-style: normal; font-family: var(--body); font-weight: 600; font-size: 0.86rem; color: var(--paper); }
+.ir-bench-fields { display: flex; flex-wrap: wrap; gap: 10px 14px; }
+.ir-field { display: grid; gap: 5px; font-size: 0.72rem; color: var(--muted); }
+.ir-field-box {
+  display: inline-flex; align-items: baseline; gap: 6px; padding: 7px 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--ink); transition: border-color 0.25s;
+}
+.ir-field-box:focus-within { border-color: var(--accent); }
+.ir-field-box:has(input[aria-invalid="true"]) { border-style: dashed; border-color: var(--muted); }
+.ir-field input {
+  width: 4.6ch; padding: 0; border: 0; background: transparent; outline: none; color: var(--paper);
+  font-family: var(--mono); font-size: 0.98rem; font-variant-numeric: tabular-nums;
+}
+.ir-field i { font-style: normal; font-family: var(--mono); font-size: 0.7rem; color: var(--muted); }
+.ir-bench-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.ir-bench-hint { margin: 0; font-size: 0.76rem; line-height: 1.45; color: var(--muted); }
+.ir-bench:has(input[aria-invalid="true"]) .ir-bench-hint { color: var(--paper); }
 .cap-stage {
   position: relative; width: 100%; aspect-ratio: 0.9; overflow: visible;
   perspective: 620px; touch-action: pan-y; cursor: grab;
@@ -830,18 +844,10 @@ html.revealed .portrait-frame img { transform: scale(1); }
 .cap-box .f-top { transform: rotateX(90deg) translateZ(calc(var(--bh) / 2)); background: var(--accent-hover); }
 .cap-box .f-bottom { transform: rotateX(-90deg) translateZ(calc(var(--bh) / 2)); background: var(--accent-deep); }
 @keyframes cap-spin { to { transform: rotateX(-14deg) rotateY(328deg); } }
-.ir-pack-tag {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 8px;
-  margin-top: -4px; padding: 7px 10px; border-radius: 16px;
-  background: var(--nav-bg); border: 1px solid var(--line);
-  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-  font-size: 0.68rem; color: var(--muted); text-align: center; line-height: 1.3;
-}
-.ir-pack-tag b { color: var(--paper); font-weight: 600; }
-.cap-dims { font-family: var(--mono); font-size: 0.62rem; font-variant-numeric: tabular-nums; }
+.cap-dims { font-family: var(--mono); font-size: 0.74rem; color: var(--paper); font-variant-numeric: tabular-nums; }
 .ir-pack-next {
-  padding: 4px 10px; border-radius: 999px; border: 1px solid var(--accent); cursor: pointer;
-  background: var(--accent); color: var(--ink); font: inherit; font-size: 0.66rem; font-weight: 600;
+  padding: 6px 14px; border-radius: 999px; border: 1px solid var(--accent); cursor: pointer;
+  background: var(--accent); color: var(--ink); font: inherit; font-size: 0.74rem; font-weight: 600;
   transition: background 0.25s, color 0.25s;
 }
 .ir-pack-next:hover { background: transparent; color: var(--accent); }
@@ -1237,13 +1243,11 @@ body.modal-open { overflow: hidden; }
   .ir-steps a { padding: 8px 12px; }
   .ir-steps span { display: none; }
   .ir-chapter { padding: 26px 18px; border-radius: 22px; gap: 30px; }
-  /* phones: the pack steps out from over the screen and sits under it, in a row */
   .ir-shots-one { aspect-ratio: auto; }
   .ir-shots-one .ir-shot { position: relative; top: auto; transform: none; }
-  .ir-pack-slot { position: relative; left: auto; bottom: auto; width: 100%; margin-top: -34px; padding-left: 4px; }
-  .ir-pack { display: flex; align-items: flex-end; gap: 10px; }
-  .ir-pack .cap-stage { width: 112px; flex-shrink: 0; }
-  .ir-pack-tag { flex: 1; justify-content: flex-start; text-align: left; margin: 0 0 6px; }
+  /* the bench keeps its row: a smaller pack beside the fields */
+  .ir-bench { grid-template-columns: 104px minmax(0, 1fr); gap: 8px 14px; padding: 12px 14px 14px 8px; }
+  .ir-bench-title { font-size: 0.94rem; }
   /* the four handsets become a swipeable strip */
   .ir-shots-phones {
     aspect-ratio: auto; display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory;
@@ -1358,6 +1362,41 @@ body.modal-open { overflow: hidden; }
 .chat-status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
 .chat-status-cloud { color: var(--accent); }
 .chat-status-cloud .dot { background: var(--accent); box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.8); animation: pulse 2.4s infinite; }
+.chat-status-local, .chat-status-local-loading { color: var(--accent); }
+.chat-status-local .dot { background: var(--accent); box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.25); }
+.chat-status-local-loading .dot { background: transparent; border: 1px solid var(--accent); animation: pulse 1.2s infinite; }
+
+/* Private mode: a switch in the head, and a box under it for consent, progress and errors */
+.chat-private {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 9px;
+  border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--muted);
+  font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase;
+  cursor: pointer; flex-shrink: 0; transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+.chat-private[hidden] { display: none; }
+.chat-private:hover { color: var(--accent); border-color: var(--accent-deep); }
+.chat-private.is-on { color: var(--ink); background: var(--accent); border-color: var(--accent); }
+.chat-private.is-loading { color: var(--accent); background: rgba(var(--accent-rgb), 0.12); border-color: var(--accent-deep); }
+.chat-private-box {
+  display: grid; gap: 10px; padding: 12px 18px 14px; flex-shrink: 0;
+  border-bottom: 1px solid var(--line); background: rgba(var(--accent-rgb), 0.06);
+  font-size: 0.8rem; line-height: 1.5; color: var(--paper);
+}
+.chat-private-box[hidden] { display: none; }
+.chat-private-copy { margin: 0; }
+.chat-private-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.chat-private-btn {
+  padding: 6px 13px; border-radius: 999px; border: 1px solid var(--line); background: none;
+  color: var(--paper); font: inherit; font-size: 0.74rem; cursor: pointer; transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+.chat-private-btn:hover { border-color: var(--accent); color: var(--accent); }
+.chat-private-btn.is-primary { background: var(--accent); border-color: var(--accent); color: var(--ink); font-weight: 600; }
+.chat-private-btn.is-primary:hover { background: transparent; color: var(--accent); }
+.chat-private-bar { height: 4px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.chat-private-bar span {
+  display: block; height: 100%; width: var(--pct, 0%); border-radius: inherit;
+  background: var(--accent); transition: width 0.3s var(--ease-out);
+}
 
 .chat-log {
   flex: 1; overflow-y: auto; overscroll-behavior: contain;
@@ -1750,13 +1789,17 @@ body.modal-open { overflow: hidden; }
 }
 @media (max-width: 390px) {
   .chat-head { gap: 6px; padding-left: 12px; padding-right: 12px; }
-  .chat-chips, .chat-form { padding-left: 12px; padding-right: 12px; }
+  .chat-chips, .chat-form, .chat-private-box { padding-left: 12px; padding-right: 12px; }
+  /* the lock alone; the label is clipped, not removed, so the switch keeps its name */
+  .chat-private span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  .chat-private { padding: 0 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .chat-panel, .chat-callout { transition: none; transform: none; }
   .chat-launcher { transition: none; }
   .chat-launcher-ring, .chat-launcher::after,
-  .chat-status-cloud .dot { animation: none; }
+  .chat-status-cloud .dot, .chat-status-local-loading .dot { animation: none; }
+  .chat-private, .chat-private-bar span { transition: none; }
   .chat-jd-upload, .chat-jd-meter-bar, .chat-jd-file-btn, .chat-jd-action, .chat-jd-promo-action { transition: none; }
   .chat-jd-promo-action:active { transform: none; }
   .chat-jd-requirement-summary { scroll-behavior: auto; }

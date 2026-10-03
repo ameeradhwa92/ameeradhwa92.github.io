@@ -21,11 +21,42 @@ RetailAIM IR showcase (`assets/js/ir-showcase.js`):
   this README. Both consumer scripts treat a missing `window.gsap` as "no motion" and leave
   the page in its static, fully visible state.
 
+Vendored on-device model runtime for AIMeer's Private mode (`assets/js/aimeer-local-worker.js`):
+
+- `transformers/transformers.min.js` — Transformers.js, the self-contained browser ESM
+  bundle (ONNX Runtime Web's JS is inside it). The Worker `import()`s it by an absolute
+  URL built from `chatbot.js`'s own `src`, unversioned like three.js.
+- `transformers/ort-wasm-simd-threaded.asyncify.mjs` and `.wasm` — the ONNX Runtime
+  WebAssembly runtime with the WebGPU execution provider. The Worker points
+  `env.backends.onnx.wasm.wasmPaths` at these two files, so nothing loads from a CDN.
+  Only the asyncify pair is vendored: Transformers.js picks the plain build only for
+  Safari < 26 without WebGPU, which Private mode refuses anyway.
+
+  The model weights are not vendored (≈ 260–300 MB, and permanent in git history).
+  They come from Hugging Face (`onnx-community/LFM2.5-350M-ONNX`) only after the visitor
+  switches Private mode on, and Transformers.js keeps them in the Cache API
+  (`transformers-cache`). The 4-bit builds use `GatherBlockQuantized`, which this WASM
+  build has no CPU kernel for, so the model runs on WebGPU only.
+
 Pinned versions:
 
 - GSAP `3.15.0` — `dist/gsap.min.js`, `dist/ScrollTrigger.min.js` and `dist/SplitText.min.js`
   copied unmodified from the npm tarball `gsap-3.15.0.tgz`
   (sha512 `dMW4CWBTUK1AEEDeZc1g4xpPGIrSf9fJF960qbTZmN/QwZIWY5wgliS6JWl9/25fpTGJrMRtSjGtOmPnfjZB+A==`).
+
+- Transformers.js `4.3.0` — `dist/transformers.min.js` copied unmodified from the npm tarball
+  `@huggingface/transformers-4.3.0.tgz`
+  (sha512 `fL1A/WUZwouPrOlYxU5dzIwD2T5J781JiB2jDR8bFe5DwCj0Gfudq+NEXCMno49kQgajHA7xQkrRLJlqG1veEA==`).
+  Apache-2.0.
+- ONNX Runtime Web `1.31.0-dev.20260914-8d85527a0` (the exact version Transformers.js 4.3.0
+  pins) — `dist/ort-wasm-simd-threaded.asyncify.mjs` and `.wasm` copied unmodified from the
+  npm tarball `onnxruntime-web-1.31.0-dev.20260914-8d85527a0.tgz`
+  (sha512 `Iy7rtadoBgxS/LLvDr3QW38DB1PNXRnr0GJMcL0TAt7c9qjgVQl83UlGCVyeAnK2InpmW8Uc3PL8XIuqtDeF6g==`).
+  MIT. File sha256: `.mjs` `0966b6105cd936744498aa60df7a22cbd47af3374dbc64a9ab561c08a71e3611`,
+  `.wasm` `49871f5a4409519797e127440868a6d1923339d9185907f301a5b2a1d90af082`,
+  `transformers.min.js` `1475fd440e9932ab206682ee42cb18f6097403e9ee77ea62084c592d0f83597d`.
+  A Transformers.js bump must bring the matching ONNX Runtime files: the bundle loads the
+  `.mjs`/`.wasm` pair it was built against, and a mismatch fails at session creation.
 
 - PDF.js `4.10.38`
 - JSZip `3.10.1`

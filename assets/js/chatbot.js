@@ -1,17 +1,23 @@
-/* AIMeer — Ameer's AI twin. Two tiers, one decision layer.
+/* AIMeer — Ameer's AI twin. Two tiers, one decision layer, and an opt-in Private mode.
    Tier 1: instant keyword answers, zero download, works offline — and the fallback for every
-           cloud failure.
+           AI failure.
    Tier 2: the Cloudflare Worker relay (cloud/aimeer-worker.js). Cloudflare's Clef-flash decision
            model triages each question first (salary → curated answer + handoff, out of
            knowledge → handoff, job match → the JD matcher) and gpt-oss-20b answers the rest
            from the KB.
-   The on-device WebLLM tier (Llama 3.2 1B, ≈ 0.9 GB download) was retired in 2026-10: it
-   answered poorly even on high-end GPUs and cost every capable visitor a large download.
-   The active tier is shown in the chat status line. */
+   Private mode: LFM2.5-350M in the visitor's browser (aimeer-local-core.js decides, the
+           aimeer-local-worker.js Worker runs it; WebGPU, or WASM on the CPU). Only after the
+           visitor switches it on and accepts the one-time ≈ 260–300 MB download. While it is
+           on, chat never calls the Worker. Once downloaded, it also answers when the cloud
+           fails, before the instant tier does.
+   The first on-device tier (WebLLM, Llama 3.2 1B, ≈ 0.9 GB, the whole KB in its prompt)
+   was retired in 2026-10 for poor answers; Private mode gives a far smaller model only
+   the KB lines a question needs. The active tier is shown in the chat status line. */
 (function () {
   "use strict";
 
   var PROFILE_URL = "assets/data/aimeer-profile.json";
+  var KB_URL = "assets/data/aimeer-kb.txt";
   /* Cloudflare Worker relay — AIMeer's only AI tier.
      Deploy cloud/aimeer-worker.js, then paste its workers.dev URL here. */
   var CLOUD_ENDPOINT = typeof window.AIMEER_CLOUD_ENDPOINT === "string"
@@ -26,7 +32,8 @@
      same tag to the recruiter profile because it is fetched at runtime and is
      not covered by the script tag: a stale aimeer-profile.json makes the JD
      matcher score against retired evidence, which is worse than stale code.
-     (aimeer-kb.txt is read only by the Worker, which caches it itself.)  Read from our own src
+     The same goes for aimeer-kb.txt, which Private mode reads (the Worker caches its own copy).
+     Read from our own src
      rather than hardcoded, so index.html stays the ONLY place to bump it.
      Returns "" when there is no ?v= (local preview, test harness), leaving the
      URLs byte-identical to their un-versioned form. */
@@ -37,6 +44,8 @@
     return match ? "?v=" + match[1] : "";
   }
   var ASSET_VERSION_QUERY = assetVersionQuery();
+  /* Private mode's Worker and the vendored runtime resolve against this script's URL */
+  var SCRIPT_SRC = (document && document.currentScript && document.currentScript.src) || "";
 
   /* ---------------- recruiter profile (fetched, shared with the cloud worker) ---------------- */
   var PROFILE = null, profilePromise = null;
@@ -233,9 +242,28 @@
   var T = {
     en: {
       greeting: "Hi, I'm AIMeer — Ameer's AI twin. Ask me about his career, projects and skills, or tap a suggestion below. Answers come from Ameer's published profile via secure cloud AI; anything it doesn't cover, I'll hand over to Ameer himself.",
+      greetingPrivate: "Hi, I'm AIMeer — Ameer's AI twin. Private mode is on, so a small AI model answers here on your device from Ameer's published profile, and nothing is sent to the cloud. Anything it doesn't cover, I'll hand over to Ameer himself.",
       placeholder: "Ask AIMeer…",
       statusInstant: "Instant answers · works offline",
       statusCloud: "AI mode · secure cloud",
+      statusLocal: "AI mode · on this device",
+      statusLocalLoading: "On-device AI · {pct}%",
+      privatePitch: "Private mode runs a small AI model ({model}) inside this browser, so your questions never leave this device. It is a one-time download of about {size} MB, kept for your next visit. Its answers are shorter and simpler than the cloud's, and in English.",
+      privateStart: "Download and turn on",
+      privateNotNow: "Not now",
+      privateCancel: "Cancel",
+      privateRetry: "Try again",
+      privateClose: "Close",
+      privateDownloading: "Downloading the on-device model… {loaded} of {total} MB",
+      privateStarting: "Starting the on-device model…",
+      privateOn: "Private mode is on: questions are answered on this device and nothing is sent to the cloud. (The job-description matcher still uses the cloud, and says so.)",
+      privateOff: "Private mode is off. Answers come from the secure cloud again.",
+      privateOffInstant: "Private mode is off. Instant answers only for now.",
+      privateUnsupportedMemory: "This device reports too little memory for the on-device model (it needs at least 2 GB). Cloud and instant answers keep working.",
+      privateUnsupportedGpu: "The on-device model needs WebGPU, which this browser doesn't offer (current Chrome, Edge and Safari do). Cloud and instant answers keep working.",
+      privateUnsupportedBrowser: "This browser can't run the on-device model. Cloud and instant answers keep working.",
+      privateFailed: "The on-device model couldn't start: the download may have been interrupted, or the device ran out of memory. Instant answers still work.",
+      localEnglishOnly: "The on-device model answers in English only.",
       fallbackDefault: "I don't have an instant answer for that one — sounds like a question for Ameer himself. Send him this chat with the buttons below, or try a suggested topic.",
       thinking: "Thinking…",
       handoffPrompt: "Ask Ameer directly — I'll attach a short summary of this chat:",
@@ -323,9 +351,28 @@
     },
     ms: {
       greeting: "Salam sejahtera! Saya AIMeer — kembar AI Ameer. Tanya saya tentang kerjaya, projek dan kemahiran beliau, atau tekan cadangan di bawah. Jawapan diambil daripada profil terbitan Ameer melalui AI awan selamat; apa-apa yang tidak diliputi akan saya serahkan kepada Ameer sendiri.",
+      greetingPrivate: "Hai, saya AIMeer — kembar AI Ameer. Mod peribadi dihidupkan, jadi model AI kecil menjawab di peranti anda berdasarkan profil terbitan Ameer, dan tiada apa-apa dihantar ke awan. Apa-apa yang tidak diliputinya, saya akan serahkan kepada Ameer sendiri.",
       placeholder: "Tanya AIMeer…",
       statusInstant: "Jawapan segera · berfungsi luar talian",
       statusCloud: "Mod AI · awan selamat",
+      statusLocal: "Mod AI · pada peranti ini",
+      statusLocalLoading: "AI peranti · {pct}%",
+      privatePitch: "Mod peribadi menjalankan model AI kecil ({model}) di dalam pelayar ini, jadi soalan anda tidak pernah meninggalkan peranti ini. Muat turun sekali sahaja kira-kira {size} MB dan disimpan untuk lawatan seterusnya. Jawapannya lebih ringkas daripada AI awan, dan dalam bahasa Inggeris.",
+      privateStart: "Muat turun dan hidupkan",
+      privateNotNow: "Bukan sekarang",
+      privateCancel: "Batal",
+      privateRetry: "Cuba lagi",
+      privateClose: "Tutup",
+      privateDownloading: "Memuat turun model peranti… {loaded} daripada {total} MB",
+      privateStarting: "Memulakan model peranti…",
+      privateOn: "Mod peribadi dihidupkan: soalan dijawab pada peranti ini dan tiada apa-apa dihantar ke awan. (Pemadan huraian jawatan masih menggunakan awan, dan menyatakannya.)",
+      privateOff: "Mod peribadi dimatikan. Jawapan datang daripada awan selamat semula.",
+      privateOffInstant: "Mod peribadi dimatikan. Buat masa ini, jawapan segera sahaja.",
+      privateUnsupportedMemory: "Peranti ini melaporkan memori yang tidak mencukupi untuk model peranti (ia memerlukan sekurang-kurangnya 2 GB). Jawapan awan dan jawapan segera tetap berfungsi.",
+      privateUnsupportedGpu: "Model peranti memerlukan WebGPU, yang tidak disediakan oleh pelayar ini (Chrome, Edge dan Safari terkini menyediakannya). Jawapan awan dan jawapan segera tetap berfungsi.",
+      privateUnsupportedBrowser: "Pelayar ini tidak dapat menjalankan model peranti. Jawapan awan dan jawapan segera tetap berfungsi.",
+      privateFailed: "Model peranti tidak dapat dimulakan: muat turun mungkin terganggu, atau memori peranti tidak mencukupi. Jawapan segera masih berfungsi.",
+      localEnglishOnly: "Model peranti hanya menjawab dalam bahasa Inggeris.",
       fallbackDefault: "Saya tiada jawapan segera untuk soalan itu — nampaknya soalan untuk Ameer sendiri. Hantar sembang ini kepada beliau dengan butang di bawah, atau cuba topik yang dicadangkan.",
       thinking: "Sedang berfikir…",
       handoffPrompt: "Tanya Ameer secara terus — saya akan lampirkan ringkasan sembang ini:",
@@ -537,6 +584,11 @@
   var open = false, greeted = false, jdPromoAdded = false, busy = false;
   var jdPromoCopy = null, jdPromoAction = null;
   var aiState = cloudOk ? "cloud" : "off"; /* cloud | off (instant answers only) */
+  /* Private mode: the visitor's choice (persisted) and the on-device model's state */
+  var privateMode = readFlag("aimeer-private");
+  var localCached = readFlag("aimeer-local-ready"); /* a load has succeeded on this browser */
+  var localState = "idle"; /* idle | loading | ready | failed */
+  var localProgress = { loaded: 0, total: 0 };
   var history = []; /* {role, content} — capped so prefill stays fast */
   var transcript = []; /* full visitor conversation, for the WhatsApp/email handoff */
   var lastUnanswered = ""; /* the question AIMeer couldn't answer */
@@ -1118,11 +1170,18 @@
 
   function setStatus(mode) {
     status.className = "chat-status chat-status-" + mode;
-    statusText.textContent = mode === "cloud" ? t("statusCloud") : t("statusInstant");
+    statusText.textContent = mode === "cloud" ? t("statusCloud")
+      : mode === "local" ? t("statusLocal")
+      : mode === "local-loading" ? formatT("statusLocalLoading", { pct: localPercent() })
+      : t("statusInstant");
   }
 
+  /* Private mode never borrows the cloud, so until its model is ready it reads as instant. */
   function refreshStatus() {
-    setStatus(aiState === "cloud" ? "cloud" : "instant");
+    if (privateMode && localState === "ready") setStatus("local");
+    else if (privateMode && localState === "loading") setStatus("local-loading");
+    else if (privateMode) setStatus("instant");
+    else setStatus(aiState === "cloud" ? "cloud" : "instant");
   }
 
   function refreshLangBits() {
@@ -1146,6 +1205,7 @@
     var typing = log.querySelector(".chat-typing");
     if (typing) typing.setAttribute("aria-label", t("thinking"));
     refreshStatus();
+    renderPrivate();
     if (jdPromoCopy) jdPromoCopy.textContent = t("jdPromo");
     if (jdPromoAction) jdPromoAction.textContent = t("jdPromoAction");
     if (recruiterUI) {
@@ -1200,10 +1260,14 @@
     open = true;
     if (!greeted) {
       greeted = true;
-      addMsg("bot", t("greeting"));
+      addMsg("bot", privateMode ? t("greetingPrivate") : t("greeting"));
     }
     addJdPromo();
     refreshLangBits();
+    /* opening the chat is intent: a visitor who chose Private mode gets its model warming up */
+    if (privateMode && localState === "idle") startLocal();
+    /* a model already on disk can stand in for a failed cloud call; that needs the gate */
+    else if (localCached) checkLocalGate();
     input.focus();
   }
 
@@ -1485,7 +1549,8 @@
     var convo = transcript.slice(-12).map(function (m) {
       return (m.role === "user" ? "Visitor: " : "AIMeer: ") + m.content;
     }).join("\n");
-    if (aiState === "cloud") {
+    /* in Private mode the transcript stays here too: the summary is built locally */
+    if (aiState === "cloud" && !privateMode) {
       return fetch(CLOUD_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1554,6 +1619,360 @@
     scrollLogToEnd();
   }
 
+  /* ---------------- private mode: the on-device model ---------------- */
+  /* The visitor opts in from the switch in the chat head; nothing downloads before that click.
+     aimeer-local-core.js (window.AIMEER_LOCAL) decides what this device can run and what the
+     model is shown; aimeer-local-worker.js runs it off the main thread. While Private mode is
+     on, chat never calls the Worker, and the handoff summary is built locally. */
+  var privateBtn = document.getElementById("chat-private");
+  var privateBox = document.getElementById("chat-private-box");
+  var privateView = ""; /* "" | offer | unsupported | progress | failed — what the box shows */
+  var localGate = null, gatePromise = null;
+  var localWorker = null, localRetried = false, localReqId = 0, localPending = {};
+  var localReadyWaiters = [];
+  var localHistory = [];
+  var kbIndex = null, kbIdentity = "", kbPromise = null;
+  var englishNoted = false;
+
+  function readFlag(key) {
+    try { return localStorage.getItem(key) === "1"; } catch (e) { return false; }
+  }
+  function writeFlag(key, on) {
+    try { if (on) localStorage.setItem(key, "1"); else localStorage.removeItem(key); } catch (e) { }
+  }
+  function localCore() { return window.AIMEER_LOCAL || null; }
+  function localPercent() {
+    return localProgress.total ? Math.min(99, Math.floor(localProgress.loaded / localProgress.total * 100)) : 0;
+  }
+  function localUsable() { return !!(localCore() && localGate && localGate.eligible); }
+
+  function checkLocalGate() {
+    var core = localCore();
+    if (!core) return Promise.resolve({ eligible: false, reason: "no-core" });
+    if (!gatePromise) {
+      gatePromise = core.probeEnvironment(navigator, window).then(function (env) {
+        localGate = core.evaluateGate(env);
+        return localGate;
+      });
+    }
+    return gatePromise;
+  }
+
+  function scriptUrl(path) {
+    var base = SCRIPT_SRC || (location.href.replace(/[^/]*([?#].*)?$/, "") + "assets/js/chatbot.js");
+    return new URL(path, base).href;
+  }
+
+  function settleLocalWaiters(ok) {
+    var waiters = localReadyWaiters;
+    localReadyWaiters = [];
+    waiters.forEach(function (w) { w(ok); });
+  }
+
+  /* every question waiting on the Worker falls back to the instant answer */
+  function rejectLocalPending(reason) {
+    var pending = localPending;
+    localPending = {};
+    Object.keys(pending).forEach(function (id) { pending[id].reject(new Error("local-" + reason)); });
+  }
+
+  function failLocal(reason) {
+    if (window.console && console.warn) console.warn("[aimeer] on-device model: " + reason);
+    if (localWorker) { localWorker.terminate(); localWorker = null; }
+    /* a GPU that advertises shader-f16 and then fails on it gets the f32 build, once */
+    if (localGate && localGate.dtype === "q4f16" && !localRetried && reason !== "worker" && reason !== "worker-error") {
+      localRetried = true;
+      localGate = localCore().evaluateGate({ hasWorker: true, hasWasm: true, hasWebGPU: true, shaderF16: false });
+      localState = "idle";
+      startLocal();
+      return;
+    }
+    localState = "failed";
+    rejectLocalPending(reason);
+    settleLocalWaiters(false);
+    if (privateView === "progress") privateView = "failed";
+    renderPrivate();
+    refreshStatus();
+  }
+
+  function onLocalMessage(event) {
+    var msg = event.data || {};
+    if (msg.type === "progress") {
+      localProgress = { loaded: msg.loaded, total: msg.total };
+      renderPrivate();
+      refreshStatus();
+    } else if (msg.type === "ready") {
+      localState = "ready";
+      localCached = true;
+      writeFlag("aimeer-local-ready", true);
+      settleLocalWaiters(true);
+      if (privateView === "progress") {
+        privateView = "";
+        if (privateMode) addMsg("bot", t("privateOn"));
+      }
+      renderPrivate();
+      refreshStatus();
+    } else if (msg.type === "token" || msg.type === "done") {
+      var pending = localPending[msg.id];
+      if (!pending) return;
+      if (msg.type === "token") { pending.onToken(msg.text); return; }
+      delete localPending[msg.id];
+      pending.resolve(msg.text);
+    } else if (msg.type === "error") {
+      if (msg.stage === "load") { failLocal(msg.message); return; }
+      var p = localPending[msg.id];
+      if (p) { delete localPending[msg.id]; p.reject(new Error("local-" + msg.message)); }
+    }
+  }
+
+  function startLocal() {
+    if (localState === "loading" || localState === "ready") return;
+    checkLocalGate().then(function (gate) {
+      if (localState === "loading" || localState === "ready") return;
+      if (!gate.eligible) {
+        /* a stored choice from a browser that can no longer run it */
+        if (privateMode) { privateView = "unsupported"; setPrivateMode(false, false); }
+        return;
+      }
+      localState = "loading";
+      localProgress = { loaded: 0, total: 0 };
+      renderPrivate();
+      refreshStatus();
+      try {
+        localWorker = new Worker(scriptUrl("aimeer-local-worker.js" + ASSET_VERSION_QUERY), { type: "module" });
+      } catch (err) { failLocal("worker"); return; }
+      localWorker.onmessage = onLocalMessage;
+      localWorker.onerror = function (e) { if (e && e.preventDefault) e.preventDefault(); failLocal("worker-error"); };
+      localWorker.postMessage({
+        type: "load",
+        /* vendored and unversioned, like three.js: a version bump replaces the files */
+        libUrl: scriptUrl("../vendor/transformers/transformers.min.js"),
+        wasmBase: scriptUrl("../vendor/transformers/"),
+        model: localCore().MODEL.id,
+        device: gate.backend,
+        dtype: gate.dtype
+      });
+    });
+  }
+
+  function cancelLocal() {
+    if (localWorker) { localWorker.terminate(); localWorker = null; }
+    localState = "idle";
+    rejectLocalPending("cancelled");
+    settleLocalWaiters(false);
+    setPrivateMode(false, true);
+  }
+
+  /* resolves true once the model is ready, false on failure or after timeoutMs */
+  function whenLocalReady(timeoutMs) {
+    if (localState === "ready") return Promise.resolve(true);
+    startLocal();
+    return new Promise(function (resolve) {
+      var done = false;
+      function finish(ok) { if (!done) { done = true; resolve(ok); } }
+      localReadyWaiters.push(finish);
+      setTimeout(function () { finish(false); }, timeoutMs);
+    });
+  }
+
+  function ensureKb() {
+    if (kbIndex) return Promise.resolve(kbIndex);
+    if (!kbPromise) {
+      kbPromise = fetch(KB_URL + ASSET_VERSION_QUERY).then(function (r) {
+        if (!r.ok) throw new Error("kb-" + r.status);
+        return r.text();
+      }).then(function (text) {
+        var core = localCore();
+        var chunks = core.chunkKb(text);
+        chunks.some(function (c) {
+          if (/^Identity: /.test(c.text)) { kbIdentity = c.text; return true; }
+          return false;
+        });
+        kbIndex = core.buildIndex(chunks);
+        return kbIndex;
+      }).catch(function (err) { kbPromise = null; throw err; });
+    }
+    return kbPromise;
+  }
+
+  /* Resolves to { reply, action } like askCloud. Tokens stream into the bubble as they come. */
+  function askLocal(text, bubble) {
+    var core = localCore();
+    return ensureKb().then(function (index) {
+      /* a short follow-up ("and before that?") borrows the previous question's words */
+      var query = text;
+      var lastUser = localHistory.filter(function (m) { return m.role === "user"; }).pop();
+      if (lastUser && text.split(/\s+/).length < 6) query = text + " " + lastUser.content;
+      var hits = core.retrieve(index, query, 4);
+      var action = core.triage(text, hits, SALARY_KEYS);
+      if (action !== "answer") return { reply: "", action: action };
+      var messages = core.buildMessages(text, hits, kbIdentity, localHistory);
+      var id = ++localReqId;
+      var streamed = "";
+      var firstTimeout = 30000;
+      return new Promise(function (resolve, reject) {
+        var gotToken = false;
+        function giveUp() {
+          if (!localPending[id]) return;
+          delete localPending[id];
+          if (localWorker) localWorker.postMessage({ type: "abort" });
+          reject(new Error("local-timeout"));
+        }
+        /* nothing in 30 s, or no end in 90 s: the instant answer takes over */
+        var timer = setTimeout(function () { if (!gotToken) giveUp(); }, firstTimeout);
+        var cap = setTimeout(giveUp, 90000);
+        localPending[id] = {
+          onToken: function (piece) {
+            gotToken = true;
+            streamed += piece;
+            if (bubble.classList.contains("thinking")) settleBubbleContent(bubble, streamed);
+            else { bubble.textContent = streamed; scrollLogToEnd(); }
+          },
+          resolve: function (full) { clearTimeout(timer); clearTimeout(cap); resolve(full || streamed); },
+          reject: function (err) { clearTimeout(timer); clearTimeout(cap); reject(err); }
+        };
+        localWorker.postMessage({ type: "generate", id: id, messages: messages, options: core.MODEL.generation });
+      }).then(function (full) {
+        /* grounded against exactly what the model was shown, plus the visitor's own words */
+        var reply = core.cleanReply(full, core.factsOf(messages));
+        if (!reply) throw new Error("local-empty");
+        localHistory.push({ role: "user", content: text }, { role: "assistant", content: reply });
+        if (localHistory.length > 4) localHistory = localHistory.slice(-4);
+        return { reply: reply, action: "answer" };
+      });
+    });
+  }
+
+  function answerLocally(bubble, text) {
+    var ready = localState === "ready" ? Promise.resolve(true) : whenLocalReady(25000);
+    ready.then(function (ok) {
+      if (!ok) throw new Error("local-unavailable");
+      return askLocal(text, bubble);
+    }).then(function (answer) {
+      applyCloudAnswer(bubble, answer, text);
+      if (answer.action === "answer" && lang() === "ms" && !englishNoted) {
+        englishNoted = true;
+        addMsg("bot", t("localEnglishOnly"));
+      }
+    }).catch(function (err) {
+      if (window.console && console.warn) console.warn("On-device AI failed:", err);
+      answerInstantly(bubble, text);
+    });
+  }
+
+  /* ---- the switch and its box ---- */
+  function setPrivateMode(on, announce) {
+    var was = privateMode;
+    privateMode = !!on;
+    writeFlag("aimeer-private", privateMode);
+    if (!privateMode) privateView = "";
+    renderPrivate();
+    refreshStatus();
+    if (announce && was !== privateMode) {
+      addMsg("bot", privateMode ? t("privateOn") : (aiState === "cloud" ? t("privateOff") : t("privateOffInstant")));
+    }
+  }
+
+  function boxButton(label, onClick, primary) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "chat-private-btn" + (primary ? " is-primary" : "");
+    b.textContent = label;
+    b.addEventListener("click", onClick);
+    return b;
+  }
+
+  function renderPrivate() {
+    if (!privateBtn) return;
+    var available = !!localCore();
+    privateBtn.hidden = !available;
+    privateBtn.setAttribute("aria-checked", privateMode ? "true" : "false");
+    privateBtn.classList.toggle("is-on", privateMode);
+    privateBtn.classList.toggle("is-loading", privateMode && localState === "loading");
+    if (!privateBox) return;
+    var view = privateView;
+    if (privateMode && localState === "loading") view = "progress";
+    privateBox.innerHTML = "";
+    privateBox.hidden = !view;
+    privateBox.className = "chat-private-box" + (view ? " is-" + view : "");
+    if (!view) return;
+    var core = localCore();
+    var copy = document.createElement("p");
+    copy.className = "chat-private-copy";
+    var actions = document.createElement("div");
+    actions.className = "chat-private-actions";
+    if (view === "offer") {
+      copy.textContent = formatT("privatePitch", { model: core.MODEL.name, size: localGate.sizeMB });
+      privateBox.appendChild(copy);
+      actions.appendChild(boxButton(t("privateStart"), function () {
+        privateView = "progress";
+        setPrivateMode(true, false);
+        startLocal();
+      }, true));
+      actions.appendChild(boxButton(t("privateNotNow"), function () { privateView = ""; renderPrivate(); }));
+    } else if (view === "unsupported") {
+      var reason = localGate && localGate.reason;
+      copy.textContent = reason === "low-memory" ? t("privateUnsupportedMemory")
+        : reason === "no-webgpu" ? t("privateUnsupportedGpu") : t("privateUnsupportedBrowser");
+      privateBox.appendChild(copy);
+      actions.appendChild(boxButton(t("privateClose"), function () { privateView = ""; renderPrivate(); }));
+    } else if (view === "progress") {
+      /* decimal MB, the unit the offer's size uses */
+      var mb = function (bytes) { return Math.round(bytes / 1e6); };
+      copy.textContent = localProgress.total && localProgress.loaded < localProgress.total
+        ? formatT("privateDownloading", { loaded: mb(localProgress.loaded), total: mb(localProgress.total) })
+        : t("privateStarting");
+      privateBox.appendChild(copy);
+      var bar = document.createElement("div");
+      bar.className = "chat-private-bar";
+      bar.setAttribute("role", "progressbar");
+      bar.setAttribute("aria-valuemin", "0");
+      bar.setAttribute("aria-valuemax", "100");
+      bar.setAttribute("aria-valuenow", String(localPercent()));
+      var fill = document.createElement("span");
+      fill.style.setProperty("--pct", localPercent() + "%");
+      bar.appendChild(fill);
+      privateBox.appendChild(bar);
+      actions.appendChild(boxButton(t("privateCancel"), cancelLocal));
+    } else if (view === "failed") {
+      copy.textContent = t("privateFailed");
+      privateBox.appendChild(copy);
+      actions.appendChild(boxButton(t("privateRetry"), function () {
+        localRetried = false;
+        gatePromise = null;
+        localState = "idle";
+        privateView = "progress";
+        setPrivateMode(true, false);
+        startLocal();
+      }, true));
+      actions.appendChild(boxButton(t("privateClose"), function () { privateView = ""; setPrivateMode(false, true); }));
+    }
+    privateBox.appendChild(actions);
+  }
+
+  if (privateBtn) {
+    privateBtn.addEventListener("click", function () {
+      if (privateMode) { setPrivateMode(false, true); return; }
+      checkLocalGate().then(function (gate) {
+        if (!gate.eligible) { privateView = "unsupported"; renderPrivate(); return; }
+        if (localState === "ready") { setPrivateMode(true, true); return; }
+        if (localCached) {
+          /* already on disk: no new download to consent to */
+          privateView = "progress";
+          setPrivateMode(true, false);
+          startLocal();
+          return;
+        }
+        privateView = "offer";
+        renderPrivate();
+      });
+    });
+  }
+  renderPrivate();
+  refreshStatus();
+  /* aimeer-local-core.js loads after this script; every deferred script has run by now */
+  document.addEventListener("DOMContentLoaded", renderPrivate);
+
   /* ---------------- send ---------------- */
   function finishReply(bubble, reply, unanswered, question) {
     settleBubbleContent(bubble, reply);
@@ -1611,6 +2030,11 @@
     scrollLogToEnd();
   }
 
+  function answerInstantly(bubble, text) {
+    var a = instantAnswer(text);
+    finishReply(bubble, a.text, !a.matched, text);
+  }
+
   function send(text) {
     text = text.trim();
     if (!text || busy) return;
@@ -1620,13 +2044,18 @@
     busy = true;
     var bubble = setThinkingDots(addMsg("bot", ""));
 
-    if (aiState === "cloud") {
+    if (privateMode) {
+      /* never the cloud while Private mode is on; instant answers cover the model's warm-up */
+      if (localState === "ready") answerLocally(bubble, text);
+      else setTimeout(function () { answerInstantly(bubble, text); }, 350);
+    } else if (aiState === "cloud") {
       askCloud(text).then(function (answer) {
         applyCloudAnswer(bubble, answer, text);
       }).catch(function (err) {
         if (window.console && console.warn) console.warn("Cloud AI failed:", err);
-        var a = instantAnswer(text);
-        finishReply(bubble, a.text, !a.matched, text);
+        /* a model this browser already downloaded answers before the keyword table does */
+        if (localCached && localUsable()) answerLocally(bubble, text);
+        else answerInstantly(bubble, text);
       });
     } else {
       /* a small beat so the instant answer still reads as a reply */

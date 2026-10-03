@@ -1,5 +1,7 @@
 # AIMeer v2 — retire the on-device model, add Jev decisions
 
+> **2026-10-03 note:** an opt-in on-device tier is back as Private mode (LFM2.5-350M on WebGPU, retrieval-fed, never auto-downloaded) — see `2026-10-03-aimeer-private-mode-design.md`. The retirement below still stands for the WebLLM tier it describes.
+
 Status: implemented, merged to `main` (PR #3) · current Worker revision `2026-10-03-clef-3`
 (first shipped as `2026-10-02-jev-1`; a Worker change is not live until pasted into the
 Cloudflare dashboard — see Rollout).

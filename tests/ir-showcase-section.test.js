@@ -51,13 +51,16 @@ test('the four chapters are present, in order, each with real screens for both t
   assert.match(css, /:root:not\(\[data-theme="dark"\]\) \.ir-img-light \{ display: block; \}/, 'so does the OS light preference');
 });
 
-test('the survey pack keeps its hooks, its home slot and the rail it floats on', () => {
-  for (const id of ['ir-pack-rail', 'ir-pack-slot', 'ir-pack', 'cap-stage', 'cap-canvas', 'cap-box', 'cap-dims', 'cap-next']) {
-    assert.match(section, new RegExp(`id="${id}"`), `#${id} is in the markup`);
+test('the survey pack lives on a measuring bench in the Survey chapter, not floating over the screens', () => {
+  const survey = section.slice(section.indexOf('id="ir-survey"'));
+  for (const id of ['ir-pack', 'cap-stage', 'cap-canvas', 'cap-box', 'cap-dims', 'cap-next', 'cap-w', 'cap-h']) {
+    assert.match(survey, new RegExp(`id="${id}"`), `#${id} is in the Survey chapter`);
   }
-  const slot = section.indexOf('id="ir-pack-slot"');
-  assert.ok(slot > section.indexOf('id="ir-overview"') && slot < section.indexOf('id="ir-plan"'), 'the pack lives on the first screen without JS');
-  assert.ok(section.indexOf('id="ir-pack-rail"') < section.indexOf('id="ir-overview"'), 'the rail comes before the chapters');
+  assert.doesNotMatch(section, /ir-pack-rail|ir-pack-slot|is-floating/, 'the floating rail is gone');
+  for (const id of ['cap-w', 'cap-h']) {
+    assert.match(survey, new RegExp(`<label class="ir-field" for="${id}">`), `#${id} has a label`);
+    assert.match(survey, new RegExp(`<input id="${id}" type="text" inputmode="decimal"`), `#${id} opens a decimal keypad`);
+  }
 });
 
 test('the showcase stays honest: demo data, labelled, no link to the private app', () => {
@@ -89,8 +92,6 @@ test('the stacking query is one query in CSS and in motion.js', () => {
   const query = '(min-width: 1101px) and (min-height: 820px)';
   assert.ok(css.includes(`@media ${query} {`), 'style.css makes the chapters sticky under the query');
   assert.ok(motion.includes(`mm.add("${query}"`), 'motion.js scrubs the stack under the same query');
-  const showcase = fs.readFileSync(path.join(root, 'assets', 'js', 'ir-showcase.js'), 'utf8');
-  assert.ok(showcase.includes(`STACK_QUERY = "${query}"`), 'ir-showcase.js floats the pack under the same query');
   assert.match(css, /\.ir-chapter::after \{[^}]*opacity: var\(--dim, 0\)/, 'covered chapters dim by overlay, not opacity');
 });
 

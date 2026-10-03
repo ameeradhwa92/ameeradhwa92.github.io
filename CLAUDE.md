@@ -52,8 +52,8 @@ copy, so any change to that text must update the script's expectations in the sa
 change, or it goes red unnoticed.
 
 There is no `node_modules`. Tests read the browser IIFEs into a `node:vm` context with a
-hand-rolled `document` stub (no jsdom); `route-globe-core.js` and `ir-core.js` are
-UMD and load with plain `require()`. A new script must stay a plain IIFE that tolerates
+hand-rolled `document` stub (no jsdom); `route-globe-core.js`, `ir-core.js` and
+`aimeer-local-core.js` are UMD and load with plain `require()`. A new script must stay a plain IIFE that tolerates
 that stub at load time, or split its pure half into a UMD file the way the globe does.
 
 `window.AIMEER_CLOUD_ENDPOINT`, set before `chatbot.js` runs, overrides the Worker URL —
@@ -66,14 +66,15 @@ dark/light and EN/BM, and `curl` every project URL before publishing a status ch
 ### Bump `?v=` on every deploy that touches CSS or JS
 
 GitHub Pages serves assets with `Cache-Control: max-age=600`, so a stale visitor
-self-heals within ten minutes. The `?v=` tag on the stylesheet and the eleven `assets/js/`
+self-heals within ten minutes. The `?v=` tag on the stylesheet and the twelve `assets/js/`
 script tags in `index.html` makes that deterministic instead — **bump it in `index.html` and nowhere
 else.** `chatbot.js` reads the tag off its own `<script src>` and forwards it to the
-`aimeer-profile.json` fetch, so there is one value to edit and no drift. That forwarding
-matters: the profile is fetched at runtime and is not covered by the script tag, and a stale
-profile makes the JD matcher score against retired evidence — worse than stale code.
-(`aimeer-kb.txt` is read only by the Worker since the on-device tier was retired; see its
-edge cache below.)
+`aimeer-profile.json` and `aimeer-kb.txt` fetches and to Private mode's Worker URL, so there
+is one value to edit and no drift. That forwarding matters: the profile is fetched at runtime
+and is not covered by the script tag, and a stale profile makes the JD matcher score against
+retired evidence — worse than stale code. (The browser reads `aimeer-kb.txt` only in Private
+mode; the Worker reads its own edge-cached copy, below.) The vendored libraries under
+`assets/vendor/` are pinned by path, never by `?v=`.
 
 `verify_recruiter_ui.ps1` fails if the tags disagree with each other or if any CSS/JS
 asset lacks one, and names the offending file. While iterating locally, tick
@@ -90,29 +91,33 @@ asset lacks one, and names the offending file. While iterating locally, tick
 | `assets/js/jd-extractor.js` | Recruiter JD matcher: local PDF/DOCX/paste text extraction and normalization |
 | `assets/js/jd-matcher.js` | Recruiter JD matcher: deterministic keyword-based scoring against the published profile |
 | `assets/js/jd-reasoning.js` | Recruiter JD matcher: builds the cloud scoring request (and `buildDecisionInput`, the wider registry a `jd-decide` response is checked against), re-validates the response the Worker relays (must stay in lockstep with the Worker's validator), merges it with the deterministic result (clamp band, fit band, report sections) |
-| `assets/js/chatbot.js` | AIMeer, the two-tier chatbot (instant answers + the cloud Worker with Clef triage), plus the recruiter JD match report UI, its drop zone, and its `jd-decide` → `jd-scoring` request flow |
+| `assets/js/chatbot.js` | AIMeer, the two-tier chatbot (instant answers + the cloud Worker with Clef triage) and its opt-in Private mode (switch, consent box, the on-device Worker's lifecycle), plus the recruiter JD match report UI, its drop zone, and its `jd-decide` → `jd-scoring` request flow |
+| `assets/js/aimeer-local-core.js` | Private mode, pure half: the WebGPU gate, KB chunking and BM25 retrieval, the salary/handoff triage, the prompt, and `cleanReply`'s grounding filter. UMD, tested by plain `require()` |
+| `assets/js/aimeer-local-worker.js` | Private mode, the model runner: a module Worker that `import()`s the vendored Transformers.js and runs LFM2.5-350M on WebGPU. Loaded by `new Worker()`, not a script tag |
 | `assets/js/route-globe-core.js` | Route globe, pure half: sphere geometry, camera keyframes/scrub, coastline decoding, capability gate, load state machine. UMD, tested by plain `require()` |
 | `assets/js/route-globe.js` | Route globe, DOM/WebGL adapter: reads the stops `<ol>`, gates, lazy-imports vendored three.js, owns the canvas/scroll/drag/theme wiring |
 | `assets/js/ir-core.js` | RetailAIM IR showcase, pure half: the survey pack's sample sizes and sizing rules. UMD, tested by plain `require()` |
-| `assets/js/ir-showcase.js` | RetailAIM IR showcase, DOM half: the IR Ops survey pack floating over the `#work` screens (three.js, lazy, same import URL as the globe), where it lives, and the step pills |
+| `assets/js/ir-showcase.js` | RetailAIM IR showcase, DOM half: the IR Ops survey pack on its measuring bench in `#ir-survey` (three.js, lazy, same import URL as the globe; the width/height fields) and the step pills |
 | `assets/js/motion.js` | GSAP choreography: split-line headings, count-ups, stacked IR chapters, velocity marquees, magnetic buttons, custom cursor, nav hide/current dot, the MYT clock, and the JD report settling (on `aimeer:jd-report`) |
 | `assets/data/route-globe-coastlines.json` | Generated country outlines for the globe (never hand-edited — see Regenerating the globe coastlines) |
-| `assets/vendor/` | Self-hosted libraries, pins and hashes recorded in `assets/vendor/README.md`: `pdfjs/` 4.10.38 and `jszip/` 3.10.1 (lazily `import()`ed by `jd-extractor.js` for PDF/DOCX), `gsap/` 3.15.0 (core, ScrollTrigger, SplitText — classic `defer` tags), `three/` r185 (`three.module.min.js` + `three.core.min.js`, kept side by side) and its `lines/` fat-line addon, whose bare `three` import the `<head>` import map resolves |
-| `assets/data/aimeer-kb.txt` | Chatbot knowledge base — read by the Worker (the chat prompt and Clef's triage state); the browser's instant answers are the `TOPICS` table |
+| `assets/vendor/` | Self-hosted libraries, pins and hashes recorded in `assets/vendor/README.md`: `pdfjs/` 4.10.38 and `jszip/` 3.10.1 (lazily `import()`ed by `jd-extractor.js` for PDF/DOCX), `gsap/` 3.15.0 (core, ScrollTrigger, SplitText — classic `defer` tags), `three/` r185 (`three.module.min.js` + `three.core.min.js`, kept side by side) and its `lines/` fat-line addon, whose bare `three` import the `<head>` import map resolves, and `transformers/` (Transformers.js 4.3.0 + the matching ONNX Runtime asyncify `.mjs`/`.wasm`, for Private mode) |
+| `assets/data/aimeer-kb.txt` | Chatbot knowledge base — read by the Worker (the chat prompt and Clef's triage state) and by Private mode (chunked and retrieved in the browser); the browser's instant answers are the `TOPICS` table |
 | `assets/data/aimeer-profile.json` | Recruiter evidence registry (`recruiterEvidence`, `privacyExclusions`) — the only allowlist of evidence the JD matcher's cloud reasoning may cite |
 | `cloud/aimeer-worker.js` | Cloudflare Worker relay — chat (Clef-triaged)/summary/jd-explanation/jd-reasoning/jd-scoring/jd-decide/clef-probe/text-probe/version modes (deployed manually, see below) |
 | `docs/superpowers/specs/2026-07-24-portfolio-site-design.md` | Design spec + canonical project/URL/status registry |
 | `docs/superpowers/specs/2026-07-30-recruiter-copilot-ai-scoring-design.md` | Design of record for AI-led JD scoring — two-call split, clamp band, privacy screen, model-output tolerance, Worker diagnosability. Read before touching either JD validator |
 | `docs/superpowers/specs/2026-10-02-aimeer-jev-decisions-design.md` | Design of record for retiring the on-device tier and adding a decision model (chat triage, `jd-decide`; designed for Jev, now Clef-flash — see its 2026-10-03 note), the rollout order, the redesign brief for the chat/JD UI, and the roadmap |
+| `docs/superpowers/specs/2026-10-03-aimeer-private-mode-design.md` | Design of record for Private mode: why WebGPU and not WebGL or WASM, why LFM2.5-350M, retrieval and triage, the grounding filter, the consent and privacy rules, the fallback order, and the measured answer quality |
 | `docs/resume-source/resume.html` | Source for the downloadable résumé PDF |
-| `tests/*.test.js` | `node --test` suite — run before anything ships (see Running locally); `ir-core.test.js` covers the pack's sizing rules |
+| `tests/*.test.js` | `node --test` suite — run before anything ships (see Running locally); `ir-core.test.js` covers the pack's sizing rules, `aimeer-local-core.test.js` the Private-mode gate, retrieval, triage and grounding |
 | `tools/` | Five extra harnesses `tests/*.test.js` does not cover (JD extractor/matcher/cloud-payload contracts, recruiter profile/KB drift, recruiter UI exact copy) — see Running locally |
 | `docs/mockups/*.html` | The standalone proposals a spec was approved from (they pull Fraunces from Google Fonts for convenience — the live site never does). Implementation plans and per-task subagent reports are not kept once their work ships; the specs are the record |
 
 Scripts are plain IIFEs loaded with `defer` in the order `verify_recruiter_ui.ps1` asserts:
 `i18n.js` → `main.js` → `jd-extractor.js` → `jd-matcher.js` →
-`jd-reasoning.js` → `chatbot.js`, then `route-globe-core.js` → `route-globe.js`, then the three
-vendored GSAP files → `ir-core.js` → `ir-showcase.js` → `motion.js` (the verify script's order
+`jd-reasoning.js` → `chatbot.js`, then `route-globe-core.js` → `route-globe.js` →
+`aimeer-local-core.js` (after `chatbot.js` on purpose: `chatbot.js` reads `window.AIMEER_LOCAL`
+lazily and re-renders the switch on `DOMContentLoaded`), then the three vendored GSAP files → `ir-core.js` → `ir-showcase.js` → `motion.js` (the verify script's order
 regex stops at `chatbot.js`, so new tags go after it; `tests/route-globe-section.test.js` pins
 `chatbot.js` → `route-globe-core.js` → `route-globe.js` as adjacent). An inline script in `<head>` applies the saved
 theme/language to `documentElement.dataset` before first paint to avoid a flash — it runs
@@ -148,12 +153,12 @@ element and snapshots its `innerHTML` into an in-memory `EN` dict; switching to 
   `data-i18n-aria="key"`; `setLang()` writes that key's text, tags stripped, into `aria-label`.
   `setLang()` also dispatches `site:lang` on `document` after every swap.
 
-### AIMeer chatbot (two tiers and a decision layer)
+### AIMeer chatbot (two tiers, a decision layer, and opt-in Private mode)
 
 `chatbot.js` has two tiers and degrades gracefully:
 
 1. **Instant** — regex `TOPICS` table, zero download, works offline, and the fallback for
-   every cloud failure.
+   every AI failure.
 2. **Cloud** — POSTs to the Cloudflare Worker (`CLOUD_ENDPOINT`). The Worker first asks
    **Clef-flash** (Cloudflare's decision model on Workers AI, `@cf/cloudflare/clef-flash`) two
    typed questions about the message — its intent and whether the KB can answer it — then lets
@@ -163,12 +168,40 @@ element and snapshots its `innerHTML` into an in-memory `EN` dict; switching to 
    `action: "jd"` adds a one-time offer of the JD matcher. A Worker with no `action` reads as
    `"answer"`.
 
-The on-device tier (WebLLM, Llama 3.2 1B via WebGPU) was **retired in 2026-10**: it answered
-poorly even on high-end GPUs and cost every capable visitor a ≈ 0.9 GB download.
-`aimeer-device.js`, the model switcher and the download UI went with it. The site now has **no
-external network dependency** besides the Worker — everything else, fonts included, is
-self-hosted so the page renders offline. `aiState` is `"cloud"` when `CLOUD_ENDPOINT` is set
-and `"off"` otherwise; there is no download state machine left.
+`aiState` is `"cloud"` when `CLOUD_ENDPOINT` is set and `"off"` otherwise.
+
+**Private mode** (2026-10-03) runs **LFM2.5-350M** (`onnx-community/LFM2.5-350M-ONNX`) in the
+visitor's browser through the vendored Transformers.js, in a module Worker
+(`aimeer-local-worker.js`). It is opt-in: the "Private" switch in the chat head shows the
+download size for this GPU (q4f16 ≈ 259 MB with `shader-f16`, q4 ≈ 297 MB without) and nothing
+loads before the visitor accepts. Rules that are easy to break:
+
+- **While it is on, chat never calls the Worker** — not for answers, triage or the handoff
+  summary (`mechanicalSummary` instead). Before the model is ready, questions get instant
+  answers, not the cloud. `tests/chat-panel.test.js` asserts zero relay requests.
+- **WebGPU only.** No browser LLM runtime runs on WebGL, and the 4-bit builds'
+  `GatherBlockQuantized` embedding has no kernel in ONNX Runtime's WASM CPU build (tried
+  2026-10-03: session creation fails). The only CPU-compatible small build is LiquidAI's q4f32 at
+  ≈ 480 MB. `evaluateGate` refuses a browser without WebGPU and says why.
+- **The model never sees the whole KB.** `aimeer-local-core.js` chunks `aimeer-kb.txt` per
+  line, BM25-retrieves four chunks (plus the Identity line) and triages first: a
+  `SALARY_KEYS` match is the curated salary answer, and a question nothing in the KB scores
+  for (`MIN_SCORE`) is the handoff, both without generating. That mirrors Clef.
+- **`cleanReply(text, facts)` is the safety net, so always pass the facts.** It drops any
+  sentence that names something the facts don't (capitalised words, anything with a digit or
+  a dot: "GraphQL", "liveaim.com"), any reply that talks about its prompt or quotes money, and
+  keeps at most two sentences. The prompt layout was chosen by measurement (see the spec);
+  don't "improve" it without re-running the fifteen-question check there.
+- Once a load has succeeded (`aimeer-local-ready` in `localStorage`), the cached model also
+  answers when the **cloud** fails, before the instant tier does.
+- The model answers in English only (Malay is not among LFM2.5's languages); a Bahasa Melayu
+  visitor gets one note saying so. The JD matcher is unchanged and cloud-only.
+
+The first on-device tier (WebLLM, Llama 3.2 1B, the whole KB in its prompt, ≈ 0.9 GB, auto-
+downloaded) was retired the day before for poor answers; `aimeer-device.js` and its switcher
+are not coming back. The site's only external network dependencies are the Worker and, after
+a visitor opts in, Hugging Face for the model weights (kept in the Cache API after that);
+everything else, fonts and runtimes included, is self-hosted.
 
 Clef is a decision model, not a text model: it can only pick from the labels it is offered and
 reports calibrated probabilities. It speaks the same API as TypeSafe's **Jev**, which it
@@ -188,8 +221,9 @@ runtime returns (`response`, Chat Completions `choices`, or Responses `output`) 
 the reasoning. `{"mode":"text-probe"}` reports the model, the response's top-level keys and
 whether the effort field was accepted; `{"mode":"clef-probe"}` does the same for Clef.
 
-The Worker assembles its system prompt from `PERSONA_HEAD` plus `aimeer-kb.txt` (the browser's
-copy, `PROMPT_HEAD`, went with the on-device tier). It does so server-side on purpose — that's what stops the endpoint being used as a generic LLM proxy;
+The Worker assembles its system prompt from `PERSONA_HEAD` plus `aimeer-kb.txt` (Private mode's
+`PERSONA` in `aimeer-local-core.js` is a shorter cousin for the small model; keep their rules in
+step). It does so server-side on purpose — that's what stops the endpoint being used as a generic LLM proxy;
 don't let client-supplied `system` messages through.
 
 Unanswered questions **and** any salary-matching question (`SALARY_KEYS`) trigger the handoff
@@ -286,7 +320,7 @@ The `.reveal` fade stays plain CSS (`main.js` adds `.in`); GSAP does not own it.
 
 `#work` sits between the stats strip and `#route`. Its three `.ir-chapter`s are sticky and
 stack only under `(min-width: 1101px) and (min-height: 820px)` — the same query in `style.css`,
-in `motion.js`'s `gsap.matchMedia()` and in `ir-showcase.js`; change all three. The covered chapter darkens through its
+and in `motion.js`'s `gsap.matchMedia()`; change both. The covered chapter darkens through its
 `::after` overlay (`--dim`), not `opacity`, so a chapter never shows through the one above it.
 
 The chapters show real **IR Workforce** screens, supplied by the owner and captured in the
@@ -300,16 +334,18 @@ removed and the logo tile blurred before it lands here. The project card's image
 `assets/img/projects/retailaim-ir.jpg` is the dark dashboard at 1000×625; the card links to
 `#work`, not to the live app.
 
-The one live piece is the product-survey pack from IR Ops. Its home (and its no-JS place) is
-`#ir-pack-slot` on the first screen; under the stacking query `ir-showcase.js` (`STACK_QUERY`,
-a third copy of that query) moves `#ir-pack` into `#ir-pack-rail`, a full-height overlay on
-`.ir-chapters` where the pack is sticky, so each screen slides in under it and the pack turns on
-every chapter change. Its offsets come from the first chapter's `.ir-shots`, clamped to the
-shortest chapter, and the browser chapters' `.ir-shots` keep one aspect ratio so the corner matches (the phone row in `#ir-survey` is shorter).
-Below 641px it sits under the screen in a row instead. It loads the vendored three.js through
-`import()` of the **same absolute URL** `route-globe.js` uses, so the module cache shares one
-copy. Off the happy path (save-data, no WebGL2, a failed import) the CSS 3D box stays;
-`#cap-stage`'s `data-pack` names the reason, the same convention as `section.dataset.globe`.
+The one live piece is the product-survey pack from IR Ops, on a measuring bench (`#ir-pack`,
+`.ir-bench`) under the phone row in `#ir-survey`, where the copy describes it. It works like the
+real measure screen: `#cap-w` / `#cap-h` re-size the pack through `ir-core.js`'s `packSize`
+(decimal comma accepted, 1–60 cm; a bad field is marked `aria-invalid` and the last good size
+stays), and "Next pack" cycles `SAMPLE_PACKS` into the fields. It used to float over chapters
+01–03 on a sticky rail; that landed in the gutter over the headings, so it stays put now — don't
+lay it over the screens again. The phone row is kept shallow (`aspect-ratio: 2`) so chapter 04,
+bench included, still fits a stacked chapter at 1440×900. The pack lazy-loads the vendored
+three.js when `#ir-survey` nears the viewport, through `import()` of the **same absolute URL**
+`route-globe.js` uses, so the module cache shares one copy. Off the happy path (save-data, no
+WebGL2, a failed import) the CSS 3D box stays; `#cap-stage`'s `data-pack` names the reason, the
+same convention as `section.dataset.globe`.
 
 ## Content rules
 
