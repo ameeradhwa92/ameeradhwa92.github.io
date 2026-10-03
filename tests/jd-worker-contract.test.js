@@ -2038,7 +2038,7 @@ test('jd-decide relays Clef decisions in the shape the browser validator already
   const request = buildDecideRequest();
   const result = await callWorker(request, { freshWorker: true, aiImpl: decideAi() });
   assert.equal(result.status, 200, JSON.stringify(result.json));
-  assert.equal(result.json.revision, '2026-10-03-clef-1');
+  assert.equal(result.json.revision, '2026-10-03-clef-2');
 
   const reasoning = JSON.parse(result.json.reasoning);
   assert.equal(reasoning.engine, 'clef');
@@ -2131,6 +2131,29 @@ test('jd-decide never relays a narrative that looks like a schema, markup or its
   const ms = await callWorker(buildDecideRequest('ms'), { freshWorker: true, aiImpl: decideAi({ narrative: '' }) });
   assert.match(JSON.parse(ms.json.reasoning).narrative, /^Padanan baik\. /);
   assert.match(JSON.parse(ms.json.reasoning).requirements[0].verificationQuestion, /Ameer/);
+});
+
+test('jd-decide trims an over-long narrative at a sentence, never mid-word', async () => {
+  /* The live gpt-oss narrative ran past 600 characters and a hard cut ended it "...Overa". */
+  const sentence = 'Ameer has delivered production Azure work with ASP.NET Core and SQL Server across several clients. ';
+  const longNarrative = sentence.repeat(8) + 'Overall he is a good fit.';
+  const result = await callWorker(buildDecideRequest(), { freshWorker: true, aiImpl: decideAi({ narrative: longNarrative }) });
+  const narrative = JSON.parse(result.json.reasoning).narrative;
+  assert.ok(narrative.length <= 600, `got ${narrative.length}`);
+  assert.ok(narrative.length >= 400, 'keeps every whole sentence that fits');
+  assert.match(narrative, /clients\.$/);
+
+  /* One run-on sentence longer than the limit: cut at a word, marked with an ellipsis. */
+  const runOn = 'Ameer brings ' + 'production Azure and ASP.NET Core delivery '.repeat(20) + 'to the role.';
+  const cut = JSON.parse((await callWorker(buildDecideRequest(), { freshWorker: true, aiImpl: decideAi({ narrative: runOn }) })).json.reasoning).narrative;
+  assert.ok(cut.length <= 600, `got ${cut.length}`);
+  assert.match(cut, /[a-z]…$/);
+  assert.match(cut, /(?:production|Azure|and|ASP\.NET|Core|delivery)…$/, 'the cut lands on a whole word');
+
+  /* Short narratives pass through untouched. */
+  const short = 'Ameer brings adjacent Azure delivery to this role, with one area to confirm.';
+  const kept = JSON.parse((await callWorker(buildDecideRequest(), { freshWorker: true, aiImpl: decideAi({ narrative: short }) })).json.reasoning).narrative;
+  assert.equal(kept, short);
 });
 
 test('jd-decide maps the overall rubric onto the fit bands, and falls back to the decisions without it', async () => {
@@ -2283,7 +2306,7 @@ test('clef-probe reports which model id answered, and the revision', async () =>
     freshWorker: true,
     aiImpl: (model) => ({ answers: { urgent: { type: 'noul', noul: 0.81 } } })
   });
-  assert.deepEqual(ok.json, { revision: '2026-10-03-clef-1', ok: true, model: '@cf/cloudflare/clef-flash', reason: '', urgent: 0.81 });
+  assert.deepEqual(ok.json, { revision: '2026-10-03-clef-2', ok: true, model: '@cf/cloudflare/clef-flash', reason: '', urgent: 0.81 });
 
   const down = await callWorker({ mode: 'clef-probe' }, {
     freshWorker: true,
@@ -2386,7 +2409,7 @@ test('text-probe reports the model, the response shape and the fixed reply, neve
   });
   assert.equal(ok.status, 200);
   assert.deepEqual(ok.json, {
-    revision: '2026-10-03-clef-1',
+    revision: '2026-10-03-clef-2',
     ok: true,
     model: '@cf/openai/gpt-oss-20b',
     effort: 'low',

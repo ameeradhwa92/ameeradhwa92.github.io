@@ -57,7 +57,7 @@ curl -s -X POST https://aimeer-ai.<your-subdomain>.workers.dev/ \
   -H 'Content-Type: application/json' \
   -H 'Origin: https://ameeradhwa92.github.io' \
   -d '{"mode":"version"}'
-# {"revision":"2026-10-03-clef-1","aiBinding":true}
+# {"revision":"2026-10-03-clef-2","aiBinding":true}
 ```
 
 If `revision` does not match the constant in the file you just pasted, the deploy
@@ -74,13 +74,13 @@ curl -s -X POST https://aimeer-ai.<your-subdomain>.workers.dev/ \
   -H 'Content-Type: application/json' \
   -H 'Origin: https://ameeradhwa92.github.io' \
   -d '{"mode":"clef-probe"}'
-# {"revision":"2026-10-03-clef-1","ok":true,"model":"@cf/cloudflare/clef-flash","reason":"","urgent":0.93}
+# {"revision":"2026-10-03-clef-2","ok":true,"model":"@cf/cloudflare/clef-flash","reason":"","urgent":0.93}
 
 curl -s -X POST https://aimeer-ai.<your-subdomain>.workers.dev/ \
   -H 'Content-Type: application/json' \
   -H 'Origin: https://ameeradhwa92.github.io' \
   -d '{"mode":"text-probe"}'
-# {"revision":"2026-10-03-clef-1","ok":true,"model":"@cf/openai/gpt-oss-20b","effort":"low","shape":["id","choices","usage"],"reply":"ready","reason":""}
+# {"revision":"2026-10-03-clef-2","ok":true,"model":"@cf/openai/gpt-oss-20b","effort":"low","shape":["id","choices","usage"],"reply":"ready","reason":""}
 ```
 
 `clef-probe` with `ok:false` and `reason: clef-run-failed:...` means Clef is not

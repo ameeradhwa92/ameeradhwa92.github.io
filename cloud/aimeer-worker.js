@@ -23,7 +23,7 @@
    deployed by hand, and a paste that silently does not take effect looks exactly like a fix that
    did not work. That cost several rounds of debugging: the same failures kept coming back because
    the revision under test was never the revision deployed. */
-const WORKER_REVISION = "2026-10-03-clef-1";
+const WORKER_REVISION = "2026-10-03-clef-2";
 
 const SITE = "https://ameeradhwa92.github.io";
 const KB_URL = SITE + "/assets/data/aimeer-kb.txt";
@@ -724,7 +724,7 @@ function validateJdScoringOverall(rawOutput) {
     overall: {
       score: overall.score,
       fitBand,
-      narrative: clipText(overall.narrative, JD_REASONING_TEXT_LIMITS.narrative)
+      narrative: clipToSentence(overall.narrative, JD_REASONING_TEXT_LIMITS.narrative)
     }
   };
 }
@@ -1217,7 +1217,7 @@ function cleanDecideNarrative(raw) {
   const text = normalizeText(String(raw || "").replace(/^["'\s]+|["'\s]+$/g, ""));
   if (!text || text.length < 40) return "";
   if (HTML_MARKUP_PATTERN.test(text) || /^[{[]/.test(text) || text.includes("```") || /\d\s*%/.test(text)) return "";
-  return clipText(text, JD_DECIDE_NARRATIVE_MAX);
+  return clipToSentence(text, JD_DECIDE_NARRATIVE_MAX);
 }
 
 function templatedDecideNarrative(language, input, decided) {
@@ -1377,6 +1377,24 @@ function normalizeText(value) {
 
 function clipText(value, maxChars) {
   return normalizeText(value).slice(0, maxChars);
+}
+
+/* For the narratives a visitor reads as a paragraph. gpt-oss writes past the requested length more
+   readily than Llama did, and a hard clipText cut left the report's headline ending mid-word
+   ("…Overa"). Over the limit, this keeps every whole sentence that fits; if the first sentence
+   alone is too long, it cuts at the last word boundary and adds an ellipsis. Never longer than
+   maxChars, so the browser's own clip at the same limit stays a no-op. */
+function clipToSentence(value, maxChars) {
+  const text = normalizeText(value);
+  if (text.length <= maxChars) return text;
+  const head = text.slice(0, maxChars);
+  let end = -1;
+  const sentenceEnd = /[.!?](?=\s|$)/g;
+  let match;
+  while ((match = sentenceEnd.exec(head)) !== null) end = match.index + 1;
+  if (end >= Math.floor(maxChars * 0.4)) return head.slice(0, end);
+  const space = head.lastIndexOf(" ", maxChars - 1);
+  return (space > 0 ? head.slice(0, space) : head.slice(0, maxChars - 1)).replace(/[\s,;:–—-]+$/, "") + "…";
 }
 
 /* Enum-valued fields (matchLevel, confidence, fitBand) come from a language model, which
@@ -2093,7 +2111,7 @@ function validateJdReasoningModelOutput(rawOutput, input, options) {
     ok: true,
     parsed,
     reasoning: {
-      narrative: clipText(parsed.narrative, JD_REASONING_TEXT_LIMITS.narrative),
+      narrative: clipToSentence(parsed.narrative, JD_REASONING_TEXT_LIMITS.narrative),
       requirements
     }
   };
