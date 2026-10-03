@@ -116,6 +116,38 @@ loaded in 27 s and answered in about 150 s. That proves the GPU path end to end,
 nothing about real speed; a real integrated GPU is one to two orders of magnitude faster. On
 native CPU, answers took 1–5 s.
 
+## Motion (added 2026-10-03)
+
+The Private switch is the showcase. Its padlock rests **open**, as an invitation: it wiggles once
+when the panel first opens and peeks wider on hover. The motion has two beats, each tied to
+something that has just become true:
+
+1. **Consent closes the lock.** The moment the visitor accepts, nothing reaches the cloud and
+   `aria-checked` is true, so the picture has to agree: the shackle swings shut and drops in, the
+   body squashes and settles, and a ring pulses. The head takes an iris tint and the consent box
+   morphs into the download box, where a small CSS-3D "model chip" pops in, spinning, and fills
+   as bytes arrive.
+2. **Ready seals the chat.** The chip flies along the panel into the keyhole. The keyhole lights,
+   the icon nods in 3D, an iris wash spreads from the lock across the panel, and the status line
+   lands on "AI mode · on this device". The launcher badge swaps its spark for a lock.
+
+Smaller beats:
+- On-device thinking shows square "bits" blinking (opacity only), not the cloud's bounce.
+- A block caret runs while tokens stream.
+- A settled on-device answer carries a small lock in its corner.
+- Switching off unlocks the padlock.
+- A failure shakes the box while the lock stays closed.
+- An unsupported browser sees the shackle try to close and spring back.
+
+**Why CSS 3D, not three.js.** A three.js canvas in the chat would open a second GPU context next
+to the WebGPU model, parse ≈ 700 KB of script while the model starts, and need its own fallback,
+all for a 30 px element. A `preserve-3d` cube runs on the compositor and freezes cleanly.
+
+**Ownership.** `style.css` owns every end state. `chatbot.js` toggles classes and fires
+`aimeer:private` before it touches the DOM. `motion.js` choreographs after its reduced-motion
+bail-out. With no GSAP, or with reduced motion, the end states are identical (verified in headless
+Chromium with a stubbed WebGPU adapter and model, at 375 and 1440 px, dark and light).
+
 ## Verification
 
 - `tests/aimeer-local-core.test.js`: gate matrix, adapter probe, chunking of the real KB,

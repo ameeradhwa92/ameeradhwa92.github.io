@@ -104,4 +104,5 @@ test('reduced motion freezes the new motion, and motion.js bails out before hidi
   const bail = motion.indexOf('if (!gsap || !ScrollTrigger || reduced) return;');
   assert.ok(bail > -1, 'the early return exists');
   assert.ok(bail < motion.indexOf('autoAlpha: 0'), 'nothing is hidden before the bail-out');
+  assert.ok(motion.indexOf('"aimeer:private"') > bail, 'the Private-mode lock choreography sits after the bail-out');
 });

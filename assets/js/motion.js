@@ -228,6 +228,203 @@
     }
   });
 
+  /* ================= Private mode: the lock =================
+     chatbot.js fires aimeer:private on every visible change of the Private switch or its box,
+     BEFORE it touches the DOM: {from: {sw, view}, to: {sw, view}}, sw being off | on | loading |
+     ready. So this handler can still measure the box and the download chip it is about to lose;
+     it snapshots synchronously and animates in a microtask, after the new DOM is in and before
+     the browser paints. style.css owns every end state (the shackle's pose is two registered
+     custom properties on the switch), so a closed panel, a missing GSAP or reduced motion all
+     land on the same picture. Two beats: consent closes the lock, ready seals the chat. */
+  (function privateMotion() {
+    var panel = document.getElementById("chat-panel");
+    var sw = document.getElementById("chat-private");
+    var box = document.getElementById("chat-private-box");
+    if (!panel || !sw || !box) return;
+    var icon = sw.querySelector(".chat-private-icon");
+    var shackle = sw.querySelector(".lk-shackle");
+    var body = sw.querySelector(".lk-body");
+    var key = sw.querySelector(".lk-key");
+    var ring = sw.querySelector(".lk-ring");
+    var statusText = panel.querySelector(".chat-status-text");
+    var statusDot = panel.querySelector(".chat-status .dot");
+    if (!icon || !shackle || !body || !key || !ring) return;
+
+    var tl = null, made = [], safety = 0;
+    var SVG_PROPS = "transform,opacity,visibility";
+    function cleanup() {
+      var old = tl;
+      tl = null;
+      if (old) old.progress(1).kill();
+      clearTimeout(safety);
+      made.forEach(function (n) { if (n.parentNode) n.parentNode.removeChild(n); });
+      made = [];
+      sw.classList.remove("is-sealing");
+      /* the shackle is animated through inline custom properties; dropping them hands it back to CSS */
+      shackle.style.removeProperty("--lk-tilt");
+      shackle.style.removeProperty("--lk-lift");
+      gsap.set([body, key, ring], { clearProps: SVG_PROPS });
+      gsap.set([icon, box], { clearProps: "transform,opacity,visibility,height,overflow" });
+      if (statusText) gsap.set(statusText, { clearProps: "transform,opacity,visibility" });
+      if (statusDot) gsap.set(statusDot, { clearProps: "transform" });
+    }
+    function relTo(el) {
+      var r = el.getBoundingClientRect(), p = panel.getBoundingClientRect();
+      return { x: r.left - p.left - panel.clientLeft, y: r.top - p.top - panel.clientTop, w: r.width, h: r.height };
+    }
+    function ghostOf(height) {
+      var g = box.cloneNode(true);
+      ["id", "role", "aria-live"].forEach(function (a) { g.removeAttribute(a); });
+      g.setAttribute("aria-hidden", "true");
+      g.setAttribute("inert", "");
+      g.hidden = false;
+      g.classList.add("is-ghost");
+      g.style.height = height + "px";
+      return g;
+    }
+    function lockPose(tilt, lift) { return { "--lk-tilt": tilt + "deg", "--lk-lift": lift + "px" }; }
+    function ringPulse(at, to) {
+      tl.fromTo(ring, { scale: 0.5, autoAlpha: 0.9, transformOrigin: "50% 50%" },
+        { scale: to || 1.9, autoAlpha: 0, duration: 0.55, ease: "power2.out" }, at);
+    }
+
+    /* the hero moment: the shackle swings shut, drops in, the body takes the weight */
+    function closeLock() {
+      tl.fromTo(shackle, lockPose(-22, -2), { "--lk-tilt": "0deg", duration: 0.24, ease: "power2.in" }, 0)
+        .to(shackle, { "--lk-lift": "0.9px", duration: 0.12, ease: "power3.in" }, 0.2)
+        .to(body, { scaleY: 0.86, scaleX: 1.06, transformOrigin: "50% 100%", duration: 0.08, ease: "power2.out" }, 0.3)
+        .to(shackle, { "--lk-lift": "0px", duration: 0.53, ease: "elastic.out(1, 0.45)" }, 0.32)
+        .to(body, { scaleY: 1, scaleX: 1, duration: 0.5, ease: "elastic.out(1, 0.4)" }, 0.38);
+      ringPulse(0.32);
+    }
+    function openLock(at) {
+      tl.fromTo(shackle, lockPose(0, 0), { "--lk-lift": "-2.6px", duration: 0.16, ease: "power2.out" }, at)
+        .to(shackle, { "--lk-tilt": "-22deg", duration: 0.42, ease: "back.out(2.2)" }, at + 0.1)
+        .to(shackle, { "--lk-lift": "-2px", duration: 0.3, ease: "power2.out" }, at + 0.2);
+    }
+    /* the seal: the keyhole takes the chip, lights, nods, and an iris wash crosses the panel */
+    function seal(at) {
+      tl.add(function () { sw.classList.remove("is-sealing"); }, at)
+        .fromTo(key, { scale: 0, transformOrigin: "50% 50%" }, { scale: 1, duration: 0.4, ease: "back.out(3)" }, at)
+        .to(shackle, { keyframes: { "--lk-lift": ["0px", "0.7px", "0px"] }, duration: 0.3, ease: "power2.out" }, at)
+        .to(icon, { keyframes: { rotationX: [0, 22, 0] }, transformPerspective: 60, duration: 0.36, ease: "power2.inOut" }, at);
+      ringPulse(at, 2.1);
+      var c = relTo(key), p = panel.getBoundingClientRect();
+      var wash = document.createElement("div");
+      wash.className = "chat-seal";
+      wash.setAttribute("aria-hidden", "true");
+      wash.style.left = (c.x + c.w / 2) + "px";
+      wash.style.top = (c.y + c.h / 2) + "px";
+      panel.appendChild(wash);
+      made.push(wash);
+      var reach = Math.ceil(2 * Math.sqrt(p.width * p.width + p.height * p.height) / 120);
+      tl.fromTo(wash, { scale: 0.1, autoAlpha: 0.95 }, { scale: reach, autoAlpha: 0, duration: 0.9, ease: "power2.out" }, at + 0.04);
+      if (statusText) tl.from(statusText, { yPercent: 60, autoAlpha: 0, duration: 0.4, ease: "power3.out" }, at + 0.07);
+      if (statusDot) tl.from(statusDot, { scale: 1.7, duration: 0.45, ease: "back.out(2)" }, at + 0.07);
+    }
+
+    document.addEventListener("aimeer:private", function (e) {
+      var d = e.detail || {}, from = d.from || {}, to = d.to || {};
+      var closing = from.sw === "off" && to.sw !== "off";
+      var opening = from.sw !== "off" && to.sw === "off";
+      var toReady = to.sw === "ready" && from.sw !== "ready";
+      /* on → loading follows consent within a microtask and changes nothing worth a beat; letting
+         it through would cut the closing lock off mid-swing */
+      if (!closing && !opening && !toReady && from.view === to.view) return;
+      cleanup();
+      if (!panel.classList.contains("open")) return;
+      /* synchronous snapshot: the DOM is still the old one */
+      var h0 = box.hidden ? 0 : box.offsetHeight;
+      var leaving = from.view && from.view !== to.view ? ghostOf(h0) : null;
+      var chip = box.querySelector(".chat-private-chip");
+      var flyer = null, flyFrom = null, angle = -35;
+      if (to.sw === "ready" && from.view === "progress" && chip) {
+        flyFrom = relTo(chip);
+        flyer = chip.cloneNode(true);
+        var cube = chip.querySelector(".chat-private-cube");
+        var anim = cube && cube.getAnimations ? cube.getAnimations()[0] : null;
+        if (anim && anim.currentTime != null) angle = -35 + (anim.currentTime % 7000) / 7000 * 360;
+      }
+      Promise.resolve().then(function () {
+        tl = gsap.timeline({ onComplete: cleanup });
+        safety = setTimeout(cleanup, 2600);
+        /* the box: a leaving view collapses as a ghost, a new one grows in */
+        if (leaving && !to.view) {
+          box.parentNode.insertBefore(leaving, box.nextSibling);
+          made.push(leaving);
+          var inner = leaving.querySelector(".chat-private-chip");
+          if (inner && opening) tl.to(inner, { scale: 0, rotationY: 90, duration: 0.25, ease: "power2.in" }, 0);
+          if (inner && flyer) gsap.set(inner, { autoAlpha: 0 });
+          tl.to(leaving, { height: 0, autoAlpha: 0, paddingTop: 0, paddingBottom: 0, duration: 0.36, ease: "power3.inOut" }, 0.05);
+        }
+        if (to.view && to.view !== from.view) {
+          var h1 = box.offsetHeight;
+          tl.fromTo(box, { height: h0, autoAlpha: h0 ? 1 : 0, overflow: "hidden" },
+            { height: h1, autoAlpha: 1, duration: h0 ? 0.35 : 0.42, ease: h0 ? "power3.inOut" : "power3.out" }, 0);
+          /* two from()s on one node would record each other's start as their end, so the chip
+             has its own fromTo and stays out of the stagger */
+          var newChip = to.view === "progress" ? box.querySelector(".chat-private-chip") : null;
+          var rows = Array.prototype.filter.call(box.children, function (n) { return n !== newChip; });
+          tl.fromTo(rows, { y: 6, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.3, ease: "power2.out", stagger: 0.05, clearProps: "transform,opacity,visibility" }, 0.08);
+          if (newChip) tl.fromTo(newChip, { scale: 0, rotationY: -140, autoAlpha: 0 },
+            { scale: 1, rotationY: 0, autoAlpha: 1, duration: 0.6, ease: "back.out(1.7)", clearProps: "transform,opacity,visibility" }, 0.28);
+          if (to.view === "failed") tl.to(box, { keyframes: { x: [0, -5, 4, -2, 0] }, duration: 0.42, ease: "power2.out" }, 0.1);
+          if (to.view === "unsupported") {
+            /* it tries to close, then springs back open: this browser cannot keep it */
+            tl.fromTo(shackle, lockPose(-22, -2), { "--lk-tilt": "-6deg", duration: 0.14, ease: "power2.in" }, 0)
+              .to(shackle, { "--lk-tilt": "-22deg", duration: 0.5, ease: "elastic.out(1, 0.35)" }, 0.14)
+              .to(body, { keyframes: { x: [0, -1.4, 1.2, -0.6, 0] }, duration: 0.38 }, 0.12);
+          }
+          if (to.view === "offer") tl.to(shackle, { keyframes: { "--lk-lift": ["-2px", "-2.8px", "-2px"] }, duration: 0.5, ease: "sine.inOut" }, 0);
+        }
+
+        if (closing) closeLock();
+        if (opening) openLock(0);
+
+        if (toReady) {
+          if (flyer && flyFrom) {
+            /* the chip flies an arc into the keyhole, shrinking and turning to face it */
+            sw.classList.add("is-sealing");
+            flyer.classList.add("is-flying");
+            flyer.setAttribute("aria-hidden", "true");
+            flyer.style.left = flyFrom.x + "px";
+            flyer.style.top = flyFrom.y + "px";
+            panel.appendChild(flyer);
+            made.push(flyer);
+            var k = relTo(key);
+            var dx = k.x + k.w / 2 - (flyFrom.x + flyFrom.w / 2), dy = k.y + k.h / 2 - (flyFrom.y + flyFrom.h / 2);
+            var flyCube = flyer.querySelector(".chat-private-cube");
+            /* x leads and y lags, so it travels along the panel and then drops into the keyhole
+               instead of climbing across the avatar and title */
+            tl.to(flyer, { x: dx, duration: 0.62, ease: "power2.out" }, 0)
+              .to(flyer, { y: dy, duration: 0.62, ease: "power2.in" }, 0)
+              .to(flyer, { scale: 0.32, duration: 0.62, ease: "power2.in" }, 0)
+              .to(flyer, { autoAlpha: 0, duration: 0.12 }, 0.5);
+            if (flyCube) tl.fromTo(flyCube, { rotationX: -24, rotationY: angle }, { rotationX: 0, rotationY: Math.ceil(angle / 360 + 1) * 360, duration: 0.62, ease: "power2.inOut" }, 0);
+            seal(0.58);
+          } else {
+            seal(closing ? 0.45 : 0);
+          }
+        }
+      });
+    });
+
+    /* an invitation, once per page view: the open shackle wiggles when the panel first opens */
+    var invited = false;
+    new MutationObserver(function () {
+      if (invited || !panel.classList.contains("open")) return;
+      invited = true;
+      setTimeout(function () {
+        if (tl || sw.hidden || sw.getAttribute("aria-checked") === "true" || !box.hidden) return;
+        gsap.fromTo(shackle, lockPose(-22, -2), {
+          keyframes: { "--lk-tilt": ["-22deg", "-32deg", "-17deg", "-25deg", "-22deg"] },
+          duration: 0.9, ease: "sine.inOut",
+          onComplete: function () { shackle.style.removeProperty("--lk-tilt"); shackle.style.removeProperty("--lk-lift"); }
+        });
+      }, 900);
+    }).observe(panel, { attributes: true, attributeFilter: ["class"] });
+  })();
+
   /* ================= pointer-only niceties ================= */
   if (!fine) return;
 

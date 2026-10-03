@@ -1371,7 +1371,13 @@ body.modal-open { overflow: hidden; }
   display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 9px;
   border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--muted);
   font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase;
-  cursor: pointer; flex-shrink: 0; transition: color 0.2s, border-color 0.2s, background 0.2s;
+  cursor: pointer; flex-shrink: 0;
+  /* the shackle's pose: open by default, an invitation; closed whenever Private mode is on.
+     The two registered properties transition on their own, so the shackle swings even when
+     GSAP never loads; motion.js animates the same two properties inline and then lets go. */
+  --lk-lift: -2px; --lk-tilt: -22deg;
+  transition: color 0.2s, border-color 0.2s, background 0.2s,
+    --lk-tilt 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), --lk-lift 0.3s var(--ease-out);
 }
 .chat-private[hidden] { display: none; }
 .chat-private:hover { color: var(--accent); border-color: var(--accent-deep); }
@@ -1397,6 +1403,103 @@ body.modal-open { overflow: hidden; }
   display: block; height: 100%; width: var(--pct, 0%); border-radius: inherit;
   background: var(--accent); transition: width 0.3s var(--ease-out);
 }
+
+/* --- the padlock: one SVG, posed by two custom properties --- */
+@property --lk-tilt { syntax: "<angle>"; inherits: true; initial-value: -22deg; }
+@property --lk-lift { syntax: "<length>"; inherits: true; initial-value: -2px; }
+.chat-private-icon { display: inline-flex; overflow: visible; }
+.chat-private-lock { display: block; overflow: visible; }
+.lk-shackle {
+  transform-box: view-box; transform-origin: 8px 11px;
+  transform: translateY(var(--lk-lift)) rotate(var(--lk-tilt));
+}
+.lk-body { transform-box: fill-box; transform-origin: 50% 100%; }
+.lk-key { opacity: 0.4; transform-box: fill-box; transform-origin: 50% 50%; }
+.lk-ring { opacity: 0; transform-box: fill-box; transform-origin: 50% 50%; }
+.chat-private:not(.is-on):hover { --lk-tilt: -30deg; }
+.chat-panel:has(.chat-private-box.is-offer) .chat-private {
+  --lk-tilt: -30deg; color: var(--accent); border-color: var(--accent-deep);
+}
+.chat-private.is-on { --lk-lift: 0px; --lk-tilt: 0deg; }
+.chat-private.is-on:hover { --lk-lift: -0.8px; }   /* a hint that a click unlocks it again */
+.chat-private.is-loading .lk-key { animation: lk-key-pulse 1.2s ease-in-out infinite; }
+.chat-private.is-ready .lk-key { opacity: 1; }
+/* held for the moment the download chip flies into the keyhole (motion.js) */
+.chat-private.is-on.is-sealing { color: var(--accent); background: rgba(var(--accent-rgb), 0.12); border-color: var(--accent-deep); }
+@keyframes lk-key-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+
+/* the chat becomes a private chat: an iris wash on the head while Private mode is on */
+.chat-head { position: relative; isolation: isolate; }
+.chat-head::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0;
+  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.11), rgba(var(--accent-rgb), 0.02));
+  transition: opacity 0.6s var(--ease-out);
+}
+.chat-panel.is-private .chat-head::before { opacity: 1; }
+.chat-panel.is-private .chat-head { border-bottom-color: rgba(var(--accent-rgb), 0.4); }
+
+/* the launcher keeps saying so while the panel is closed */
+.chat-launcher-badge .badge-lock { display: none; }
+.chat-launcher.is-private .chat-launcher-badge .badge-spark { display: none; }
+.chat-launcher.is-private .chat-launcher-badge .badge-lock { display: inline-block; vertical-align: -0.5px; }
+
+/* --- the download: a glass model chip that fills as bytes arrive --- */
+.chat-private-box.is-progress { grid-template-columns: 30px minmax(0, 1fr); column-gap: 12px; align-items: center; }
+.chat-private-box.is-progress .chat-private-chip { grid-row: 1 / span 2; }
+.chat-private-box.is-progress .chat-private-actions { grid-column: 1 / -1; }
+.chat-private-chip { width: 30px; height: 30px; display: grid; place-items: center; perspective: 140px; }
+.chat-private-cube {
+  --s: 16px; position: relative; width: var(--s); height: var(--s); transform-style: preserve-3d;
+  transform: rotateX(-24deg) rotateY(-35deg); animation: chip-spin 7s linear infinite;
+}
+.chat-private-cube i {
+  position: absolute; inset: 0; overflow: hidden; border-radius: 2px;
+  border: 1px solid rgba(var(--accent-rgb), 0.6); background: rgba(var(--accent-rgb), 0.1);
+}
+.chat-private-cube i::before {
+  content: ""; position: absolute; inset: 0; background: rgba(var(--accent-rgb), 0.75);
+  transform-origin: 50% 100%; transform: scaleY(var(--p, 0)); transition: transform 0.4s var(--ease-out);
+}
+.chat-private-cube .f-top::before { transform: none; opacity: var(--p, 0); transition: opacity 0.4s var(--ease-out); }
+.chat-private-cube .f-front  { transform: translateZ(calc(var(--s) / 2)); }
+.chat-private-cube .f-back   { transform: rotateY(180deg) translateZ(calc(var(--s) / 2)); }
+.chat-private-cube .f-right  { transform: rotateY(90deg) translateZ(calc(var(--s) / 2)); }
+.chat-private-cube .f-left   { transform: rotateY(-90deg) translateZ(calc(var(--s) / 2)); }
+.chat-private-cube .f-top    { transform: rotateX(90deg) translateZ(calc(var(--s) / 2)); }
+.chat-private-cube .f-bottom { transform: rotateX(-90deg) translateZ(calc(var(--s) / 2)); }
+@keyframes chip-spin { to { transform: rotateX(-24deg) rotateY(325deg); } }
+/* nodes motion.js makes for the seal; they never outlive their timeline */
+.chat-private-chip.is-flying { position: absolute; margin: 0; z-index: 3; pointer-events: none; }
+.chat-private-chip.is-flying .chat-private-cube { animation: none; }
+.chat-private-box.is-ghost { pointer-events: none; overflow: hidden; }
+.chat-seal {
+  position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%;
+  pointer-events: none; z-index: 2;
+  background: radial-gradient(circle, rgba(var(--accent-rgb), 0.28) 0, rgba(var(--accent-rgb), 0.12) 40%, transparent 70%);
+}
+
+/* --- answers made on this device --- */
+.chat-msg-local.thinking .chat-typing i {
+  width: 5px; height: 5px; border-radius: 1.5px; background: var(--accent);
+  animation-name: chat-typing-bits; animation-duration: 0.9s;
+}
+@keyframes chat-typing-bits { 0%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+.chat-msg-local.is-streaming::after {
+  content: ""; display: inline-block; width: 0.45em; height: 1em; margin-left: 2px; vertical-align: -0.15em;
+  border-radius: 1px; background: var(--accent); animation: lk-caret 1s steps(1) infinite;
+}
+@keyframes lk-caret { 50% { opacity: 0; } }
+.chat-msg-local { position: relative; padding-right: 28px; }
+/* a settled on-device answer carries a small lock: where it was made, not what it says */
+.chat-msg-local:not(.thinking):not(.is-streaming)::after {
+  content: ""; position: absolute; right: 9px; bottom: 8px; width: 10px; height: 10px; background: var(--accent);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='10' rx='2'/%3E%3Cpath d='M8 11V8a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='11' width='14' height='10' rx='2'/%3E%3Cpath d='M8 11V8a4 4 0 0 1 8 0v3'/%3E%3C/svg%3E") center / contain no-repeat;
+  animation: lk-mark-in 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+@keyframes lk-mark-in { from { opacity: 0; transform: scale(0.3) rotate(-20deg); } }
+/* tokens land every frame; a smooth scroll restarting each time would only lag behind */
+.chat-log:has(.is-streaming) { scroll-behavior: auto; }
 
 .chat-log {
   flex: 1; overflow-y: auto; overscroll-behavior: contain;
@@ -1791,7 +1894,7 @@ body.modal-open { overflow: hidden; }
   .chat-head { gap: 6px; padding-left: 12px; padding-right: 12px; }
   .chat-chips, .chat-form, .chat-private-box { padding-left: 12px; padding-right: 12px; }
   /* the lock alone; the label is clipped, not removed, so the switch keeps its name */
-  .chat-private span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  .chat-private-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
   .chat-private { padding: 0 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1800,6 +1903,11 @@ body.modal-open { overflow: hidden; }
   .chat-launcher-ring, .chat-launcher::after,
   .chat-status-cloud .dot, .chat-status-local-loading .dot { animation: none; }
   .chat-private, .chat-private-bar span { transition: none; }
+  .chat-private-cube, .chat-private.is-loading .lk-key,
+  .chat-msg-local.thinking .chat-typing i, .chat-msg-local.is-streaming::after,
+  .chat-msg-local:not(.thinking):not(.is-streaming)::after { animation: none; }
+  .chat-msg-local.thinking .chat-typing i { opacity: 1; }
+  .chat-private-cube i::before, .chat-private-cube .f-top::before, .chat-head::before { transition: none; }
   .chat-jd-upload, .chat-jd-meter-bar, .chat-jd-file-btn, .chat-jd-action, .chat-jd-promo-action { transition: none; }
   .chat-jd-promo-action:active { transform: none; }
   .chat-jd-requirement-summary { scroll-behavior: auto; }

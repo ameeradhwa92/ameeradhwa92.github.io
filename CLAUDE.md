@@ -98,7 +98,7 @@ asset lacks one, and names the offending file. While iterating locally, tick
 | `assets/js/route-globe.js` | Route globe, DOM/WebGL adapter: reads the stops `<ol>`, gates, lazy-imports vendored three.js, owns the canvas/scroll/drag/theme wiring |
 | `assets/js/ir-core.js` | RetailAIM IR showcase, pure half: the survey pack's sample sizes and sizing rules. UMD, tested by plain `require()` |
 | `assets/js/ir-showcase.js` | RetailAIM IR showcase, DOM half: the IR Ops survey pack on its measuring bench in `#ir-survey` (three.js, lazy, same import URL as the globe; the width/height fields) and the step pills |
-| `assets/js/motion.js` | GSAP choreography: split-line headings, count-ups, stacked IR chapters, velocity marquees, magnetic buttons, custom cursor, nav hide/current dot, the MYT clock, and the JD report settling (on `aimeer:jd-report`) |
+| `assets/js/motion.js` | GSAP choreography: split-line headings, count-ups, stacked IR chapters, velocity marquees, magnetic buttons, custom cursor, nav hide/current dot, the MYT clock, the JD report settling (on `aimeer:jd-report`), and Private mode's lock and seal (on `aimeer:private`) |
 | `assets/data/route-globe-coastlines.json` | Generated country outlines for the globe (never hand-edited — see Regenerating the globe coastlines) |
 | `assets/vendor/` | Self-hosted libraries, pins and hashes recorded in `assets/vendor/README.md`: `pdfjs/` 4.10.38 and `jszip/` 3.10.1 (lazily `import()`ed by `jd-extractor.js` for PDF/DOCX), `gsap/` 3.15.0 (core, ScrollTrigger, SplitText — classic `defer` tags), `three/` r185 (`three.module.min.js` + `three.core.min.js`, kept side by side) and its `lines/` fat-line addon, whose bare `three` import the `<head>` import map resolves, and `transformers/` (Transformers.js 4.3.0 + the matching ONNX Runtime asyncify `.mjs`/`.wasm`, for Private mode) |
 | `assets/data/aimeer-kb.txt` | Chatbot knowledge base — read by the Worker (the chat prompt and Clef's triage state) and by Private mode (chunked and retrieved in the browser); the browser's instant answers are the `TOPICS` table |
@@ -196,6 +196,19 @@ loads before the visitor accepts. Rules that are easy to break:
   answers when the **cloud** fails, before the instant tier does.
 - The model answers in English only (Malay is not among LFM2.5's languages); a Bahasa Melayu
   visitor gets one note saying so. The JD matcher is unchanged and cloud-only.
+- **Motion has two beats: consent closes the lock, ready seals the chat.** The switch's padlock
+  rests open; its pose is two registered custom properties (`--lk-tilt`, `--lk-lift`) that
+  `.is-on` sets to closed, so the shackle swings with no GSAP at all. `renderPrivate()` fires
+  `aimeer:private` `{from: {sw, view}, to: {sw, view}}` **before** it touches the DOM (motion.js
+  snapshots the download chip and box it is about to lose), and only when that pair changes —
+  never on a progress tick or a language swap. Keep that order. motion.js also ignores an event
+  that changes nothing visible (on → loading follows consent within a microtask and would cut
+  the closing lock off mid-swing). The 3D is CSS (a `preserve-3d` model chip), not three.js: a
+  second GPU context would compete with the model.
+- **The progress view repaints in place** (`paintProgress`); rebuilding the box on each tick
+  restarts the chip's spin. **Streamed tokens paint at most once a frame and never after the
+  answer resolves** — a late frame would repaint the raw stream over `cleanReply`'s grounded
+  text. `tests/chat-panel.test.js` pins both.
 
 The first on-device tier (WebLLM, Llama 3.2 1B, the whole KB in its prompt, ≈ 0.9 GB, auto-
 downloaded) was retired the day before for poor answers; `aimeer-device.js` and its switcher

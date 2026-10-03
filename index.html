@@ -17,7 +17,7 @@
   <!-- ?v= is the cache-busting tag. Bump it on every deploy that changes CSS or
        JS; chatbot.js reads this same tag off its own src and forwards it to the
        knowledge base and profile fetches, so this is the only place to edit. -->
-  <link rel="stylesheet" href="assets/css/style.css?v=2026-10-03f">
+  <link rel="stylesheet" href="assets/css/style.css?v=2026-10-03g">
   <script>
     document.documentElement.classList.replace('no-js', 'js');
     /* apply saved theme/language before first paint to avoid flashes */
@@ -1155,7 +1155,7 @@
           aria-controls="chat-panel" aria-label="Chat with AIMeer, Ameer's AI twin / Sembang dengan AIMeer">
     <span class="chat-launcher-ring" aria-hidden="true"></span>
     <img src="assets/img/aimeer-avatar.jpg" alt="" width="320" height="320">
-    <span class="chat-launcher-badge" aria-hidden="true">✦&nbsp;AI</span>
+    <span class="chat-launcher-badge" aria-hidden="true"><span class="badge-spark">✦</span><svg class="badge-lock" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" focusable="false"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>&nbsp;AI</span>
   </button>
 
   <div class="chat-callout" id="chat-callout" hidden>
@@ -1176,8 +1176,17 @@
       </div>
       <!-- Private mode: the on-device model (aimeer-local-core.js + aimeer-local-worker.js); chatbot.js unhides it -->
       <button class="chat-private" id="chat-private" type="button" role="switch" aria-checked="false" aria-describedby="chat-private-desc" hidden>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
-        <span data-i18n="chat.private.label">Private</span>
+        <!-- the padlock rests open (an invitation) and closes when Private mode turns on; motion.js choreographs, style.css owns the poses -->
+        <span class="chat-private-icon" aria-hidden="true">
+          <svg class="chat-private-lock" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+            <defs><clipPath id="lk-clip"><rect x="-4" y="-6" width="32" height="17.4"/></clipPath></defs>
+            <circle class="lk-ring" cx="12" cy="16" r="9" stroke-width="1.4"/>
+            <g clip-path="url(#lk-clip)"><path class="lk-shackle" d="M8 15V8a4 4 0 0 1 8 0v3"/></g>
+            <rect class="lk-body" x="5" y="11" width="14" height="10" rx="2"/>
+            <path class="lk-key" d="M12 14.6v2.6" stroke-width="2.6"/>
+          </svg>
+        </span>
+        <span class="chat-private-label" data-i18n="chat.private.label">Private</span>
       </button>
       <span class="sr-only" id="chat-private-desc" data-i18n="chat.private.desc">Answer on this device, with nothing sent to the cloud</span>
       <button class="icon-btn chat-close" type="button" aria-label="Close chat">
@@ -1242,23 +1251,23 @@
     </form>
   </section>
 
-  <script src="assets/js/i18n.js?v=2026-10-03f" defer></script>
-  <script src="assets/js/main.js?v=2026-10-03f" defer></script>
-  <script src="assets/js/jd-extractor.js?v=2026-10-03f" defer></script>
-  <script src="assets/js/jd-matcher.js?v=2026-10-03f" defer></script>
-  <script src="assets/js/jd-reasoning.js?v=2026-10-03f" defer></script>
-  <script src="assets/js/chatbot.js?v=2026-10-03f" defer></script>
-  <script src="assets/js/route-globe-core.js?v=2026-10-03f" defer></script>
-  <script src="assets/js/route-globe.js?v=2026-10-03f" defer></script>
+  <script src="assets/js/i18n.js?v=2026-10-03g" defer></script>
+  <script src="assets/js/main.js?v=2026-10-03g" defer></script>
+  <script src="assets/js/jd-extractor.js?v=2026-10-03g" defer></script>
+  <script src="assets/js/jd-matcher.js?v=2026-10-03g" defer></script>
+  <script src="assets/js/jd-reasoning.js?v=2026-10-03g" defer></script>
+  <script src="assets/js/chatbot.js?v=2026-10-03g" defer></script>
+  <script src="assets/js/route-globe-core.js?v=2026-10-03g" defer></script>
+  <script src="assets/js/route-globe.js?v=2026-10-03g" defer></script>
   <!-- Private mode's pure half; chatbot.js reads window.AIMEER_LOCAL lazily, so it may load after it -->
-  <script src="assets/js/aimeer-local-core.js?v=2026-10-03f" defer></script>
+  <script src="assets/js/aimeer-local-core.js?v=2026-10-03g" defer></script>
   <!-- GSAP is pinned by path (assets/vendor/README.md); motion.js and ir-showcase.js
        treat a missing window.gsap as "no motion" and leave the page static. -->
   <script src="assets/vendor/gsap/gsap.min.js" defer></script>
   <script src="assets/vendor/gsap/ScrollTrigger.min.js" defer></script>
   <script src="assets/vendor/gsap/SplitText.min.js" defer></script>
-  <script src="assets/js/ir-core.js?v=2026-10-03f" defer></script>
-  <script src="assets/js/ir-showcase.js?v=2026-10-03f" defer></script>
-  <script src="assets/js/motion.js?v=2026-10-03f" defer></script>
+  <script src="assets/js/ir-core.js?v=2026-10-03g" defer></script>
+  <script src="assets/js/ir-showcase.js?v=2026-10-03g" defer></script>
+  <script src="assets/js/motion.js?v=2026-10-03g" defer></script>
 </body>
 </html>
