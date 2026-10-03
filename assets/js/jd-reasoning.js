@@ -56,7 +56,10 @@
        too would withhold ordinary technical prose ("digital signature APIs", DocuSign
        integration) from a posting this candidate would plausibly be sent. */
   ];
-  var ROOT_KEYS = ["narrative", "requirements", "overall"];
+  /* `engine` and a per-requirement `probability` arrive only from the Worker's jd-decide mode (Clef
+     decisions). Both are optional, so a jd-scoring response without them validates as before. */
+  var ROOT_KEYS = ["narrative", "requirements", "overall", "engine"];
+  var ENGINES = ["clef"];
   var REQUIREMENT_KEYS = [
     "requirementId",
     "recruiterIntent",
@@ -67,7 +70,8 @@
     "limitation",
     "recruiterFraming",
     "verificationQuestion",
-    "confidence"
+    "confidence",
+    "probability"
   ];
   var FIELD_LIMITS = {
     narrative: 900,
@@ -471,6 +475,23 @@
     };
   }
 
+  /* jd-decide offers Clef every citable record in the published profile (the Worker does the same
+     server-side from the same file), not only the ids the keyword pass referenced, so a decision
+     may cite adjacent evidence the keyword pass never touched. This is the input its response is
+     validated and merged against: the jd-scoring input with that wider registry and the matching
+     capability vocabulary. Everything else, the requirements included, is unchanged. */
+  function buildDecisionInput(input, profile) {
+    var registry = (Array.isArray(profile && profile.recruiterEvidence) ? profile.recruiterEvidence : [])
+      .map(compactEvidenceRecord)
+      .filter(function (record) { return record && record.id && isCitableEvidence(record); })
+      .sort(function (left, right) { return left.id < right.id ? -1 : left.id > right.id ? 1 : 0; });
+    var copy = {};
+    Object.keys(input || {}).forEach(function (key) { copy[key] = input[key]; });
+    copy.evidenceRegistry = registry;
+    copy.capabilityVocabulary = buildCapabilityVocabulary(registry);
+    return copy;
+  }
+
   function stripJsonFence(rawOutput) {
     var text = String(rawOutput || "").trim();
     var fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
@@ -529,6 +550,7 @@
 
     var narrativeError = validateTextField(parsed.narrative, "narrative");
     if (narrativeError) return reject(narrativeError);
+    if (parsed.engine !== undefined && ENGINES.indexOf(parsed.engine) === -1) return reject("Invalid engine.");
     if (!Array.isArray(parsed.requirements)) return reject("requirements must be an array.");
     if (parsed.requirements.length !== (Array.isArray(input && input.requirements) ? input.requirements.length : 0)) {
       return reject("Every deterministic requirement must be included exactly once.");
@@ -588,6 +610,10 @@
       if (CONFIDENCE_LEVELS.indexOf(confidence) === -1) {
         return reject("Invalid confidence level: " + confidence + ".");
       }
+      if (item.probability !== undefined && (typeof item.probability !== "number" ||
+          !Number.isFinite(item.probability) || item.probability < 0 || item.probability > 1)) {
+        return reject("Invalid probability.");
+      }
 
       var recruiterIntentError = validateTextField(item.recruiterIntent, "recruiterIntent");
       if (recruiterIntentError) return reject(recruiterIntentError);
@@ -644,7 +670,8 @@
         limitation: clipText(item.limitation, FIELD_LIMITS.limitation),
         recruiterFraming: clipText(item.recruiterFraming, FIELD_LIMITS.recruiterFraming),
         verificationQuestion: clipText(item.verificationQuestion, FIELD_LIMITS.verificationQuestion),
-        confidence: confidence
+        confidence: confidence,
+        probability: typeof item.probability === "number" ? item.probability : null
       });
     }
 
@@ -652,6 +679,7 @@
       ok: true,
       reasoning: {
         narrative: clipText(parsed.narrative, FIELD_LIMITS.narrative),
+        engine: parsed.engine === "clef" ? "clef" : "",
         requirements: sanitizedRequirements,
         overall: {
           score: clampScore(overall.score),
@@ -817,6 +845,7 @@
         recruiterFraming: reasoningItem ? reasoningItem.recruiterFraming : "",
         verificationQuestion: reasoningItem ? reasoningItem.verificationQuestion : "",
         confidence: reasoningItem ? reasoningItem.confidence : "medium",
+        probability: reasoningItem && typeof reasoningItem.probability === "number" ? reasoningItem.probability : null,
         verified: verifiedFactorForRequirement(requirement) > 0,
         baseFactor: baseFactor,
         effectiveFactor: effectiveFactor,
@@ -863,6 +892,7 @@
       ? clipText(reasoning.overall.narrative, FIELD_LIMITS.narrative)
       : clipText(reasoning && reasoning.narrative, FIELD_LIMITS.narrative);
     result.sections = buildSections(requirementReasoning);
+    result.reasoningEngine = reasoning && reasoning.engine === "clef" ? "clef" : "llm";
     var aiConfidence = aggregateAiConfidence(requirementReasoning);
     if (aiConfidence) result.aiConfidence = aiConfidence;
     return result;
@@ -870,6 +900,7 @@
 
   global.JDReasoning = {
     buildInput: buildInput,
+    buildDecisionInput: buildDecisionInput,
     validateModelOutput: validateModelOutput,
     mergeResult: mergeResult,
     computeFitBand: computeFitBand

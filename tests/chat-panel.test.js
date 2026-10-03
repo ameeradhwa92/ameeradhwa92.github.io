@@ -9,7 +9,6 @@ const i18n = fs.readFileSync(path.join(__dirname, '..', 'assets', 'js', 'i18n.js
 const chatbot = fs.readFileSync(path.join(__dirname, '..', 'assets', 'js', 'chatbot.js'), 'utf8');
 const jdReasoning = fs.readFileSync(path.join(__dirname, '..', 'assets', 'js', 'jd-reasoning.js'), 'utf8');
 const css = fs.readFileSync(path.join(__dirname, '..', 'assets', 'css', 'style.css'), 'utf8');
-const { evaluate } = require('../assets/js/aimeer-device.js');
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -39,7 +38,7 @@ function createElement(tagName = 'div') {
     setAttribute(name, value) { this.attributes.set(name, String(value)); },
     getAttribute(name) { return this.attributes.get(name) || null; },
     addEventListener(type, listener) { listeners.set(type, listener); },
-    dispatch(type, target = this) { const listener = listeners.get(type); if (listener) listener({ key: type, target, preventDefault() {} }); },
+    dispatch(type, target = this, extra = {}) { const listener = listeners.get(type); if (listener) listener({ key: type, target, preventDefault() {}, ...extra }); },
     closest(selector) { return selector === 'button' ? this : null; },
     querySelector() { return null; },
     appendChild(child) { child.parentNode = this; this.children.push(child); return child; },
@@ -108,29 +107,19 @@ function createChatContext(options = {}) {
   const elements = {};
   [
     'chat-launcher', 'chat-panel', 'chat-log', 'chat-form', 'chat-input', 'chat-chips',
-    'chat-status', 'chat-ai', 'chat-ai-enable', 'chat-ai-cancel', 'chat-model-cloud',
-    'chat-model-local', 'chat-model-tooltip', 'chat-callout', 'chat-jd-toggle',
+    'chat-status', 'chat-callout', 'chat-jd-toggle', 'chat-jd-drop',
     'chat-jd-panel', 'chat-jd-input', 'chat-jd-file', 'chat-jd-file-trigger',
     'chat-jd-file-name', 'chat-jd-analyze', 'chat-jd-clear', 'chat-jd-disclaimer',
     'chat-jd-status', 'chat-jd-progress', 'chat-jd-result'
   ].forEach((id) => { elements[id] = createElement(); elements[id].id = id; });
   const statusText = createElement();
-  const aiPitch = createElement();
-  const progress = createElement();
-  const progressBar = createElement();
-  const progressText = createElement();
   const close = createElement('button');
   const stored = new Map(Object.entries(options.storage || {}));
   const timers = [];
   const clearedTimers = [];
-  let adapterRequests = 0;
 
   elements['chat-status'].querySelector = () => statusText;
-  elements['chat-ai'].querySelector = () => aiPitch;
   elements['chat-panel'].querySelector = (selector) => ({
-    '.chat-progress': progress,
-    '.chat-progress-bar': progressBar,
-    '.chat-progress-text': progressText,
     '.chat-close': close
   })[selector] || null;
 
@@ -150,32 +139,13 @@ function createChatContext(options = {}) {
   };
   const window = {
     console: { warn() {} },
-    AIMEER_DEVICE: { evaluate },
     addEventListener() {}
   };
-  const userAgent = options.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)';
-  const platform = options.platform || 'Win32';
-  const maxTouchPoints = options.maxTouchPoints || 0;
-  const maxBufferSize = options.maxBufferSize === undefined ? 1_500_000_000 : options.maxBufferSize;
-  const hasWebGPU = options.hasWebGPU !== false;
-  const adapterResults = options.adapterResults ? options.adapterResults.slice() : null;
-  progress.hidden = true;
+  if (options.cloudEndpoint !== undefined) window.AIMEER_CLOUD_ENDPOINT = options.cloudEndpoint;
   const context = {
     window,
     document,
-    navigator: {
-      userAgent,
-      platform,
-      maxTouchPoints,
-      connection: { saveData: options.saveData !== false },
-      gpu: hasWebGPU ? {
-        requestAdapter() {
-          adapterRequests += 1;
-          if (adapterResults && adapterResults.length) return adapterResults.shift();
-          return Promise.resolve({ limits: { maxBufferSize }, features: new Set(['shader-f16']) });
-        }
-      } : undefined
-    },
+    navigator: {},
     localStorage: {
       getItem(key) { return stored.get(key) || null; },
       setItem(key, value) { stored.set(key, String(value)); },
@@ -208,13 +178,11 @@ function createChatContext(options = {}) {
     stored,
     timers,
     clearedTimers,
-    progress,
     statusText,
     setLanguage(language) {
       root.dataset.lang = language;
       observers.forEach((observer) => observer());
-    },
-    get adapterRequests() { return adapterRequests; }
+    }
   };
 }
 
@@ -462,32 +430,6 @@ function buildMergedResult(baseResult, overrides = {}) {
   return Object.assign(result, overrides);
 }
 
-test('chat header exposes cloud and local model choices with accessible state', () => {
-  const header = html.match(/<header class="chat-head">([\s\S]*?)<\/header>/);
-
-  assert.ok(header, 'the chat header should exist');
-  assert.match(
-    header[1],
-    /<div class="chat-model-switch" id="chat-model-switch"[^>]*>/,
-    'the header should contain the model switcher'
-  );
-  assert.match(
-    header[1],
-    /<button[^>]*id="chat-model-cloud"[^>]*aria-pressed="(?:true|false)"[^>]*aria-labelledby="chat-model-cloud-label"[^>]*>[\s\S]*?<svg[\s\S]*?<\/svg>[\s\S]*?<span[^>]*id="chat-model-cloud-label"[^>]*data-i18n="chat\.model\.cloud\.label"[^>]*>[\s\S]*?<\/span>[\s\S]*?<\/button>/,
-    'the cloud model choice should have a pressed state, translated name, and icon'
-  );
-  assert.match(
-    header[1],
-    /<button[^>]*id="chat-model-local"[^>]*aria-pressed="(?:true|false)"[^>]*aria-labelledby="chat-model-local-label"[^>]*aria-describedby="chat-model-tooltip"[^>]*>[\s\S]*?<svg[\s\S]*?<\/svg>[\s\S]*?<span[^>]*id="chat-model-local-label"[^>]*data-i18n="chat\.model\.local\.label"[^>]*>[\s\S]*?<\/span>[\s\S]*?<\/button>/,
-    'the local model choice should have a pressed state, translated name, tooltip hook, and icon'
-  );
-  assert.match(
-    header[1],
-    /<span[^>]*id="chat-model-tooltip"[^>]*role="tooltip"[^>]*data-i18n="chat\.model\.local\.hint"[^>]*hidden>/,
-    'the header should expose a hidden local compatibility tooltip'
-  );
-});
-
 test('chat chips are reduced to exactly three recruiter-focused presets with the JD toggle wiring intact', () => {
   const chipsBlock = html.match(/<div class="chat-chips" id="chat-chips">([\s\S]*?)<\/div>/);
 
@@ -579,17 +521,8 @@ test('data fetches stay un-versioned when the page carries no cache-busting tag'
   );
 });
 
-test('Bahasa Melayu provides distinct labels and compatibility help for the model choices', () => {
-  const context = { window: {} };
-  vm.runInNewContext(i18n, context);
-
-  assert.equal(context.window.I18N_MS['chat.model.cloud.label'], 'Guna AI awan selamat');
-  assert.equal(context.window.I18N_MS['chat.model.local.label'], 'Guna AI pada peranti');
-  assert.match(context.window.I18N_MS['chat.model.local.hint'], /tidak serasi/i);
-});
-
 test('JD matcher promotion provides English localization hooks and formal Bahasa Melayu strings', async () => {
-  const { context, elements } = createChatContext({ saveData: false });
+  const { context, elements } = createChatContext();
   await loadChat(context);
 
   elements['chat-launcher'].dispatch('click');
@@ -615,7 +548,7 @@ test('JD matcher promotion provides English localization hooks and formal Bahasa
 });
 
 test('JD matcher promotion is inserted once per chat session', async () => {
-  const { context, elements } = createChatContext({ saveData: false });
+  const { context, elements } = createChatContext();
   await loadChat(context);
 
   elements['chat-launcher'].dispatch('click');
@@ -630,7 +563,7 @@ test('JD matcher promotion is inserted once per chat session', async () => {
 });
 
 test('JD matcher promotion action opens the matcher panel and its expanded toggle', async () => {
-  const { context, elements } = createChatContext({ saveData: false });
+  const { context, elements } = createChatContext();
   await loadChat(context);
   elements['chat-launcher'].dispatch('click');
 
@@ -643,7 +576,7 @@ test('JD matcher promotion action opens the matcher panel and its expanded toggl
 });
 
 test('JD matcher promotion refreshes when the visitor changes the chat language', async () => {
-  const { context, elements, setLanguage } = createChatContext({ saveData: false });
+  const { context, elements, setLanguage } = createChatContext();
   await loadChat(context);
   elements['chat-launcher'].dispatch('click');
   const promo = elements['chat-log'].children.find((child) => child.id === 'chat-jd-promo');
@@ -664,7 +597,7 @@ test('JD matcher promotion refreshes when the visitor changes the chat language'
 });
 
 test('JD matcher uses focused mode while retaining the AI progress card', async () => {
-  const { context, elements } = createChatContext({ saveData: false });
+  const { context, elements } = createChatContext();
   await loadChat(context);
   elements['chat-launcher'].dispatch('click');
 
@@ -674,80 +607,6 @@ test('JD matcher uses focused mode while retaining the AI progress card', async 
 
   elements['chat-chips'].dispatch('click', elements['chat-jd-toggle']);
   assert.equal(elements['chat-panel'].classList.contains('chat-panel--jd-open'), false);
-});
-
-test('JD reasoning keeps local waiting state ahead of interim cloud fallback', async () => {
-  const { context } = createChatContext({ saveData: false });
-  await loadChat(context);
-
-  assert.equal(context.window.AIMeerRecruiter.getReasoningMode({
-    hasResult: true,
-    hasNormalizedText: true,
-    aiState: 'cloud',
-    localOK: true,
-    preferredMode: null,
-    route: 'local',
-    cloudOk: true,
-    dlActive: true,
-    hasEngine: false
-  }), 'waiting');
-});
-
-test('JD scoring goes straight to secure cloud without waiting for the pending on-device download', async () => {
-  const pendingDownload = deferred();
-  const deterministicResult = buildDeterministicResult();
-  const cloudCalls = [];
-  const chatbotWithControlledWebLLM = chatbot.replace(
-    'return import(WEBLLM_CDN).then(function (webllm) {',
-    'return window.__importWebLLM(WEBLLM_CDN).then(function (webllm) {'
-  );
-  const { context, elements, progress } = createChatContext({
-    saveData: false,
-    fetchImpl(url, init) {
-      const target = String(url);
-      if (target.endsWith('aimeer-kb.txt')) return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
-      if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
-      if (target.includes('workers.dev')) {
-        cloudCalls.push(JSON.parse(init.body));
-        return Promise.resolve(makeJsonResponse({ reasoning: buildScoringModelOutput() }));
-      }
-      throw new Error(`Unexpected fetch: ${target}`);
-    }
-  });
-
-  context.window.__importWebLLM = () => pendingDownload.promise;
-  context.window.JDExtractor = {
-    extract() {
-      return Promise.resolve({ text: '', source: 'pdf', warnings: [] });
-    },
-    normalize(text) {
-      return { normalizedText: text, warnings: [] };
-    }
-  };
-  context.window.JDMatcher = {
-    scoreJobDescription() {
-      return clone(deterministicResult);
-    }
-  };
-  vm.runInNewContext(jdReasoning, context);
-
-  await loadChat(context, { source: chatbotWithControlledWebLLM });
-  elements['chat-launcher'].dispatch('click');
-  await flushAsync();
-  assert.equal(progress.hidden, false, 'the on-device download should still be in flight');
-
-  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC and cloud delivery ownership.';
-  elements['chat-jd-analyze'].dispatch('click');
-  await flushAsync();
-
-  assert.equal(progress.hidden, false, 'JD scoring must not cancel or await the on-device download');
-  assert.equal(cloudCalls.length, 1, 'scoring should reach the secure cloud even while the local model is downloading');
-  assert.equal(cloudCalls[0].mode, 'jd-scoring');
-
-  const rendered = collectText(elements['chat-jd-result']);
-  assert.match(rendered, /secure cloud AI/i, 'the report should state that scoring used secure cloud AI');
-  assert.doesNotMatch(rendered, /still getting ready/i, 'scoring never waits on the on-device model');
-  assert.match(rendered, /container operations remain the one screening topic/i, 'the merged AI narrative should render');
 });
 
 test('JD scoring runs automatically on the cloud without a click, keeping the deterministic score visible while it works', async () => {
@@ -760,7 +619,6 @@ test('JD scoring runs automatically on the cloud without a click, keeping the de
   let kbFetches = 0;
   let realMergedResult = null;
   const { context, elements, setLanguage } = createChatContext({
-    saveData: true,
     fetchImpl(url, init) {
       const target = String(url);
       if (target.endsWith('aimeer-kb.txt')) {
@@ -894,7 +752,6 @@ test('JD scoring runs automatically on the cloud without a click, keeping the de
 test('completed AI scoring renders each report section exactly once and drops the legacy deterministic-only heading', async () => {
   const deterministicResult = buildDeterministicResult();
   const { context, elements } = createChatContext({
-    saveData: true,
     fetchImpl(url) {
       const target = String(url);
       if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
@@ -957,7 +814,6 @@ test('a settled AI-scored report leads with the fit band, shows the calibrated n
   const deterministicResult = buildDeterministicResult();
   let openedUrl = null;
   const { context, elements } = createChatContext({
-    saveData: true,
     fetchImpl(url) {
       const target = String(url);
       if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
@@ -1042,7 +898,6 @@ test('a settled AI-scored report leads with the fit band, shows the calibrated n
 test('reopening the JD panel or toggling the site language after scoring has settled does not re-offer or duplicate the WhatsApp/email handoff card', async () => {
   const deterministicResult = buildDeterministicResult();
   const { context, elements, setLanguage } = createChatContext({
-    saveData: true,
     fetchImpl(url) {
       const target = String(url);
       if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
@@ -1098,7 +953,6 @@ test('reopening the JD panel or toggling the site language after scoring has set
 test('the settled handoff card renders inside the visible JD result panel, never the chat log the JD panel hides (I2)', async () => {
   const deterministicResult = buildDeterministicResult();
   const { context, elements } = createChatContext({
-    saveData: true,
     fetchImpl(url) {
       const target = String(url);
       if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
@@ -1151,7 +1005,6 @@ test('the settled handoff card renders inside the visible JD result panel, never
 test('the combined gaps list marks each item as an explicit gap or merely unverified, and the fallback handoff prefix uses a short label instead of the full report-headline sentence', async () => {
   const deterministicResult = buildDeterministicResult();
   const { context, elements } = createChatContext({
-    saveData: true,
     fetchImpl(url) {
       const target = String(url);
       if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
@@ -1250,77 +1103,10 @@ test('a fallback (keyword-estimate) result prefills the handoff with a short lab
   assert.doesNotMatch(decoded, /full AI analysis unavailable right now/i, 'the fallback handoff prefix must not run the full report-headline sentence into the summary');
 });
 
-test('in-flight AI scoring keeps its secure-cloud status after the visitor switches to on-device AI', async () => {
-  const pendingScoring = deferred();
-  const deterministicResult = buildDeterministicResult();
-  const chatbotWithControlledWebLLM = chatbot.replace(
-    'return import(WEBLLM_CDN).then(function (webllm) {',
-    'return window.__importWebLLM(WEBLLM_CDN).then(function (webllm) {'
-  );
-  const { context, elements } = createChatContext({
-    saveData: true,
-    fetchImpl(url) {
-      const target = String(url);
-      if (target.endsWith('aimeer-kb.txt')) return Promise.resolve(makeTextResponse('AIMeer knowledge base'));
-      if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
-      if (target.includes('workers.dev')) return pendingScoring.promise;
-      throw new Error(`Unexpected fetch: ${target}`);
-    }
-  });
-  context.window.__importWebLLM = () => new Promise(() => {});
-  context.window.JDExtractor = {
-    extract() {
-      return Promise.resolve({ text: '', source: 'pdf', warnings: [] });
-    },
-    normalize(text) {
-      return { normalizedText: text, warnings: [] };
-    }
-  };
-  context.window.JDMatcher = {
-    scoreJobDescription() {
-      return clone(deterministicResult);
-    }
-  };
-  context.window.JDReasoning = {
-    buildInput(normalized, result, profile, language) {
-      return {
-        language,
-        jdText: normalized.normalizedText,
-        requirements: result.requirements || [],
-        deterministicResult: result,
-        evidenceRegistry: profile.recruiterEvidence || []
-      };
-    },
-    validateModelOutput() {
-      return { ok: true, reasoning: { narrative: 'cloud scoring', requirements: [], overall: { score: 78, fitBand: 'strong', narrative: 'cloud scoring' } } };
-    },
-    mergeResult(result) {
-      return buildMergedResult(result, { reasoningNarrative: 'cloud scoring' });
-    }
-  };
-
-  await loadChat(context, { source: chatbotWithControlledWebLLM });
-  elements['chat-launcher'].dispatch('click');
-  await flushAsync();
-  elements['chat-jd-input'].value = 'Need ASP.NET Core MVC ownership.';
-  elements['chat-jd-analyze'].dispatch('click');
-  await flushAsync();
-
-  elements['chat-model-local'].dispatch('click');
-  pendingScoring.resolve(makeJsonResponse({ reasoning: '{"narrative":"cloud scoring","requirements":[]}' }));
-  await flushAsync();
-
-  const rendered = collectText(elements['chat-jd-result']);
-  assert.match(rendered, /cloud scoring/, 'the merged cloud result should still render after the route change');
-  assert.match(rendered, /secure cloud AI/i);
-  assert.doesNotMatch(rendered, /on this device/i, 'the report must never claim that cloud scoring stayed on the device');
-});
-
 test('two failed cloud scoring attempts fall back to the deterministic estimate with localized status', async () => {
   const deterministicResult = buildDeterministicResult();
   const cloudCalls = [];
   const { context, elements, setLanguage } = createChatContext({
-    saveData: true,
     fetchImpl(url, init) {
       const target = String(url);
       if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
@@ -1408,7 +1194,6 @@ function createScoringFailureContext(cloudResponder) {
   const deterministicResult = buildDeterministicResult();
   const cloudCalls = [];
   const harness = createChatContext({
-    saveData: true,
     fetchImpl(url, init) {
       const target = String(url);
       if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
@@ -1608,7 +1393,6 @@ test('a stale recruiter reasoning response cannot replace a newer JD result', as
   });
   let requestCount = 0;
   const { context, elements } = createChatContext({
-    saveData: true,
     fetchImpl(url, init) {
       const target = String(url);
       if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
@@ -1686,7 +1470,6 @@ test('a language change invalidates an in-flight recruiter reasoning response', 
   let mergeCalls = 0;
   const deterministicResult = buildDeterministicResult();
   const { context, elements, setLanguage } = createChatContext({
-    saveData: true,
     fetchImpl(url) {
       const target = String(url);
       if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
@@ -1781,34 +1564,6 @@ test('a language change invalidates an in-flight recruiter reasoning response', 
   );
 });
 
-test('selecting eligible local AI presents Local while the active route is cloud', async () => {
-  const { context, elements, stored } = createChatContext();
-  await loadChat(context);
-
-  assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'true');
-  elements['chat-model-local'].dispatch('click');
-
-  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'true');
-  assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'false');
-  assert.equal(stored.has('aimeer-route'), false);
-});
-
-test('legacy persisted cloud is cleared and eligible desktop defaults to local', async () => {
-  const { context, elements, stored, progress } = createChatContext({
-    storage: { 'aimeer-route': 'cloud' },
-    saveData: false
-  });
-
-  await loadChat(context);
-  assert.equal(stored.has('aimeer-route'), false);
-  elements['chat-launcher'].dispatch('click');
-
-  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'true');
-  assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'false');
-  assert.equal(elements['chat-status'].className, 'chat-status chat-status-loading');
-  assert.equal(progress.hidden, false);
-});
-
 test('welcome callout still schedules its delayed reveal after prior dismissal', async () => {
   const { context, elements, timers } = createChatContext({
     storage: { 'aimeer-callout': '1' }
@@ -1836,190 +1591,6 @@ test('welcome callout markup and click handler remain present', () => {
   );
 });
 
-test('legacy persisted local is cleared and Save-Data still prefers cloud', async () => {
-  const { context, elements, stored, progress } = createChatContext({
-    storage: { 'aimeer-route': 'local' },
-    saveData: true
-  });
-
-  await loadChat(context);
-  assert.equal(stored.has('aimeer-route'), false);
-  elements['chat-launcher'].dispatch('click');
-
-  assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'true');
-  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'false');
-  assert.equal(stored.has('aimeer-route'), false);
-  assert.equal(progress.hidden, true);
-  assert.equal(elements['chat-status'].className, 'chat-status chat-status-cloud');
-});
-
-test('stale local preference on ineligible Android is invalidated and routed to cloud', async () => {
-  const { context, elements, stored } = createChatContext({
-    storage: { 'aimeer-route': 'local' },
-    userAgent: 'Mozilla/5.0 (Linux; Android 15; Generic Phone) AppleWebKit/537.36',
-    platform: 'Linux armv8l',
-    maxTouchPoints: 5,
-    saveData: false
-  });
-
-  await loadChat(context);
-  elements['chat-launcher'].dispatch('click');
-
-  assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'true');
-  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'false');
-  assert.equal(stored.has('aimeer-route'), false);
-  assert.equal(elements['chat-status'].className, 'chat-status chat-status-cloud');
-});
-
-test('switching to cloud while local download is active cancels the download state without persistence', async () => {
-  const { context, elements, stored, progress, timers, clearedTimers } = createChatContext({
-    saveData: false
-  });
-
-  await loadChat(context);
-  elements['chat-launcher'].dispatch('click');
-  assert.equal(progress.hidden, false);
-
-  elements['chat-model-cloud'].dispatch('click');
-
-  assert.equal(stored.has('aimeer-route'), false);
-  assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'true');
-  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'false');
-  assert.equal(progress.hidden, true);
-  assert.equal(elements['chat-status'].className, 'chat-status chat-status-cloud');
-  assert.ok(clearedTimers.includes(timers.find((timer) => timer.delay === 20000).id));
-});
-
-test('canceling local download keeps the cloud route session-only without persistence', async () => {
-  const { context, elements, stored, progress } = createChatContext({
-    saveData: false
-  });
-
-  await loadChat(context);
-  elements['chat-launcher'].dispatch('click');
-  assert.equal(progress.hidden, false);
-
-  elements['chat-ai-cancel'].dispatch('click');
-
-  assert.equal(stored.has('aimeer-route'), false);
-  assert.equal(elements['chat-model-cloud'].getAttribute('aria-pressed'), 'true');
-  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'false');
-  assert.equal(progress.hidden, true);
-  assert.equal(elements['chat-status'].className, 'chat-status chat-status-cloud');
-});
-
-test('a stale canceled local download cannot mark a later local start ready', async () => {
-  const firstEngine = deferred();
-  const secondEngine = deferred();
-  const engineCalls = [];
-  let firstUnloaded = false;
-  const chatbotWithControlledWebLLM = chatbot.replace(
-    'return import(WEBLLM_CDN).then(function (webllm) {',
-    'return window.__importWebLLM(WEBLLM_CDN).then(function (webllm) {'
-  );
-  assert.notEqual(chatbotWithControlledWebLLM, chatbot, 'the test harness should control the WebLLM import');
-  const { context, elements, progress } = createChatContext({
-    saveData: false,
-    fetchText: 'AIMeer test knowledge base'
-  });
-  context.window.__importWebLLM = (specifier) => {
-    assert.equal(specifier, 'https://esm.run/@mlc-ai/web-llm@0.2.79');
-    return Promise.resolve({
-      CreateMLCEngine(model, options) {
-        return createEngine(model, options);
-      }
-    });
-  };
-  function createEngine(model, options) {
-    engineCalls.push({ model, options });
-    return engineCalls.length === 1 ? firstEngine.promise : secondEngine.promise;
-  }
-
-  await loadChat(context, { source: chatbotWithControlledWebLLM });
-  await flushAsync();
-  elements['chat-launcher'].dispatch('click');
-  await flushAsync();
-  assert.equal(engineCalls.length, 1, 'the first local start should begin WebLLM init');
-
-  elements['chat-model-cloud'].dispatch('click');
-  elements['chat-model-local'].dispatch('click');
-  await flushAsync();
-  assert.equal(engineCalls.length, 2, 'selecting Local again should begin a fresh WebLLM init');
-  assert.equal(elements['chat-status'].className, 'chat-status chat-status-loading');
-  assert.equal(progress.hidden, false);
-
-  firstEngine.resolve({ unload() { firstUnloaded = true; } });
-  await flushAsync();
-
-  assert.equal(firstUnloaded, true, 'the stale engine should be unloaded when it resolves');
-  assert.equal(elements['chat-status'].className, 'chat-status chat-status-loading');
-  assert.equal(progress.hidden, false);
-  assert.equal(elements['chat-model-local'].getAttribute('aria-pressed'), 'true');
-});
-
-test('canceling while local setup is pending does not import WebLLM or create an engine', async () => {
-  const setupKb = deferred();
-  const setupAdapter = deferred();
-  let importCalls = 0;
-  let engineCalls = 0;
-  const chatbotWithControlledWebLLM = chatbot.replace(
-    'return import(WEBLLM_CDN).then(function (webllm) {',
-    'return window.__importWebLLM(WEBLLM_CDN).then(function (webllm) {'
-  );
-  const capableAdapter = { limits: { maxBufferSize: 1_500_000_000 }, features: new Set(['shader-f16']) };
-  const { context, elements, progress } = createChatContext({
-    saveData: false,
-    fetchPromise: setupKb.promise,
-    adapterResults: [
-      Promise.resolve(capableAdapter),
-      setupAdapter.promise
-    ]
-  });
-  context.window.__importWebLLM = () => {
-    importCalls += 1;
-    return Promise.resolve({
-      CreateMLCEngine() {
-        engineCalls += 1;
-        return new Promise(() => {});
-      }
-    });
-  };
-
-  await loadChat(context, { source: chatbotWithControlledWebLLM });
-  await flushAsync();
-  elements['chat-launcher'].dispatch('click');
-  await flushAsync();
-  assert.equal(progress.hidden, false);
-
-  elements['chat-model-cloud'].dispatch('click');
-  assert.equal(elements['chat-status'].className, 'chat-status chat-status-cloud');
-  assert.equal(progress.hidden, true);
-
-  setupKb.resolve({
-    ok: true,
-    text: () => Promise.resolve('AIMeer delayed setup knowledge base')
-  });
-  setupAdapter.resolve(capableAdapter);
-  await flushAsync();
-
-  assert.equal(importCalls, 0, 'canceled setup must not import WebLLM');
-  assert.equal(engineCalls, 0, 'canceled setup must not create a WebLLM engine');
-  assert.equal(elements['chat-status'].className, 'chat-status chat-status-cloud');
-});
-
-test('model segments retain 44px touch targets in narrow panels', () => {
-  assert.match(
-    css,
-    /\.chat-model-choice\s*\{[\s\S]*?width:\s*44px;[\s\S]*?min-height:\s*44px;/,
-    'each segment should provide a 44px touch target'
-  );
-  assert.doesNotMatch(
-    css,
-    /@media\s*\(max-width:\s*390px\)\s*\{[\s\S]*?\.chat-model-choice\s*\{[\s\S]*?(?:width|min-height):\s*(?:3[0-9]|[12][0-9])px;/,
-    'the narrow-panel rule should not shrink touch targets below 44px'
-  );
-});
-
 test('shared press feedback includes theme-safe brightness and shadow adjustments', () => {
   assert.match(
     css,
@@ -2028,19 +1599,11 @@ test('shared press feedback includes theme-safe brightness and shadow adjustment
   );
 });
 
-test('reduced motion removes chat model choice press scale', () => {
-  assert.match(
-    css,
-    /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*?\.chat-model-choice:active[\s\S]*?\{[^}]*transform:\s*none;/,
-    'the global reduced-motion active override should include chat model choices'
-  );
-});
-
 /* The score and its confidence must describe the same pass. On the AI path the label comes from
    the model's own per-requirement confidence; on the fallback path the keyword ratio IS what the
    displayed number means, so it stays. */
 test('recruiter report takes confidence from whichever pass produced the score', async () => {
-  const { context } = createChatContext({ saveData: false });
+  const { context } = createChatContext();
   await loadChat(context);
   const resolve = context.window.AIMeerRecruiter.resolveConfidenceLevel;
 
@@ -2066,7 +1629,7 @@ test('recruiter report takes confidence from whichever pass produced the score',
    from a hang. The bar is derived from statusKind rather than tracked separately, so there is no
    second piece of state to fall out of sync. */
 test('the recruiter progress bar is visible exactly while the matcher is working', async () => {
-  const { context } = createChatContext({ saveData: false });
+  const { context } = createChatContext();
   await loadChat(context);
   const visible = context.window.AIMeerRecruiter.isJdProgressVisible;
 
@@ -2090,7 +1653,6 @@ test('the recruiter progress bar call site shows it during AI scoring and hides 
   });
   const pendingScoring = deferred();
   const { context, elements } = createChatContext({
-    saveData: true,
     fetchImpl(url) {
       const target = String(url);
       if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
@@ -2259,7 +1821,7 @@ test('the chat log scrolls smoothly', () => {
    NOT deleted — it moves to aria-label, so the wait state is still announced. Dropping it would
    make waiting silent to assistive technology: a regression dressed as a visual upgrade. */
 test('the waiting bubble shows three dots and still announces itself', async () => {
-  const { context, elements } = createChatContext({ saveData: false });
+  const { context, elements } = createChatContext();
   await loadChat(context);
   elements['chat-launcher'].dispatch('click');
 
@@ -2291,4 +1853,251 @@ test('the typing dots are styled and staggered', () => {
      container as well would double it. */
   assert.equal(/\.chat-msg\.thinking\b[^{]*\{[^}]*animation:\s*pulse/.test(css), false,
     'the whole-bubble pulse should be gone');
+});
+
+/* ---------------- two tiers: instant + cloud (the on-device WebLLM tier is retired) ---------------- */
+
+test('the chat ships no on-device model: no switcher, no download box, no WebLLM import, no device gate', () => {
+  const header = html.match(/<header class="chat-head">([\s\S]*?)<\/header>/);
+  assert.ok(header, 'the chat header should exist');
+  assert.doesNotMatch(html, /chat-model-switch|chat-model-cloud|chat-model-local|id="chat-ai"|chat-progress/);
+  assert.doesNotMatch(html, /aimeer-device\.js/);
+  assert.doesNotMatch(chatbot, /web-llm|esm\.run|CreateMLCEngine|navigator\.gpu/);
+  assert.doesNotMatch(i18n, /chat\.model\./);
+  assert.doesNotMatch(css, /\.chat-model-|\.chat-ai\b|\.chat-ai-|ai-downloading|ai-pending/);
+});
+
+test('the status line reads secure cloud when the Worker is configured and instant answers when it is not', async () => {
+  const cloud = createChatContext();
+  await loadChat(cloud.context);
+  assert.equal(cloud.statusText.textContent, 'AI mode · secure cloud');
+  assert.equal(cloud.elements['chat-status'].className, 'chat-status chat-status-cloud');
+
+  const offline = createChatContext({ cloudEndpoint: '' });
+  await loadChat(offline.context);
+  assert.equal(offline.statusText.textContent, 'Instant answers · works offline');
+  offline.setLanguage('ms');
+  assert.equal(offline.statusText.textContent, 'Jawapan segera · berfungsi luar talian');
+});
+
+test('the legacy reasoning-mode helper now reports only cloud or unavailable', async () => {
+  const { context } = createChatContext();
+  await loadChat(context);
+  const mode = context.window.AIMeerRecruiter.getReasoningMode;
+  assert.equal(mode({ hasResult: true, hasNormalizedText: true, cloudOk: true, localOK: true, dlActive: true, route: 'local' }), 'cloud');
+  assert.equal(mode({ hasResult: true, hasNormalizedText: true, cloudOk: false }), 'unavailable');
+  assert.equal(mode({ hasResult: false, hasNormalizedText: true, cloudOk: true }), 'unavailable');
+});
+
+function createTriageContext(answer) {
+  const chatBodies = [];
+  const opened = [];
+  const harness = createChatContext({
+    fetchImpl(url, init) {
+      const target = String(url);
+      if (target.includes('workers.dev')) {
+        const body = JSON.parse(init.body);
+        chatBodies.push(body);
+        return Promise.resolve(makeJsonResponse(body.mode === 'summary' ? { reply: 'sum' } : answer));
+      }
+      if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
+      return Promise.resolve(makeTextResponse('KB'));
+    }
+  });
+  harness.context.window.open = (href) => opened.push(href);
+  return { ...harness, chatBodies, opened };
+}
+
+async function ask(harness, question) {
+  harness.elements['chat-input'].value = question;
+  harness.elements['chat-form'].dispatch('submit');
+  await flushAsync();
+}
+
+function botTexts(elements) {
+  return elements['chat-log'].children.map((child) => collectText(child));
+}
+
+test('a triaged salary question gets the curated compensation answer and the handoff, nothing generated', async () => {
+  const harness = createTriageContext({ reply: '', action: 'salary', intent: 'compensation' });
+  await loadChat(harness.context);
+  harness.elements['chat-launcher'].dispatch('click');
+  await ask(harness, 'What sort of package is he after?');
+
+  const texts = botTexts(harness.elements);
+  assert.ok(texts.some((text) => /prefers to discuss compensation directly/.test(text)), texts.join(' | '));
+  assert.ok(harness.elements['chat-log'].children.some((child) => /chat-handoff/.test(child.className)));
+  assert.equal(harness.chatBodies[0].mode, 'chat');
+});
+
+test('a triaged out-of-knowledge question is handed to Ameer and recorded as unanswered', async () => {
+  const harness = createTriageContext({ reply: '', action: 'handoff', intent: 'personal' });
+  await loadChat(harness.context);
+  harness.elements['chat-launcher'].dispatch('click');
+  await ask(harness, 'What is his blood type?');
+
+  const texts = botTexts(harness.elements);
+  assert.ok(texts.some((text) => /sounds like a question for Ameer himself/.test(text)));
+  const card = harness.elements['chat-log'].children.find((child) => /chat-handoff/.test(child.className));
+  assert.ok(card);
+  const wa = card.children[1].children[0];
+  wa.dispatch('click');
+  await flushAsync();
+  assert.match(decodeURIComponent(harness.opened[0]), /AIMeer couldn't answer this one: "What is his blood type\?"/);
+});
+
+test('a job-match question gets its answer plus a one-time offer of the JD matcher', async () => {
+  const harness = createTriageContext({ reply: 'He has strong .NET delivery.', action: 'jd', intent: 'job-match' });
+  await loadChat(harness.context);
+  harness.elements['chat-launcher'].dispatch('click');
+  await ask(harness, 'Would he fit our backend role?');
+  await ask(harness, 'And for a lead role?');
+
+  const offers = harness.elements['chat-log'].children.filter((child) => /chat-jd-offer/.test(child.className));
+  assert.equal(offers.length, 1, 'the matcher is offered once per session');
+  assert.match(collectText(offers[0]), /requirement-by-requirement/);
+  offers[0].children[1].dispatch('click');
+  assert.equal(harness.elements['chat-jd-panel'].hidden, false, 'the offer opens the matcher');
+  assert.ok(botTexts(harness.elements).includes('He has strong .NET delivery.'));
+});
+
+test('a Worker from before triage (no action) still answers normally', async () => {
+  const harness = createTriageContext({ reply: 'Plain cloud answer.' });
+  await loadChat(harness.context);
+  harness.elements['chat-launcher'].dispatch('click');
+  await ask(harness, 'Tell me about Azure.');
+  assert.ok(botTexts(harness.elements).includes('Plain cloud answer.'));
+  assert.ok(!harness.elements['chat-log'].children.some((child) => /chat-jd-offer|chat-handoff/.test(child.className)));
+});
+
+/* jd-decide: the Clef-decided report, merged against the wider decision input. */
+function buildDecideModelOutput(overrides = {}) {
+  return JSON.stringify(Object.assign({
+    narrative: 'Direct ASP.NET Core delivery, with Kubernetes adjacent through Azure DevOps release work.',
+    requirements: [
+      {
+        requirementId: 'req-aspnet-core', recruiterIntent: '', expectedOutcome: '',
+        matchLevel: 'direct-professional', evidenceRefs: ['ev-retailaim-plus'], transferableCapabilities: [],
+        limitation: '', recruiterFraming: 'Published professional evidence covers ASP.NET Core MVC directly.',
+        verificationQuestion: 'Which recent piece of work best shows ASP.NET Core MVC?', confidence: 'high', probability: 0.93
+      },
+      {
+        requirementId: 'req-kubernetes', recruiterIntent: '', expectedOutcome: '',
+        matchLevel: 'adjacent-professional', evidenceRefs: ['ev-azure-devops'], transferableCapabilities: ['Release automation'],
+        limitation: 'An adjacent judgement, not proof of direct delivery with Kubernetes.',
+        recruiterFraming: 'Closely related professional work (Azure DevOps) sits next to Kubernetes.',
+        verificationQuestion: 'How would Azure DevOps work carry over to Kubernetes?', confidence: 'medium', probability: 0.71
+      }
+    ],
+    overall: { score: 70, fitBand: 'good', narrative: 'Direct ASP.NET Core delivery, with Kubernetes adjacent through Azure DevOps release work.' },
+    engine: 'clef'
+  }, overrides));
+}
+
+function createDecideContext(responder) {
+  const deterministicResult = buildDeterministicResult();
+  const cloudCalls = [];
+  const harness = createChatContext({
+    fetchImpl(url, init) {
+      const target = String(url);
+      if (target.endsWith('aimeer-profile.json')) return Promise.resolve(makeJsonResponse(PROFILE_FIXTURE));
+      if (target.includes('workers.dev')) {
+        const body = JSON.parse(init.body);
+        cloudCalls.push(body);
+        return responder(body, cloudCalls.length);
+      }
+      return Promise.resolve(makeTextResponse('KB'));
+    }
+  });
+  harness.context.window.JDExtractor = {
+    extract() { return Promise.resolve({ text: '', source: 'pdf', warnings: [] }); },
+    normalize(text) { return { normalizedText: text, warnings: [] }; }
+  };
+  harness.context.window.JDMatcher = { scoreJobDescription() { return clone(deterministicResult); } };
+  vm.runInNewContext(jdReasoning, harness.context);
+  return { ...harness, cloudCalls };
+}
+
+async function analyze(harness) {
+  await loadChat(harness.context);
+  await flushAsync();
+  harness.elements['chat-launcher'].dispatch('click');
+  harness.elements['chat-jd-input'].value = 'Need ASP.NET Core MVC and Kubernetes ownership.';
+  harness.elements['chat-jd-analyze'].dispatch('click');
+  await flushAsync();
+}
+
+function failure(status, body) {
+  return Promise.resolve({ ok: false, status, json: () => Promise.resolve(body), text: () => Promise.resolve(JSON.stringify(body)) });
+}
+
+test('JD analysis asks for Clef decisions first and renders the decision confidence per requirement', async () => {
+  const harness = createDecideContext(() => Promise.resolve(makeJsonResponse({ reasoning: buildDecideModelOutput() })));
+  await analyze(harness);
+
+  assert.deepEqual(harness.cloudCalls.map((call) => call.mode), ['jd-decide']);
+  assert.deepEqual(Object.keys(harness.cloudCalls[0]).sort(), ['deterministicInput', 'evidenceIds', 'jdText', 'language', 'mode']);
+  const rendered = collectText(harness.elements['chat-jd-result']);
+  assert.match(rendered, /Good fit/);
+  assert.match(rendered, /decided by Clef, Cloudflare's decision model/);
+  assert.match(rendered, /where it was unsure, the keyword match stands instead/);
+  assert.match(rendered, /93% decision confidence/);
+  assert.match(rendered, /71% decision confidence/);
+  assert.match(rendered, /Owns release pipelines and cloud delivery workflows\./, 'adjacent evidence resolves from the decision registry');
+
+  harness.setLanguage('ms');
+  assert.match(collectText(harness.elements['chat-jd-result']), /93% keyakinan keputusan/);
+});
+
+test('a jd-decide failure falls through to the jd-scoring flow, which keeps its own retry', async () => {
+  for (const decideFailure of [
+    () => failure(502, { error: 'decide-unavailable', stage: 'clef', reason: 'clef-run-failed:x' }),
+    () => failure(400, { error: 'empty' }), /* a Worker from before jd-decide reads jd-decide as chat */
+    () => Promise.resolve(makeJsonResponse({ reasoning: buildDecideModelOutput({ engine: 'gpt' }) }))
+  ]) {
+    const harness = createDecideContext((body, count) => {
+      if (body.mode === 'jd-decide') return decideFailure();
+      if (count === 2) return Promise.reject(new TypeError('Failed to fetch'));
+      return Promise.resolve(makeJsonResponse({ reasoning: buildScoringModelOutput() }));
+    });
+    await analyze(harness);
+    assert.deepEqual(harness.cloudCalls.map((call) => call.mode), ['jd-decide', 'jd-scoring', 'jd-scoring']);
+    const rendered = collectText(harness.elements['chat-jd-result']);
+    assert.match(rendered, /Strong fit/);
+    assert.match(rendered, /used secure cloud AI/);
+    assert.doesNotMatch(rendered, /decision confidence/);
+  }
+});
+
+test('a payload the Worker refuses on a jd- rule is not re-sent to jd-scoring', async () => {
+  const harness = createDecideContext(() => failure(400, { error: 'jd-privacy-invalid' }));
+  await analyze(harness);
+  assert.deepEqual(harness.cloudCalls.map((call) => call.mode), ['jd-decide']);
+  assert.match(collectText(harness.elements['chat-jd-result']), /Keyword estimate/);
+});
+
+test('a file dropped on the upload card takes the same checks as the picker', async () => {
+  const { context, elements } = createChatContext();
+  const extracted = [];
+  context.window.JDExtractor = {
+    extract(file) { extracted.push(file.name); return Promise.resolve({ text: 'JD text', source: 'docx', warnings: [] }); },
+    normalize(text) { return { normalizedText: text, warnings: [] }; }
+  };
+  await loadChat(context);
+  const drop = elements['chat-jd-drop'];
+
+  drop.dispatch('dragover', drop, { dataTransfer: {} });
+  assert.equal(drop.classList.contains('is-dragover'), true);
+  drop.dispatch('drop', drop, { dataTransfer: { files: [{ name: 'notes.txt', size: 10 }] } });
+  assert.equal(drop.classList.contains('is-dragover'), false);
+  assert.match(elements['chat-jd-status'].textContent, /Only PDF and DOCX files are supported/);
+
+  drop.dispatch('drop', drop, { dataTransfer: { files: [{ name: 'role.docx', size: 2048 }] } });
+  await flushAsync();
+  assert.deepEqual(extracted, ['role.docx']);
+  assert.equal(elements['chat-jd-file-name'].textContent, 'role.docx');
+  assert.match(elements['chat-jd-status'].textContent, /Local document ready: DOCX text/);
+
+  drop.dispatch('drop', drop, { dataTransfer: { files: [] } });
+  assert.deepEqual(extracted, ['role.docx'], 'an empty drop changes nothing');
 });

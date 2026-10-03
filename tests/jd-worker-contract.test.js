@@ -35,8 +35,13 @@ function loadBrowserHarness() {
   };
 }
 
-async function loadWorker() {
-  const source = fs.readFileSync(workerPath, 'utf8');
+let workerNonce = 0;
+
+/* `fresh` appends a unique comment so the data: URL differs and the import is not served from the
+   module cache — the Worker caches which Clef model id answered and whether gpt-oss accepted reasoning_effort in module scope, and a test that
+   exercises the id fallback must not inherit an earlier test's choice. */
+async function loadWorker(fresh) {
+  const source = fs.readFileSync(workerPath, 'utf8') + (fresh ? `\n// fresh ${++workerNonce}\n` : '');
   const specifier = `data:text/javascript;base64,${Buffer.from(source, 'utf8').toString('base64')}`;
   const moduleNs = await import(specifier);
   return moduleNs.default;
@@ -177,7 +182,7 @@ function overallFixtureFor(fixture) {
 }
 
 async function callWorker(body, options = {}) {
-  const worker = await loadWorker();
+  const worker = await loadWorker(options.freshWorker);
   const fetchCalls = [];
   const aiCalls = [];
   const kbText = options.kbText || 'AIMeer bounded recruiter knowledge base.';
@@ -221,6 +226,7 @@ async function callWorker(body, options = {}) {
     env.AI = {
       async run(model, payload) {
         aiCalls.push({ model, payload });
+        if (options.aiImpl) return options.aiImpl(model, payload, aiCalls);
         if (options.aiError) throw options.aiError;
         const fixture = options.aiResponse !== undefined
           ? options.aiResponse
@@ -275,12 +281,14 @@ test('jd-reasoning accepts a bounded valid request and returns strict JSON reaso
   assert.equal(parsed.requirements.length, request.deterministicInput.requirements.length);
 
   assert.equal(response.aiCalls.length, 1, 'bounded reasoning should invoke Workers AI exactly once');
-  assert.equal(response.aiCalls[0].model, '@cf/meta/llama-3.1-8b-instruct-fast');
+  assert.equal(response.aiCalls[0].model, '@cf/openai/gpt-oss-20b');
   assert.equal(response.aiCalls[0].payload.temperature <= 0.2, true, 'reasoning should use a low temperature');
   /* The cap was a flat 900, which could not hold six prose fields per requirement — the model's
      JSON was truncated mid-object in production. It now scales with the requirement count and is
      still bounded, because Workers AI's free tier is 10,000 neurons/day. */
-  assert.equal(response.aiCalls[0].payload.max_tokens <= 3400, true, 'reasoning should stay bounded by the ceiling');
+  /* gpt-oss spends hidden reasoning tokens out of the same max_tokens, so the Worker adds a fixed
+     reasoning headroom (640) on top of the visible-answer ceiling. */
+  assert.equal(response.aiCalls[0].payload.max_tokens <= 3400 + 640, true, 'reasoning should stay bounded by the ceiling');
   assert.equal(
     response.aiCalls[0].payload.max_tokens >= 400 + 260 * request.deterministicInput.requirements.length,
     true,
@@ -823,11 +831,11 @@ test('jd-scoring accepts a bounded valid request and returns strict JSON reasoni
       1,
       'the worker should assemble its own single system prompt on every call'
     );
-    assert.equal(call.model, '@cf/meta/llama-3.1-8b-instruct-fast');
+    assert.equal(call.model, '@cf/openai/gpt-oss-20b');
     assert.equal(call.payload.temperature <= 0.2, true);
   }
   assert.equal(
-    response.aiCalls[1].payload.max_tokens <= 400,
+    response.aiCalls[1].payload.max_tokens <= 400 + 640,
     true,
     'the scoring call answers three fields and should stay small'
   );
@@ -1842,7 +1850,10 @@ test('existing chat, summary, and jd-explanation modes remain compatible', async
   assert.equal(chat.status, 200);
   assert.equal(chat.json.reply, 'Chat reply');
   assert.equal(chat.fetchCalls.some((url) => url.includes('/assets/data/aimeer-kb.txt')), true);
-  assert.match(chat.aiCalls[0].payload.messages[0].content, /LEGACY-KB-FACT/);
+  /* Chat now asks Clef to triage first; an unreadable triage (this fixture is plain text) leaves
+     the LLM call exactly as it was. */
+  const chatLlmCall = chat.aiCalls.find((call) => call.payload.messages);
+  assert.match(chatLlmCall.payload.messages[0].content, /LEGACY-KB-FACT/);
 
   const summary = await callWorker({
     mode: 'summary',
@@ -1949,4 +1960,522 @@ test('the reasoning prompt never shows the model a matchLevel-shaped classificat
       `${classification} is a classification value with no matchLevel counterpart and must not ` +
       `appear in the model's input`);
   }
+});
+
+/* ---------------- Clef: jd-decide, chat triage, clef-probe ---------------- */
+
+const LLM_MODEL = '@cf/openai/gpt-oss-20b';
+const isClef = (model) => model === '@cf/cloudflare/clef-flash';
+
+function buildDecideRequest(options = {}) {
+  return { ...buildValidRequest(options), mode: 'jd-decide' };
+}
+
+/* Answers every question Clef is asked: `pick(name, question)` returns the answer for one question,
+   or undefined for the defaults below (first evidence record, adjacent-professional, score 2). */
+function clefAnswerer(pick = () => undefined) {
+  return (payload) => {
+    const answers = {};
+    for (const [name, question] of Object.entries(payload.questions)) {
+      const custom = pick(name, question, payload);
+      if (custom !== undefined) {
+        answers[name] = custom;
+        continue;
+      }
+      if (question.type === 'score') {
+        answers[name] = { type: 'score', score: 2, probabilities: { 0: 0, 1: 0.1, 2: 0.8, 3: 0.1 } };
+      } else if (question.type === 'choice' && name.startsWith('evidence_')) {
+        const professional = payload.state.publishedEvidence.find((record) => record.evidenceType === 'professional');
+        answers[name] = {
+          type: 'choice',
+          choice: professional.id,
+          probabilities: { [professional.id]: 0.7, none: 0.1 }
+        };
+      } else if (question.type === 'choice') {
+        answers[name] = {
+          type: 'choice',
+          choice: 'adjacent-professional',
+          probabilities: { 'adjacent-professional': 0.86, 'direct-professional': 0.1 }
+        };
+      } else {
+        answers[name] = { type: 'noul', noul: 0.5 };
+      }
+    }
+    return { model: 'clef-1.13.0', answers, usage: { input_tokens: 1, output_tokens: 1 } };
+  };
+}
+
+function decideAi({ clef = clefAnswerer(), narrative = 'Ameer brings adjacent Azure delivery to this role, with container orchestration the one area to confirm in screening.', clefError = null } = {}) {
+  return (model, payload) => {
+    if (isClef(model)) {
+      if (clefError) throw clefError;
+      return clef(payload);
+    }
+    if (narrative instanceof Error) throw narrative;
+    return { response: narrative };
+  };
+}
+
+function browserCheck(request, json) {
+  const harness = loadBrowserHarness();
+  const profile = loadProfile();
+  const normalized = harness.JDExtractor.normalize(`Required Skills:
+- Kubernetes
+- Azure
+- Azure DevOps
+- Bicep
+Preferred Skills:
+- CI/CD
+`);
+  const deterministicResult = harness.JDMatcher.scoreJobDescription(normalized, profile);
+  const input = harness.JDReasoning.buildInput(normalized, deterministicResult, profile, request.language);
+  const decisionInput = harness.JDReasoning.buildDecisionInput(input, profile);
+  const validated = harness.JDReasoning.validateModelOutput(json.reasoning, decisionInput);
+  return { harness, decisionInput, deterministicResult, validated };
+}
+
+test('jd-decide relays Clef decisions in the shape the browser validator already accepts', async () => {
+  const request = buildDecideRequest();
+  const result = await callWorker(request, { freshWorker: true, aiImpl: decideAi() });
+  assert.equal(result.status, 200, JSON.stringify(result.json));
+  assert.equal(result.json.revision, '2026-10-03-clef-3');
+
+  const reasoning = JSON.parse(result.json.reasoning);
+  assert.equal(reasoning.engine, 'clef');
+  assert.equal(reasoning.requirements.length, request.deterministicInput.requirements.length);
+  assert.equal(reasoning.overall.score, 67);
+  assert.equal(reasoning.overall.fitBand, 'good');
+  for (const decision of reasoning.requirements) {
+    assert.equal(decision.matchLevel, 'adjacent-professional');
+    assert.equal(decision.probability, 0.86);
+    assert.equal(decision.confidence, 'high');
+    assert.equal(decision.evidenceRefs.length, 1);
+  }
+
+  const { harness, decisionInput, deterministicResult, validated } = browserCheck(request, result.json);
+  assert.equal(validated.ok, true, validated.error);
+  const merged = harness.JDReasoning.mergeResult(deterministicResult, validated.reasoning, decisionInput);
+  assert.equal(merged.reasoningEngine, 'clef');
+  assert.equal(merged.requirementReasoning[0].probability, 0.86);
+});
+
+test('jd-decide asks one Clef call: two questions per requirement plus the overall rubric, no keyword verdicts', async () => {
+  const request = buildDecideRequest();
+  const result = await callWorker(request, { freshWorker: true, aiImpl: decideAi() });
+  const clefCalls = result.aiCalls.filter((call) => isClef(call.model));
+  assert.equal(clefCalls.length, 1);
+  const { state, questions } = clefCalls[0].payload;
+  const count = request.deterministicInput.requirements.length;
+  assert.equal(Object.keys(questions).length, count * 2 + 1);
+  assert.equal(questions.overall_fit.type, 'score');
+  assert.equal(questions.level_0.type, 'choice');
+  assert.deepEqual(Object.keys(questions.level_0.criteria), [
+    'direct-professional', 'adjacent-professional', 'transferable-professional',
+    'academic-foundation', 'learning-bridge', 'explicit-gap', 'unverified'
+  ]);
+  assert.ok(questions.evidence_0.criteria.none);
+  assert.equal(state.jobDescription, request.jdText);
+  assert.doesNotMatch(JSON.stringify(state.requirements), /classification|"strong"|"partial"/);
+  /* every citable record, never a user-provided one */
+  const profile = loadProfile();
+  const citable = profile.recruiterEvidence.filter((record) => record.evidenceType !== 'user-provided');
+  assert.equal(state.publishedEvidence.length, citable.length);
+  assert.ok(state.publishedEvidence.every((record) => record.evidenceType !== 'user-provided'));
+
+  /* the narrative call sees decisions, not the JD prose */
+  const llmCall = result.aiCalls.find((call) => call.model === LLM_MODEL);
+  assert.ok(!llmCall.payload.messages[1].content.includes(request.jdText.slice(0, 40)));
+});
+
+test('jd-decide demotes a level its evidence cannot back, and never calls a demotion confident', async () => {
+  const request = buildDecideRequest();
+  const clef = clefAnswerer((name, question, payload) => {
+    if (name === 'level_0') return { type: 'choice', choice: 'direct-professional', probabilities: { 'direct-professional': 0.95 } };
+    if (name === 'evidence_0') {
+      const academic = payload.state.publishedEvidence.find((record) => record.evidenceType === 'academic');
+      return { type: 'choice', choice: academic.id, probabilities: { [academic.id]: 0.8 } };
+    }
+    if (name === 'level_1') return { type: 'choice', choice: 'transferable-professional', probabilities: { 'transferable-professional': 0.9 } };
+    if (name === 'evidence_1') return { type: 'choice', choice: 'none', probabilities: { none: 0.9 } };
+    if (name === 'level_2') return { type: 'choice', choice: 'explicit-gap', probabilities: { 'explicit-gap': 0.6 } };
+    if (name === 'level_3') return { type: 'choice', choice: 'invented-level', probabilities: { 'invented-level': 0.99 } };
+    return undefined;
+  });
+  const result = await callWorker(request, { freshWorker: true, aiImpl: decideAi({ clef }) });
+  assert.equal(result.status, 200, JSON.stringify(result.json));
+  const [first, second, third, fourth] = JSON.parse(result.json.reasoning).requirements;
+
+  assert.equal(first.matchLevel, 'academic-foundation');
+  assert.equal(first.confidence, 'low');
+  assert.equal(first.probability, undefined);
+  assert.equal(second.matchLevel, 'unverified');
+  assert.deepEqual(second.evidenceRefs, []);
+  assert.equal(third.matchLevel, 'explicit-gap');
+  assert.deepEqual(third.evidenceRefs, []);
+  assert.equal(third.confidence, 'medium');
+  /* An unreadable level falls back to the keyword verdict: Bicep is a strong professional keyword
+     match citing the Azure delivery record. Reported as low confidence with no probability. */
+  assert.equal(fourth.matchLevel, 'direct-professional');
+  assert.deepEqual(fourth.evidenceRefs, ['professional.azure-delivery']);
+  assert.equal(fourth.confidence, 'low');
+  assert.equal(fourth.probability, undefined);
+
+  const { validated } = browserCheck(request, result.json);
+  assert.equal(validated.ok, true, validated.error);
+});
+
+test('jd-decide never relays a narrative that looks like a schema, markup or its own percentage', async () => {
+  for (const narrative of ['{"score": 90}', 'Ameer is an 85% fit for this role with strong Azure delivery and more besides.', '<b>Strong</b> fit for the role overall, with good Azure delivery.', new Error('llm down')]) {
+    const result = await callWorker(buildDecideRequest(), { freshWorker: true, aiImpl: decideAi({ narrative }) });
+    assert.equal(result.status, 200);
+    const reasoning = JSON.parse(result.json.reasoning);
+    assert.match(reasoning.narrative, /^Good fit\. /);
+    assert.equal(reasoning.overall.narrative, reasoning.narrative);
+  }
+  const ms = await callWorker(buildDecideRequest('ms'), { freshWorker: true, aiImpl: decideAi({ narrative: '' }) });
+  assert.match(JSON.parse(ms.json.reasoning).narrative, /^Padanan baik\. /);
+  assert.match(JSON.parse(ms.json.reasoning).requirements[0].verificationQuestion, /Ameer/);
+});
+
+test('jd-decide trims an over-long narrative at a sentence, never mid-word', async () => {
+  /* The live gpt-oss narrative ran past 600 characters and a hard cut ended it "...Overa". */
+  const sentence = 'Ameer has delivered production Azure work with ASP.NET Core and SQL Server across several clients. ';
+  const longNarrative = sentence.repeat(8) + 'Overall he is a good fit.';
+  const result = await callWorker(buildDecideRequest(), { freshWorker: true, aiImpl: decideAi({ narrative: longNarrative }) });
+  const narrative = JSON.parse(result.json.reasoning).narrative;
+  assert.ok(narrative.length <= 600, `got ${narrative.length}`);
+  assert.ok(narrative.length >= 400, 'keeps every whole sentence that fits');
+  assert.match(narrative, /clients\.$/);
+
+  /* One run-on sentence longer than the limit: cut at a word, marked with an ellipsis. */
+  const runOn = 'Ameer brings ' + 'production Azure and ASP.NET Core delivery '.repeat(20) + 'to the role.';
+  const cut = JSON.parse((await callWorker(buildDecideRequest(), { freshWorker: true, aiImpl: decideAi({ narrative: runOn }) })).json.reasoning).narrative;
+  assert.ok(cut.length <= 600, `got ${cut.length}`);
+  assert.match(cut, /[a-z]…$/);
+  assert.match(cut, /(?:production|Azure|and|ASP\.NET|Core|delivery)…$/, 'the cut lands on a whole word');
+
+  /* Short narratives pass through untouched. */
+  const short = 'Ameer brings adjacent Azure delivery to this role, with one area to confirm.';
+  const kept = JSON.parse((await callWorker(buildDecideRequest(), { freshWorker: true, aiImpl: decideAi({ narrative: short }) })).json.reasoning).narrative;
+  assert.equal(kept, short);
+});
+
+test('an unsure Clef decision gives way to the keyword verdict; a confident one stands', async () => {
+  /* Requirements: 0 Kubernetes (keyword: unverified), 1 Azure (strong, no keyword ref),
+     2 Azure DevOps (strong, cites production-delivery + azure-delivery), 3 Bicep (strong, cites
+     azure-delivery), 4 Production delivery (strong, cites production-delivery). */
+  const request = buildDecideRequest();
+  const level = (choice, p) => ({ type: 'choice', choice, probabilities: { [choice]: p } });
+  const none = { type: 'choice', choice: 'none', probabilities: { none: 0.9 } };
+  const clef = clefAnswerer((name, question, payload) => {
+    const azure = payload.state.publishedEvidence.find((record) => record.id === 'professional.azure-delivery');
+    switch (name) {
+      case 'level_0': return level('direct-professional', 0.3);   /* unsure, keyword says unverified */
+      case 'evidence_0': return { type: 'choice', choice: azure.id, probabilities: { [azure.id]: 0.6 } };
+      case 'level_1': return level('explicit-gap', 0.35);         /* unsure; keyword strong, no ref of its own */
+      case 'evidence_1': return { type: 'choice', choice: azure.id, probabilities: { [azure.id]: 0.5 } };
+      case 'level_2': return level('explicit-gap', 0.25);         /* the live FastAPI case */
+      case 'evidence_2': return none;
+      case 'level_3': return level('learning-bridge', 0.4);       /* exactly at the bar: stands */
+      case 'evidence_3': return { type: 'choice', choice: azure.id, probabilities: { [azure.id]: 0.7 } };
+      case 'level_4': return level('explicit-gap', 0.92);         /* confident: stands, even against the keyword pass */
+      default: return undefined;
+    }
+  });
+  const result = await callWorker(request, { freshWorker: true, aiImpl: decideAi({ clef }) });
+  assert.equal(result.status, 200, JSON.stringify(result.json));
+  const [kubernetes, azure, devops, bicep, delivery] = JSON.parse(result.json.reasoning).requirements;
+
+  assert.equal(kubernetes.matchLevel, 'unverified');
+  assert.deepEqual(kubernetes.evidenceRefs, []);
+  assert.equal(azure.matchLevel, 'direct-professional', 'no keyword ref, so Clef\'s evidence pick is cited');
+  assert.deepEqual(azure.evidenceRefs, ['professional.azure-delivery']);
+  assert.equal(devops.matchLevel, 'direct-professional');
+  assert.deepEqual(devops.evidenceRefs, ['professional.production-delivery'], 'the keyword pass\'s own first ref');
+  for (const guarded of [kubernetes, azure, devops]) {
+    assert.equal(guarded.confidence, 'low');
+    assert.equal(guarded.probability, undefined, 'a keyword verdict carries no Clef probability');
+  }
+  assert.equal(bicep.matchLevel, 'learning-bridge');
+  assert.equal(bicep.probability, 0.4);
+  assert.equal(delivery.matchLevel, 'explicit-gap');
+  assert.equal(delivery.confidence, 'high');
+
+  const { validated } = browserCheck(request, result.json);
+  assert.equal(validated.ok, true, validated.error);
+});
+
+test('jd-decide maps the overall rubric onto the fit bands, and falls back to the decisions without it', async () => {
+  const scoreOf = async (overallFit) => {
+    const clef = clefAnswerer((name) => (name === 'overall_fit' ? overallFit : undefined));
+    const result = await callWorker(buildDecideRequest(), { freshWorker: true, aiImpl: decideAi({ clef }) });
+    return JSON.parse(result.json.reasoning).overall;
+  };
+  assert.deepEqual(await scoreOf({ type: 'score', score: 3 }).then((o) => [o.score, o.fitBand]), [85, 'strong']);
+  assert.deepEqual(await scoreOf({ type: 'score', score: 0 }).then((o) => [o.score, o.fitBand]), [30, 'limited']);
+  assert.deepEqual(await scoreOf({ type: 'score', score: 1.5 }).then((o) => [o.score, o.fitBand]), [59, 'partial']);
+  /* no rubric answer: every requirement adjacent (0.75) */
+  assert.deepEqual(await scoreOf(null).then((o) => [o.score, o.fitBand]), [75, 'strong']);
+  assert.deepEqual(await scoreOf({ type: 'score', score: 9 }).then((o) => o.score), 75);
+});
+
+test('jd-decide reports a Clef outage as a staged 502 the browser can fall back from', async () => {
+  const outage = await callWorker(buildDecideRequest(), {
+    freshWorker: true,
+    aiImpl: decideAi({ clefError: new Error('No such model') })
+  });
+  assert.equal(outage.status, 502);
+  assert.equal(outage.json.error, 'decide-unavailable');
+  assert.equal(outage.json.stage, 'clef');
+  assert.match(outage.json.reason, /^clef-run-failed:/);
+  assert.deepEqual(outage.aiCalls.map((call) => call.model), ['@cf/cloudflare/clef-flash']);
+
+  const garbled = await callWorker(buildDecideRequest(), {
+    freshWorker: true,
+    aiImpl: (model) => (isClef(model) ? { response: 'not a decision' } : { response: 'x' })
+  });
+  assert.equal(garbled.status, 502);
+  assert.equal(garbled.json.reason, 'clef-shape-invalid');
+  assert.equal(garbled.aiCalls.length, 1);
+
+  const unreadable = await callWorker(buildDecideRequest(), {
+    freshWorker: true,
+    aiImpl: decideAi({ clef: clefAnswerer((name) => (name.startsWith('level_') ? { choice: 'nope' } : undefined)) })
+  });
+  assert.equal(unreadable.status, 502);
+  assert.equal(unreadable.json.stage, 'decide');
+  assert.equal(unreadable.json.reason, 'clef-answers-unreadable');
+});
+
+test('jd-decide asks Clef-flash once per analysis, from the first request on', async () => {
+  const worker = await loadWorker(true);
+  const models = [];
+  const env = {
+    AI: {
+      async run(model, payload) {
+        models.push(model);
+        if (isClef(model)) return clefAnswerer()(payload);
+        return { response: 'Ameer brings adjacent Azure delivery to this role, with one area to confirm.' };
+      }
+    }
+  };
+  const originalFetch = global.fetch;
+  const originalCaches = global.caches;
+  const profileJson = JSON.stringify(loadProfile());
+  global.fetch = async () => new Response(profileJson, { status: 200, headers: { 'Content-Type': 'application/json' } });
+  global.caches = { default: { async match() { return null; }, async put() {} } };
+  try {
+    const post = () => worker.fetch(new Request('https://worker.example.test/', {
+      method: 'POST',
+      headers: { Origin: 'http://localhost:8080', 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildDecideRequest())
+    }), env);
+    assert.equal((await post()).status, 200);
+    assert.equal((await post()).status, 200);
+  } finally {
+    global.fetch = originalFetch;
+    global.caches = originalCaches;
+  }
+  assert.deepEqual(models.filter(isClef), ['@cf/cloudflare/clef-flash', '@cf/cloudflare/clef-flash']);
+});
+
+test('jd-decide validates its body exactly like jd-scoring', async () => {
+  const withMessages = await callWorker({ ...buildDecideRequest(), messages: [{ role: 'user', content: 'x' }] }, { freshWorker: true, aiImpl: decideAi() });
+  assert.equal(withMessages.status, 400);
+  const noText = await callWorker({ ...buildDecideRequest(), jdText: '' }, { freshWorker: true, aiImpl: decideAi() });
+  assert.equal(noText.status, 400);
+  assert.equal(noText.aiCalls.length, 0);
+});
+
+function triageAi({ intent, intentP = 0.9, answerable, reply = 'LLM reply' }) {
+  return (model, payload) => {
+    if (isClef(model)) {
+      return {
+        answers: {
+          intent: { type: 'choice', choice: intent, probabilities: { [intent]: intentP } },
+          answerable: { type: 'noul', noul: answerable }
+        }
+      };
+    }
+    return { response: reply };
+  };
+}
+
+async function chatWith(message, ai) {
+  return callWorker({ mode: 'chat', messages: [{ role: 'user', content: message }] }, {
+    freshWorker: true,
+    kbText: 'KB FACTS',
+    aiImpl: ai
+  });
+}
+
+test('chat triage sends salary and out-of-knowledge questions to the handoff without generating text', async () => {
+  const salary = await chatWith('What package would he expect?', triageAi({ intent: 'compensation', answerable: 0.7 }));
+  assert.deepEqual(salary.json, { reply: '', action: 'salary', intent: 'compensation' });
+  assert.equal(salary.aiCalls.filter((call) => call.model === LLM_MODEL).length, 0);
+
+  const unknown = await chatWith('What is his blood type?', triageAi({ intent: 'personal', answerable: 0.05 }));
+  assert.deepEqual(unknown.json, { reply: '', action: 'handoff', intent: 'personal' });
+  assert.equal(unknown.aiCalls.filter((call) => call.model === LLM_MODEL).length, 0);
+
+  const clefState = unknown.aiCalls.find((call) => isClef(call.model)).payload.state;
+  assert.equal(clefState.knowledgeBase, 'KB FACTS');
+  assert.equal(clefState.latestMessage, 'What is his blood type?');
+});
+
+test('chat triage leaves greetings, uncertain signals and job-match intents to the LLM', async () => {
+  const hello = await chatWith('Hi there!', triageAi({ intent: 'other', answerable: 0.02, reply: 'Hello!' }));
+  assert.deepEqual(hello.json, { reply: 'Hello!', action: 'answer', intent: 'other' });
+
+  const unsure = await chatWith('Does he know Go?', triageAi({ intent: 'skills', answerable: 0.4 }));
+  assert.equal(unsure.json.action, 'answer');
+  assert.equal(unsure.json.reply, 'LLM reply');
+
+  const weakSalary = await chatWith('Is the pay ok?', triageAi({ intent: 'compensation', intentP: 0.45, answerable: 0.6 }));
+  assert.equal(weakSalary.json.action, 'answer');
+  assert.equal(weakSalary.json.intent, '');
+
+  const jd = await chatWith('Would he fit our backend role?', triageAi({ intent: 'job-match', answerable: 0.5 }));
+  assert.deepEqual(jd.json, { reply: 'LLM reply', action: 'jd', intent: 'job-match' });
+});
+
+test('a failed or garbled triage leaves chat answering exactly as before', async () => {
+  const thrown = await chatWith('Tell me about Azure.', (model) => {
+    if (isClef(model)) throw new Error('No such model');
+    return { response: 'Plain reply' };
+  });
+  assert.deepEqual(thrown.json, { reply: 'Plain reply' });
+
+  const garbled = await chatWith('Tell me about Azure.', (model) => ({ response: isClef(model) ? 'nonsense' : 'Plain reply' }));
+  assert.deepEqual(garbled.json, { reply: 'Plain reply' });
+});
+
+test('clef-probe reports which model id answered, and the revision', async () => {
+  const ok = await callWorker({ mode: 'clef-probe' }, {
+    freshWorker: true,
+    aiImpl: (model) => ({ answers: { urgent: { type: 'noul', noul: 0.81 } } })
+  });
+  assert.deepEqual(ok.json, { revision: '2026-10-03-clef-3', ok: true, model: '@cf/cloudflare/clef-flash', reason: '', urgent: 0.81 });
+
+  const down = await callWorker({ mode: 'clef-probe' }, {
+    freshWorker: true,
+    aiImpl: () => { throw new Error('nope'); }
+  });
+  assert.equal(down.status, 502);
+  assert.equal(down.json.ok, false);
+  assert.match(down.json.reason, /^clef-run-failed:/);
+});
+
+/* ---------------- gpt-oss-20b: the text model ---------------- */
+
+test('chat reads gpt-oss answers in every shape the runtime returns, and never relays its reasoning', async () => {
+  const shapes = [
+    { choices: [{ message: { role: 'assistant', content: 'From chat completions.', reasoning_content: 'SECRET reasoning' } }] },
+    { output: [
+      { type: 'reasoning', content: [{ type: 'reasoning_text', text: 'SECRET reasoning' }] },
+      { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'From responses.' }] }
+    ] },
+    { output_text: 'From output_text.' },
+    { response: 'From response.' },
+    { response: '', choices: [{ message: { content: 'Beside an empty response.' } }] }
+  ];
+  const replies = [];
+  for (const shape of shapes) {
+    const result = await chatWith('Tell me about Azure.', (model) => {
+      if (isClef(model)) throw new Error('No such model');
+      return shape;
+    });
+    assert.equal(result.status, 200);
+    assert.doesNotMatch(JSON.stringify(result.json), /SECRET/);
+    replies.push(result.json.reply);
+  }
+  assert.deepEqual(replies, ['From chat completions.', 'From responses.', 'From output_text.', 'From response.', 'Beside an empty response.']);
+
+  const reasoningOnly = await chatWith('Tell me about Azure.', (model) => {
+    if (isClef(model)) throw new Error('No such model');
+    return { choices: [{ message: { content: null, reasoning_content: 'SECRET reasoning' } }] };
+  });
+  assert.deepEqual(reasoningOnly.json, { reply: '' });
+});
+
+test('every gpt-oss call asks for low reasoning effort on top of the old visible budget', async () => {
+  const result = await chatWith('Tell me about Azure.', (model) => {
+    if (isClef(model)) throw new Error('No such model');
+    return { choices: [{ message: { content: 'ok' } }] };
+  });
+  const call = result.aiCalls.find((entry) => entry.model === LLM_MODEL);
+  assert.equal(call.payload.reasoning_effort, 'low');
+  assert.equal(call.payload.max_tokens, 300 + 640);
+  assert.equal(call.payload.messages.filter((message) => message.role === 'system').length, 1);
+});
+
+test('a runtime that rejects reasoning_effort costs one retry, then the field is no longer sent', async () => {
+  const worker = await loadWorker(true);
+  const textCalls = [];
+  const env = {
+    AI: {
+      async run(model, payload) {
+        if (isClef(model)) throw new Error('No such model');
+        textCalls.push(payload);
+        if ('reasoning_effort' in payload) throw new Error('AiError: Invalid input: must NOT have additional properties (reasoning_effort)');
+        return { choices: [{ message: { content: 'Plain reply' } }] };
+      }
+    }
+  };
+  const originalFetch = global.fetch;
+  const originalCaches = global.caches;
+  global.fetch = async () => new Response('KB FACTS', { status: 200, headers: { 'Content-Type': 'text/plain' } });
+  global.caches = { default: { async match() { return null; }, async put() {} } };
+  try {
+    const post = async () => (await worker.fetch(new Request('https://worker.example.test/', {
+      method: 'POST',
+      headers: { Origin: 'http://localhost:8080', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'chat', messages: [{ role: 'user', content: 'Tell me about Azure.' }] })
+    }), env)).json();
+    assert.deepEqual(await post(), { reply: 'Plain reply' });
+    assert.deepEqual(await post(), { reply: 'Plain reply' });
+  } finally {
+    global.fetch = originalFetch;
+    global.caches = originalCaches;
+  }
+  assert.deepEqual(textCalls.map((payload) => 'reasoning_effort' in payload), [true, false, false]);
+});
+
+test('an unrelated gpt-oss failure is not mistaken for a rejected reasoning_effort', async () => {
+  const result = await chatWith('Tell me about Azure.', (model) => {
+    if (isClef(model)) throw new Error('No such model');
+    throw new Error('3040: Capacity temporarily exceeded');
+  });
+  assert.equal(result.status, 502);
+  assert.equal(result.json.error, 'ai-failed');
+  assert.equal(result.aiCalls.filter((call) => call.model === LLM_MODEL).length, 1);
+});
+
+test('text-probe reports the model, the response shape and the fixed reply, never prose beyond it', async () => {
+  const ok = await callWorker({ mode: 'text-probe' }, {
+    freshWorker: true,
+    aiImpl: () => ({ id: 'x', choices: [{ message: { content: 'ready', reasoning_content: 'SECRET' } }], usage: {} })
+  });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(ok.json, {
+    revision: '2026-10-03-clef-3',
+    ok: true,
+    model: '@cf/openai/gpt-oss-20b',
+    effort: 'low',
+    shape: ['id', 'choices', 'usage'],
+    reply: 'ready',
+    reason: ''
+  });
+
+  const empty = await callWorker({ mode: 'text-probe' }, {
+    freshWorker: true,
+    aiImpl: () => ({ choices: [{ message: { content: null, reasoning_content: 'SECRET' } }] })
+  });
+  assert.equal(empty.status, 502);
+  assert.equal(empty.json.reason, 'text-empty');
+  assert.doesNotMatch(JSON.stringify(empty.json), /SECRET/);
+
+  const down = await callWorker({ mode: 'text-probe' }, { freshWorker: true, aiImpl: () => { throw new Error('nope'); } });
+  assert.equal(down.status, 502);
+  assert.match(down.json.reason, /^text-run-failed:/);
 });

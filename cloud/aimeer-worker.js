@@ -1,6 +1,10 @@
 /* AIMeer cloud relay — Cloudflare Worker + Workers AI.
-   Serves AI answers to devices that can't run the on-device WebLLM model
-   (iPhones/iPads, browsers without WebGPU, low-memory GPUs).
+   AIMeer's only AI tier since the on-device WebLLM model was retired (2026-10). Two models on the
+   one AI binding: Cloudflare's Clef-flash decides (chat triage, recruiter JD match levels and
+   evidence), OpenAI's gpt-oss-20b writes (chat answers, summaries, the JD narrative). Both are
+   first-party Workers AI models, billed against the free 10,000 neurons a day. (TypeSafe's Jev
+   was the decision model until 2026-10-03: as a third-party model it bills against AI Gateway
+   credit, not the free allowance, and failed every call with error 2021.)
 
    Deploy (free plan, no credit card):
      1. dash.cloudflare.com → Compute (Workers) → Create → "Start with Hello World"
@@ -19,13 +23,20 @@
    deployed by hand, and a paste that silently does not take effect looks exactly like a fix that
    did not work. That cost several rounds of debugging: the same failures kept coming back because
    the revision under test was never the revision deployed. */
-const WORKER_REVISION = "2026-07-30-jd-11";
+const WORKER_REVISION = "2026-10-03-clef-3";
 
 const SITE = "https://ameeradhwa92.github.io";
 const KB_URL = SITE + "/assets/data/aimeer-kb.txt";
 const PROFILE_URL = SITE + "/assets/data/aimeer-profile.json";
 const ALLOWED_ORIGINS = [SITE, "http://localhost:8080", "http://127.0.0.1:8080"];
-const MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
+/* The text model. gpt-oss-20b replaced Llama 3.1 8B on 2026-10-03. It is a reasoning model: its
+   hidden reasoning tokens count against max_tokens, so every call asks for low effort and adds
+   TEXT_REASONING_HEADROOM on top of the visible-answer budget it used to have. A budget spent
+   entirely on reasoning comes back as empty content, which every caller already treats as a miss
+   (chat falls back to the instant tier, the JD modes report json-invalid:empty). */
+const MODEL = "@cf/openai/gpt-oss-20b";
+const TEXT_REASONING_EFFORT = "low";
+const TEXT_REASONING_HEADROOM = 640;
 const JD_EXPLANATION_JD_MAX = 12000;
 const JD_EXPLANATION_RESULT_MAX = 12000;
 const JD_REASONING_JD_MAX = 12000;
@@ -330,6 +341,86 @@ const JD_SCORING_OVERALL_PROMPT =
   "fitBand (strong if score>=75, good if >=60, partial if >=40, else limited), " +
   "narrative (one recruiter-facing paragraph, at most 600 characters, leading with strengths and honest about gaps).";
 
+/* ---------------- Clef: typed decisions instead of generated JSON ----------------
+   Clef-flash is Cloudflare's 9B decision model (released 2026-10-01, open weights, on Workers AI).
+   It speaks the SystemOne API TypeSafe's Jev introduced: it does not generate text, it reads a
+   state and answers named typed questions (choice, score, noul) with calibrated probabilities.
+   That is exactly the half of the recruiter report the old 8B text model kept failing at:
+   picking a matchLevel and evidence ids from fixed vocabularies. A choice answer cannot invent a
+   label, so the vocabulary and provenance failures jd-scoring tolerates after the fact cannot
+   happen here at all. The text model keeps the one job it does reliably, a short plain-text
+   narrative, and even that has a templated fallback, so jd-decide never fails on prose.
+
+   A list so a second id (Clef 27B, say) can be tried after the first; the first one that runs is
+   cached for the life of the isolate. `{"mode":"clef-probe"}` reports which one is live. */
+const CLEF_MODEL_IDS = ["@cf/cloudflare/clef-flash"];
+let clefModelId = null;
+
+/* Chat triage must never make AIMeer slower than it was: past this, the LLM answers untriaged. */
+const CLEF_TRIAGE_TIMEOUT_MS = 2500;
+
+/* Set for Jev, which independent studies found well calibrated at the extremes and least reliable
+   in the 0.3-0.8 band. Clef is trained for calibration too, but these gates have not been
+   re-measured on it, so they stay strict: only strong signals act, the middle goes to the LLM. */
+const CLEF_TRIAGE_HANDOFF_BELOW = 0.2;
+const CLEF_TRIAGE_INTENT_MIN = 0.6;
+
+const CLEF_TRIAGE_INTENTS = {
+  career: "Ameer's roles, employers, career history or years of experience",
+  projects: "systems, products or projects Ameer has built or worked on",
+  skills: "technologies, stacks, tools, clouds or skills Ameer uses",
+  education: "Ameer's education, degrees, certificates or courses",
+  contact: "how to contact, reach or hire Ameer, or get his resume",
+  compensation: "salary, pay, expected compensation, rates or remuneration",
+  "job-match": "checking how well Ameer fits a specific job, role or job description",
+  personal: "Ameer's family, background or personal life",
+  other: "greetings, small talk, or anything that is not about Ameer"
+};
+
+/* Order is the client's own MATCH_LEVEL_FACTORS order, strongest provenance first. */
+const CLEF_LEVEL_CRITERIA = {
+  "direct-professional": "Published professional evidence shows Ameer delivering this exact requirement (same technology or responsibility) in paid work.",
+  "adjacent-professional": "Published professional evidence shows a closely related stack or responsibility in the same family (another cloud, another SQL dialect, another CI/CD tool), but not this exact one.",
+  "transferable-professional": "Published professional evidence shows a capability that genuinely transfers to this requirement although the tooling or domain differs.",
+  "academic-foundation": "Only academic or coursework evidence covers this requirement; no professional delivery of it is published.",
+  "learning-bridge": "Related evidence would shorten the ramp-up, but the requirement itself is not covered yet.",
+  "explicit-gap": "The published evidence clearly does not cover this requirement.",
+  "unverified": "The requirement cannot be judged from published evidence (soft skills, location, availability, or something the profile is silent on)."
+};
+
+/* Lowest to highest, as a Clef score rubric must be. The points are where each level lands on the
+   report's 0-100 scale: inside the fit band the level names (see computeFitBand's thresholds in
+   assets/js/jd-reasoning.js), so a fractional score interpolates between bands honestly. */
+const CLEF_OVERALL_RUBRIC = [
+  "Limited overlap: most core requirements are gaps or unverified.",
+  "Partial fit: some core requirements are covered, with several important gaps.",
+  "Good fit: most core requirements are covered by direct or adjacent professional evidence.",
+  "Strong fit: nearly all core requirements are covered by direct professional evidence."
+];
+const CLEF_OVERALL_POINTS = [30, 50, 67, 85];
+
+/* An evidence pick below this probability is a guess, not a citation. */
+const CLEF_EVIDENCE_MIN = 0.15;
+
+/* Below this weight on its chosen level, Clef's decision does not stand: the keyword pass's verdict
+   for that requirement is used instead (see keywordMatchLevel). The first live clef-1 report put
+   "Python FastAPI" at explicit-gap with 0.25 while the profile's own project-history record lists
+   FastAPI and the keyword pass had found it; the narrative then contradicted itself. The keyword
+   pass is literal but never invents provenance, which is the right fallback for an unsure call.
+   Same spirit as the chat gates: only a confident decision acts. */
+const CLEF_DECISION_MIN = 0.4;
+
+const JD_DECIDE_NARRATIVE_MAX_TOKENS = 220;
+const JD_DECIDE_NARRATIVE_MAX = 600;
+
+/* Plain text, not JSON: the narrative is the only free prose in a jd-decide report, and a text
+   model writes a paragraph reliably where it does not reliably write a schema. */
+const JD_DECIDE_NARRATIVE_PROMPT =
+  "Write one recruiter-facing paragraph, at most 600 characters, summarising how Ameer's published evidence fits a role. " +
+  "The per-requirement decisions and the fit band were already made by a decision model and are final: do not change them, " +
+  "do not add a score or percentage, and do not invent evidence, employers or projects. Lead with strengths and be plain about gaps. " +
+  "Plain text only — no JSON, no markdown, no bullet points, no preamble.";
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("Origin") || "";
@@ -384,6 +475,18 @@ export default {
       return runJdScoringMode(env, cors, body);
     }
 
+    if (mode === "jd-decide") {
+      return runJdDecideMode(env, cors, body);
+    }
+
+    if (mode === "clef-probe") {
+      return runClefProbe(env, cors);
+    }
+
+    if (mode === "text-probe") {
+      return runTextProbe(env, cors);
+    }
+
     if (mode === "jd-explanation" &&
       (!Array.isArray(body.messages) || body.messages.length !== 1 ||
         !body.messages[0] || body.messages[0].role !== "user")) {
@@ -403,6 +506,7 @@ export default {
     }
 
     let system = SUMMARY_PROMPT;
+    let triage = null;
     if (mode === "chat" || mode === "jd-explanation") {
       let kb = "";
       try {
@@ -410,6 +514,16 @@ export default {
       } catch {}
       if (!kb) return json({ error: "kb-unavailable" }, 502, cors);
       system = PERSONA_HEAD + kb;
+      if (mode === "chat") {
+        triage = await triageChat(env, kb, messages);
+        /* Salary and out-of-knowledge questions are answered by the browser's own curated copy and
+           the WhatsApp/email handoff, so they never reach the LLM: nothing is generated that could
+           quote a number or invent a fact. An empty reply is what an older client already treats
+           as a cloud miss, so it falls back to its instant answer either way. */
+        if (triage && (triage.action === "salary" || triage.action === "handoff")) {
+          return json({ reply: "", action: triage.action, intent: triage.intent }, 200, cors);
+        }
+      }
       if (mode === "jd-explanation") {
         system += "\n\n" + JD_EXPLANATION_PROMPT +
           "\nRequested language: " + jdExplanationPayload.language +
@@ -421,11 +535,11 @@ export default {
     }
 
     try {
-      const out = await env.AI.run(MODEL, {
-        messages: [{ role: "system", content: system }, ...messages],
-        max_tokens: mode === "summary" ? 160 : mode === "jd-explanation" ? 320 : 300,
-        temperature: 0.2,
-      });
+      const out = await runText(env, system, messages,
+        mode === "summary" ? 160 : mode === "jd-explanation" ? 320 : 300, 0.2);
+      if (triage) {
+        return json({ reply: modelText(out), action: triage.action, intent: triage.intent }, 200, cors);
+      }
       return json({ reply: modelText(out) }, 200, cors);
     } catch (e) {
       return json({ error: "ai-failed", detail: String((e && e.message) || e).slice(0, 200) }, 502, cors);
@@ -455,15 +569,10 @@ async function runJdReasoningMode(env, cors, body, options) {
   }
 
   try {
-    const out = await env.AI.run(MODEL, {
-      messages: [
-        { role: "system", content: PERSONA_HEAD + "\n\n" + options.prompt },
-        { role: "user", content: options.buildUserContent(payload) }
-      ],
-      max_tokens: jdReasoningMaxTokens(payload.reasoningInput.requirements.length),
-      temperature: 0.1,
-    });
-    const rawOutput = out && out.response !== undefined ? out.response : "";
+    const out = await runText(env, PERSONA_HEAD + "\n\n" + options.prompt,
+      [{ role: "user", content: options.buildUserContent(payload) }],
+      jdReasoningMaxTokens(payload.reasoningInput.requirements.length), 0.1);
+    const rawOutput = modelOutput(out);
     const validated = options.validateOutput(rawOutput, payload.reasoningInput);
     if (!validated.ok) {
       /* `error` stays "reasoning-invalid" — the browser's retry policy and the contract suite
@@ -521,16 +630,11 @@ async function runJdScoringMode(env, cors, body) {
   const { jdText, ...inputWithoutJdText } = input;
 
   try {
-    const reasoningOut = await env.AI.run(MODEL, {
-      messages: [
-        { role: "system", content: PERSONA_HEAD + "\n\n" + JD_REASONING_PROMPT },
-        { role: "user", content: buildJdReasoningMessage(inputWithoutJdText).content }
-      ],
-      max_tokens: jdReasoningMaxTokens(input.requirements.length),
-      temperature: 0.1,
-    });
+    const reasoningOut = await runText(env, PERSONA_HEAD + "\n\n" + JD_REASONING_PROMPT,
+      [{ role: "user", content: buildJdReasoningMessage(inputWithoutJdText).content }],
+      jdReasoningMaxTokens(input.requirements.length), 0.1);
     const reasoning = validateJdReasoningModelOutput(
-      reasoningOut && reasoningOut.response !== undefined ? reasoningOut.response : "",
+      modelOutput(reasoningOut),
       input,
       { allowModelScoreKeys: true }
     );
@@ -538,17 +642,10 @@ async function runJdScoringMode(env, cors, body) {
       return jdScoringFailure(cors, "reasoning", reasoning.error, reasoningOut);
     }
 
-    const overallOut = await env.AI.run(MODEL, {
-      messages: [
-        { role: "system", content: PERSONA_HEAD + "\n\n" + JD_SCORING_OVERALL_PROMPT },
-        { role: "user", content: buildJdScoringOverallContent(input) }
-      ],
-      max_tokens: JD_SCORING_OVERALL_MAX_TOKENS,
-      temperature: 0.1,
-    });
-    const overall = validateJdScoringOverall(
-      overallOut && overallOut.response !== undefined ? overallOut.response : ""
-    );
+    const overallOut = await runText(env, PERSONA_HEAD + "\n\n" + JD_SCORING_OVERALL_PROMPT,
+      [{ role: "user", content: buildJdScoringOverallContent(input) }],
+      JD_SCORING_OVERALL_MAX_TOKENS, 0.1);
+    const overall = validateJdScoringOverall(modelOutput(overallOut));
     if (!overall.ok) {
       return jdScoringFailure(cors, "overall", overall.error, overallOut);
     }
@@ -572,7 +669,7 @@ async function runJdScoringMode(env, cors, body) {
    apart. */
 function jdScoringFailure(cors, stage, error, out) {
   const reason = error === "json-invalid"
-    ? jsonInvalidFingerprint(out && out.response !== undefined ? out.response : "")
+    ? jsonInvalidFingerprint(modelOutput(out))
     : (error || "unknown");
   return json({
     error: "reasoning-invalid",
@@ -635,9 +732,564 @@ function validateJdScoringOverall(rawOutput) {
     overall: {
       score: overall.score,
       fitBand,
-      narrative: clipText(overall.narrative, JD_REASONING_TEXT_LIMITS.narrative)
+      narrative: clipToSentence(overall.narrative, JD_REASONING_TEXT_LIMITS.narrative)
     }
   };
+}
+
+/* ---------------- Clef runtime ---------------- */
+
+/* One Clef call. A thrown error moves on to the next model id (the catalogue spelling may differ
+   per account); an answer with no readable `answers` block stops there, because the model ran
+   and a second id would not read any better. */
+async function runClef(env, state, questions) {
+  const candidates = clefModelId ? [clefModelId] : CLEF_MODEL_IDS;
+  let lastError = "clef-unavailable";
+  for (const id of candidates) {
+    let out;
+    try {
+      out = await env.AI.run(id, { state, questions });
+    } catch (e) {
+      lastError = "clef-run-failed:" + safeKeyLabel((e && e.message) || e);
+      continue;
+    }
+    const answers = readClefAnswers(out);
+    if (!answers) return { ok: false, error: "clef-shape-invalid" };
+    clefModelId = id;
+    return { ok: true, answers, modelId: id };
+  }
+  return { ok: false, error: lastError };
+}
+
+/* The SystemOne API answers `{model, answers, usage}`; a binding may wrap that in `result` or
+   `response`, or hand it over as a JSON string. Anything else is not a Clef answer. */
+function readClefAnswers(out) {
+  let value = out;
+  for (let depth = 0; depth < 4 && value !== undefined && value !== null; depth += 1) {
+    if (typeof value === "string") {
+      try {
+        value = JSON.parse(value);
+      } catch {
+        return null;
+      }
+      continue;
+    }
+    if (!isPlainObject(value)) return null;
+    if (isPlainObject(value.answers)) return value.answers;
+    value = value.result !== undefined ? value.result : value.response;
+  }
+  return null;
+}
+
+function clefProbability(value) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1 ? value : null;
+}
+
+/* A choice answer is only read when it names one of the labels that were offered. `probability`
+   is the weight Clef gave the chosen label; Workers AI may omit the per-label table or the
+   confidence, so either one can stand in for the other, and an answer with neither is unreadable. */
+function readClefChoice(answer, labels) {
+  if (!isPlainObject(answer) || typeof answer.choice !== "string" || !labels.includes(answer.choice)) {
+    return null;
+  }
+  const rawProbabilities = isPlainObject(answer.probabilities) ? answer.probabilities : {};
+  const probabilities = {};
+  for (const label of labels) {
+    const p = clefProbability(rawProbabilities[label]);
+    if (p !== null) probabilities[label] = p;
+  }
+  const chosen = probabilities[answer.choice] !== undefined
+    ? probabilities[answer.choice]
+    : clefProbability(answer.confidence);
+  if (chosen === null) return null;
+  probabilities[answer.choice] = chosen;
+  return { choice: answer.choice, probability: chosen, probabilities };
+}
+
+/* A score answer is the probability-weighted level, 0-based, and may land between two levels. */
+function readClefScore(answer, levelCount) {
+  if (!isPlainObject(answer) || typeof answer.score !== "number" || !Number.isFinite(answer.score) ||
+    answer.score < 0 || answer.score > levelCount - 1) {
+    return null;
+  }
+  return { score: answer.score };
+}
+
+function readClefNoul(answer) {
+  if (typeof answer === "number") return clefProbability(answer);
+  if (!isPlainObject(answer)) return null;
+  return clefProbability(answer.noul !== undefined ? answer.noul : answer.probability);
+}
+
+/* ---------------- chat triage ----------------
+   Two questions about the visitor's latest message, answered before any text is generated:
+   what it is about, and whether the knowledge base can answer it at all. Only a strong signal
+   acts — a salary question goes to the browser's curated answer and handoff, a clearly
+   out-of-knowledge one goes straight to the handoff — so an uncertain triage costs nothing but
+   the call. Any failure, or a slow Clef, returns null and the LLM answers exactly as before. */
+async function triageChat(env, kb, messages) {
+  const latest = messages[messages.length - 1].content;
+  const intentLabels = Object.keys(CLEF_TRIAGE_INTENTS);
+  const questions = {
+    intent: {
+      type: "choice",
+      instructions: "What is the visitor's latest message about?",
+      criteria: CLEF_TRIAGE_INTENTS
+    },
+    answerable: {
+      type: "noul",
+      instructions: "The knowledge base in the state contains the facts needed to answer the visitor's latest message.",
+      criteria: {
+        true: "The knowledge base states the facts the answer needs.",
+        false: "The knowledge base is silent on what the visitor asked, so any answer would have to guess."
+      }
+    }
+  };
+  const state = { knowledgeBase: kb, conversation: messages.slice(-6), latestMessage: latest };
+
+  let timer = null;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve({ ok: false, error: "clef-timeout" }), CLEF_TRIAGE_TIMEOUT_MS);
+  });
+  let result;
+  try {
+    result = await Promise.race([runClef(env, state, questions), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!result || !result.ok) return null;
+
+  const intent = readClefChoice(result.answers.intent, intentLabels);
+  const answerable = readClefNoul(result.answers.answerable);
+  if (!intent && answerable === null) return null;
+
+  const confidentIntent = intent && intent.probability >= CLEF_TRIAGE_INTENT_MIN ? intent.choice : "";
+  let action = "answer";
+  if (confidentIntent === "compensation") {
+    action = "salary";
+  } else if (answerable !== null && answerable < CLEF_TRIAGE_HANDOFF_BELOW && !(intent && intent.choice === "other")) {
+    /* Greetings are never in the knowledge base, so "other" is exempt — the LLM says hello. */
+    action = "handoff";
+  } else if (confidentIntent === "job-match") {
+    action = "jd";
+  }
+  return { action, intent: confidentIntent };
+}
+
+/* ---------------- jd-decide ----------------
+   The recruiter report from Clef decisions. Same request body as jd-scoring, same relayed response
+   shape (so the browser's validateModelOutput and mergeResult need no second contract), plus
+   `engine: "clef"` and a per-requirement `probability` the browser accepts as optional.
+
+   Clef is offered every citable record in the published profile, not only the ids the keyword
+   pass happened to touch: finding that Azure DevOps release work sits next to a "GitHub Actions"
+   requirement is the judgement this mode exists for. user-provided records stay out for the same
+   reason assets/js/jd-reasoning.js keeps them out (no match level may cite them). */
+async function runJdDecideMode(env, cors, body) {
+  let profile = null;
+  try {
+    profile = await loadReasoningProfile();
+  } catch {}
+  if (!profile) return json({ error: "profile-unavailable" }, 502, cors);
+
+  const payload = validateJdScoringBody(body, profile);
+  if (!payload.ok) return json({ error: payload.error }, 400, cors);
+
+  const input = payload.reasoningInput;
+  const registry = decideEvidenceRegistry(profile);
+  if (!registry.length) return jdDecideFailure(cors, "decide", "evidence-registry-empty");
+
+  let call;
+  try {
+    call = await runClef(env, buildJdDecideState(input, registry), buildJdDecideQuestions(input, registry));
+  } catch (e) {
+    return jdDecideFailure(cors, "clef", "clef-run-failed");
+  }
+  if (!call.ok) return jdDecideFailure(cors, "clef", call.error);
+
+  const decided = assembleJdDecisions(input, registry, call.answers);
+  if (!decided.ok) return jdDecideFailure(cors, "decide", decided.error);
+
+  const narrative = await writeJdDecideNarrative(env, input, decided, registry);
+  return json({
+    reasoning: JSON.stringify({
+      narrative,
+      requirements: decided.requirements,
+      overall: { score: decided.score, fitBand: decided.fitBand, narrative },
+      engine: "clef"
+    }),
+    revision: WORKER_REVISION
+  }, 200, cors);
+}
+
+function jdDecideFailure(cors, stage, reason) {
+  return json({ error: "decide-unavailable", stage, reason: reason || "unknown", revision: WORKER_REVISION }, 502, cors);
+}
+
+function decideEvidenceRegistry(profile) {
+  return (Array.isArray(profile.recruiterEvidence) ? profile.recruiterEvidence : [])
+    .map(sanitizeRecruiterEvidenceRecord)
+    .filter((record) => record && (record.evidenceType === "professional" || record.evidenceType === "academic"))
+    .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
+}
+
+/* No deterministic classification in the state on purpose: the keyword verdict sitting next to
+   each requirement is what the old 8B model kept copying into matchLevel, and Clef should judge
+   the evidence, not echo the keyword pass. The JD prose stays — a decision model has none of the
+   8B model's trouble holding it alongside the questions. */
+function buildJdDecideState(input, registry) {
+  return {
+    jobDescription: input.jdText,
+    requirements: input.requirements.map((requirement) => ({
+      id: requirement.id,
+      requirement: requirement.term,
+      postingWording: requirement.original,
+      strength: requirement.strength,
+      yearsRequired: requirement.yearsRequired
+    })),
+    publishedEvidence: registry.map((record) => ({
+      id: record.id,
+      evidenceType: record.evidenceType,
+      claim: record.claim,
+      technologies: record.technologies,
+      capabilities: record.capabilities,
+      scope: record.scope
+    }))
+  };
+}
+
+function buildJdDecideQuestions(input, registry) {
+  const evidenceCriteria = {};
+  for (const record of registry) {
+    evidenceCriteria[record.id] = clipText(
+      record.evidenceType + " evidence: " + record.claim + " Technologies: " + record.technologies.join(", ") + ".",
+      400
+    );
+  }
+  evidenceCriteria.none = "No published evidence record supports this requirement.";
+
+  const questions = {};
+  input.requirements.forEach((requirement, index) => {
+    const label = "\"" + requirement.term + "\" (requirement " + requirement.id + ")";
+    questions["level_" + index] = {
+      type: "choice",
+      instructions: "How does Ameer's published evidence relate to the requirement " + label + "? " +
+        "Judge provenance honestly: academic exposure is never professional delivery.",
+      criteria: CLEF_LEVEL_CRITERIA
+    };
+    questions["evidence_" + index] = {
+      type: "choice",
+      instructions: "Which single published evidence record best supports the requirement " + label + "?",
+      criteria: evidenceCriteria
+    };
+  });
+  questions.overall_fit = {
+    type: "score",
+    instructions: "Overall, how well does Ameer's published evidence fit what this job description actually needs?",
+    criteria: CLEF_OVERALL_RUBRIC
+  };
+  return questions;
+}
+
+const JD_DECIDE_LEVEL_FACTORS = {
+  "direct-professional": 1,
+  "adjacent-professional": 0.75,
+  "transferable-professional": 0.55,
+  "academic-foundation": 0.3,
+  "learning-bridge": 0.15,
+  "explicit-gap": 0,
+  "unverified": 0
+};
+const JD_DECIDE_STRENGTH_FACTORS = { required: 1, neutral: 0.75, preferred: 0.5 };
+
+function assembleJdDecisions(input, registry, answers) {
+  const levels = Object.keys(CLEF_LEVEL_CRITERIA);
+  const evidenceLabels = registry.map((record) => record.id).concat("none");
+  const registryById = new Map(registry.map((record) => [record.id, record]));
+  const vocabulary = new Set(buildCapabilityVocabulary(registry));
+
+  let readable = 0;
+  const requirements = input.requirements.map((requirement, index) => {
+    const level = readClefChoice(answers["level_" + index], levels);
+    if (level) readable += 1;
+    const evidence = readClefChoice(answers["evidence_" + index], evidenceLabels);
+    return decideRequirement(requirement, level, evidence, registryById, vocabulary, input.language);
+  });
+  if (!readable) return { ok: false, error: "clef-answers-unreadable" };
+
+  const overall = readClefScore(answers.overall_fit, CLEF_OVERALL_RUBRIC.length);
+  const score = overall ? clefOverallPoints(overall.score) : decisionWeightedScore(input.requirements, requirements);
+  return { ok: true, requirements, score, fitBand: fitBandForScore(score) };
+}
+
+/* The rules every decision must pass before it leaves the Worker are the browser validator's own:
+   an evidence-based level cites at least one record, every cited record's type is one that level
+   may cite, and gaps cite nothing. A level Clef chose without compatible evidence above
+   CLEF_EVIDENCE_MIN is demoted (professional → academic when only academic evidence fits, else
+   unverified), never left to fail validation, and a demoted decision is never reported as
+   confident. */
+function decideRequirement(requirement, level, evidence, registryById, vocabulary, language) {
+  /* An unreadable or unsure Clef answer falls back to the keyword verdict, and is reported like a
+     demotion: low confidence, no probability, so the card shows no confidence bar for it. */
+  const guarded = !level || level.probability < CLEF_DECISION_MIN;
+  let matchLevel = guarded ? keywordMatchLevel(requirement) : level.choice;
+  const probability = guarded ? null : level.probability;
+  let demoted = guarded;
+
+  const clefRanked = evidence
+    ? Object.keys(evidence.probabilities)
+      .filter((id) => id !== "none" && registryById.has(id) && evidence.probabilities[id] >= CLEF_EVIDENCE_MIN)
+      .sort((left, right) => evidence.probabilities[right] - evidence.probabilities[left])
+      .map((id) => registryById.get(id))
+    : [];
+  /* A keyword verdict cites the keyword pass's own evidence first, then whatever Clef picked. */
+  const keywordCited = guarded
+    ? requirement.evidenceRefs.filter((id) => registryById.has(id)).map((id) => registryById.get(id))
+    : [];
+  const ranked = keywordCited.concat(clefRanked.filter((record) => !keywordCited.includes(record)));
+
+  let cited = null;
+  const allowedTypes = JD_REASONING_MATCH_EVIDENCE_TYPES[matchLevel];
+  if (allowedTypes) cited = ranked.find((record) => allowedTypes[record.evidenceType] === true) || null;
+  if (JD_REASONING_EVIDENCE_BASED_LEVELS[matchLevel] && !cited) {
+    const academic = matchLevel !== "academic-foundation"
+      ? ranked.find((record) => record.evidenceType === "academic")
+      : null;
+    if (academic) {
+      matchLevel = "academic-foundation";
+      cited = academic;
+    } else {
+      matchLevel = "unverified";
+    }
+    demoted = true;
+  }
+  if (matchLevel === "explicit-gap" || matchLevel === "unverified") cited = null;
+
+  const capabilities = cited && (matchLevel === "adjacent-professional" ||
+    matchLevel === "transferable-professional" || matchLevel === "learning-bridge")
+    ? cited.capabilities.filter((capability) => vocabulary.has(clipText(capability, 120))).slice(0, 4)
+    : [];
+  const confidence = demoted || probability === null
+    ? "low"
+    : probability >= 0.8 ? "high" : probability >= 0.55 ? "medium" : "low";
+  const copy = jdDecideCopy(language, matchLevel, requirement.term, cited);
+
+  const decision = {
+    requirementId: requirement.id,
+    recruiterIntent: "",
+    expectedOutcome: "",
+    matchLevel,
+    evidenceRefs: cited ? [cited.id] : [],
+    transferableCapabilities: capabilities,
+    limitation: clipText(copy.limitation, JD_REASONING_TEXT_LIMITS.limitation),
+    recruiterFraming: clipText(copy.framing, JD_REASONING_TEXT_LIMITS.recruiterFraming),
+    verificationQuestion: clipText(copy.question, JD_REASONING_TEXT_LIMITS.verificationQuestion),
+    confidence
+  };
+  if (!demoted && probability !== null) decision.probability = Math.round(probability * 1000) / 1000;
+  return decision;
+}
+
+/* The keyword pass's verdict as a match level, for requirements Clef was unsure about. strong and
+   partial keep the provenance the keyword pass recorded (professional or academic); anything it
+   could not place stays unverified. The citation rules in decideRequirement still apply, so an
+   evidence-based level with nothing compatible to cite is demoted exactly like a Clef decision. */
+function keywordMatchLevel(requirement) {
+  const professional = requirement.evidenceType === "professional";
+  const academic = requirement.evidenceType === "academic";
+  switch (requirement.classification) {
+    case "strong": return professional ? "direct-professional" : academic ? "academic-foundation" : "unverified";
+    case "partial": return professional ? "adjacent-professional" : academic ? "academic-foundation" : "unverified";
+    case "gap": return "explicit-gap";
+    default: return "unverified";
+  }
+}
+
+/* Per-requirement copy is templated, not generated: it is the same sentence for the same
+   decision every time, in the visitor's language, and it can only name the requirement and the
+   cited record's technologies. Bahasa Melayu follows the site's formal DBP register. */
+function jdDecideCopy(language, matchLevel, term, record) {
+  const techs = record ? record.technologies.slice(0, 3).join(", ") : "";
+  if (language === "ms") {
+    switch (matchLevel) {
+      case "direct-professional": return {
+        framing: "Bukti profesional terbitan meliputi " + term + " secara langsung.",
+        limitation: "",
+        question: "Kerja terkini manakah yang paling jelas menunjukkan " + term + ", dan bahagian apakah yang Ameer miliki sepenuhnya?"
+      };
+      case "adjacent-professional": return {
+        framing: "Kerja profesional yang berkait rapat (" + techs + ") bersebelahan dengan " + term + "; jangkakan tempoh penyesuaian yang singkat.",
+        limitation: "Ini pertimbangan bersebelahan, bukan bukti penyampaian langsung dengan " + term + ".",
+        question: "Bagaimanakah pengalaman Ameer dengan " + techs + " dapat dipindahkan kepada " + term + ", dan berapa lamakah tempoh penyesuaiannya?"
+      };
+      case "transferable-professional": return {
+        framing: "Keupayaan profesional daripada kerja dengan " + techs + " boleh dipindahkan kepada " + term + ", walaupun alatannya berbeza.",
+        limitation: "Ini pertimbangan keupayaan boleh dipindahkan, bukan bukti penyampaian langsung dengan " + term + ".",
+        question: "Bagaimanakah pengalaman Ameer dengan " + techs + " dapat dipindahkan kepada " + term + ", dan berapa lamakah tempoh penyesuaiannya?"
+      };
+      case "academic-foundation": return {
+        framing: term + " diliputi oleh kerja akademik sahaja, bukan penyampaian profesional terbitan.",
+        limitation: "Pendedahan akademik, bukan pengalaman profesional.",
+        question: "Apakah yang telah Ameer bina dengan " + term + " selain kerja akademiknya?"
+      };
+      case "learning-bridge": return {
+        framing: "Pengalaman berkaitan memendekkan tempoh penyesuaian kepada " + term + ", tetapi keperluan ini belum diliputi.",
+        limitation: "Belum ada penyampaian terbitan dengan " + term + ".",
+        question: "Apakah rancangan Ameer untuk menjadi produktif dengan " + term + "?"
+      };
+      case "explicit-gap": return {
+        framing: "Bukti terbitan tidak meliputi " + term + ".",
+        limitation: "Tiada penyampaian terbitan dengan " + term + ".",
+        question: "Apakah rancangan Ameer untuk menjadi produktif dengan " + term + "?"
+      };
+      default: return {
+        framing: term + " tidak dapat dinilai daripada profil terbitan.",
+        limitation: "Perlu disahkan dalam perbualan.",
+        question: "Bolehkah Ameer memberikan contoh konkrit tentang " + term + "?"
+      };
+    }
+  }
+  switch (matchLevel) {
+    case "direct-professional": return {
+      framing: "Published professional evidence covers " + term + " directly.",
+      limitation: "",
+      question: "Which recent piece of work best shows " + term + ", and what did Ameer own end to end?"
+    };
+    case "adjacent-professional": return {
+      framing: "Closely related professional work (" + techs + ") sits next to " + term + "; expect a short ramp-up.",
+      limitation: "An adjacent judgement, not proof of direct delivery with " + term + ".",
+      question: "How would Ameer's work with " + techs + " carry over to " + term + ", and how long would ramp-up take?"
+    };
+    case "transferable-professional": return {
+      framing: "Professional capabilities from work with " + techs + " transfer to " + term + ", though the tooling differs.",
+      limitation: "A transferable-capability judgement, not proof of direct delivery with " + term + ".",
+      question: "How would Ameer's work with " + techs + " carry over to " + term + ", and how long would ramp-up take?"
+    };
+    case "academic-foundation": return {
+      framing: term + " is covered by academic work only, not by published professional delivery.",
+      limitation: "Academic exposure, not professional experience.",
+      question: "What has Ameer built with " + term + " beyond his academic work?"
+    };
+    case "learning-bridge": return {
+      framing: "Related experience shortens the ramp into " + term + ", but it is not covered yet.",
+      limitation: "No published delivery with " + term + " yet.",
+      question: "What is Ameer's plan to become productive with " + term + "?"
+    };
+    case "explicit-gap": return {
+      framing: "Published evidence does not cover " + term + ".",
+      limitation: "No published delivery with " + term + ".",
+      question: "What is Ameer's plan to become productive with " + term + "?"
+    };
+    default: return {
+      framing: term + " cannot be judged from the published profile.",
+      limitation: "Needs confirming in conversation.",
+      question: "Can Ameer give a concrete example of " + term + "?"
+    };
+  }
+}
+
+function clefOverallPoints(score) {
+  const lower = Math.max(0, Math.min(CLEF_OVERALL_POINTS.length - 1, Math.floor(score)));
+  const upper = Math.min(CLEF_OVERALL_POINTS.length - 1, lower + 1);
+  const fraction = score - lower;
+  return Math.round(CLEF_OVERALL_POINTS[lower] + (CLEF_OVERALL_POINTS[upper] - CLEF_OVERALL_POINTS[lower]) * fraction);
+}
+
+/* Used only when Clef answered the requirements but not the overall rubric. */
+function decisionWeightedScore(inputRequirements, decisions) {
+  let total = 0;
+  let matched = 0;
+  decisions.forEach((decision, index) => {
+    const weight = JD_DECIDE_STRENGTH_FACTORS[inputRequirements[index].strength] || 0.75;
+    total += weight;
+    matched += weight * (JD_DECIDE_LEVEL_FACTORS[decision.matchLevel] || 0);
+  });
+  return total ? Math.round((matched / total) * 100) : 0;
+}
+
+/* Mirrors computeFitBand in assets/js/jd-reasoning.js; the browser recomputes the band from its
+   clamped final score anyway, so this only has to agree with the score it is sent with. */
+function fitBandForScore(score) {
+  return score >= 75 ? "strong" : score >= 60 ? "good" : score >= 40 ? "partial" : "limited";
+}
+
+const JD_DECIDE_BAND_LABELS = {
+  en: { strong: "Strong fit", good: "Good fit", partial: "Partial fit", limited: "Limited overlap" },
+  ms: { strong: "Padanan kukuh", good: "Padanan baik", partial: "Padanan separa", limited: "Pertindihan terhad" }
+};
+
+/* The one generated paragraph. The text model sees the decisions and the band, never the JD prose
+   and never a schema; anything that looks like a schema, markup or a percentage of its own is
+   discarded for the templated paragraph, so the narrative can never contradict the decisions. */
+async function writeJdDecideNarrative(env, input, decided, registry) {
+  const registryById = new Map(registry.map((record) => [record.id, record]));
+  const language = input.language === "ms" ? "ms" : "en";
+  const context = {
+    fitBand: JD_DECIDE_BAND_LABELS.en[decided.fitBand],
+    decisions: decided.requirements.map((decision, index) => ({
+      requirement: input.requirements[index].term,
+      decision: decision.matchLevel,
+      evidence: decision.evidenceRefs.length ? registryById.get(decision.evidenceRefs[0]).claim : ""
+    }))
+  };
+  try {
+    const out = await runText(env, PERSONA_HEAD + "\n\n" + JD_DECIDE_NARRATIVE_PROMPT, [{
+      role: "user",
+      content: "Write the paragraph in " + (language === "ms" ? "formal Bahasa Malaysia" : "English") +
+        ". Decisions:\n" + JSON.stringify(context)
+    }], JD_DECIDE_NARRATIVE_MAX_TOKENS, 0.2);
+    const text = cleanDecideNarrative(modelText(out));
+    if (text) return text;
+  } catch {}
+  return templatedDecideNarrative(language, input, decided);
+}
+
+function cleanDecideNarrative(raw) {
+  const text = normalizeText(String(raw || "").replace(/^["'\s]+|["'\s]+$/g, ""));
+  if (!text || text.length < 40) return "";
+  if (HTML_MARKUP_PATTERN.test(text) || /^[{[]/.test(text) || text.includes("```") || /\d\s*%/.test(text)) return "";
+  return clipToSentence(text, JD_DECIDE_NARRATIVE_MAX);
+}
+
+function templatedDecideNarrative(language, input, decided) {
+  const terms = (levelsWanted) => decided.requirements
+    .map((decision, index) => (levelsWanted.includes(decision.matchLevel) ? input.requirements[index].term : ""))
+    .filter(Boolean);
+  const direct = terms(["direct-professional"]);
+  const near = terms(["adjacent-professional", "transferable-professional"]);
+  const gaps = terms(["explicit-gap", "learning-bridge"]);
+  const list = (items) => items.slice(0, 3).join(", ");
+  const total = decided.requirements.length;
+  const parts = [JD_DECIDE_BAND_LABELS[language][decided.fitBand] + "."];
+  if (language === "ms") {
+    if (direct.length) parts.push("Bukti profesional terbitan meliputi " + direct.length + " daripada " + total + " keperluan secara langsung (" + list(direct) + ").");
+    if (near.length) parts.push("Kerja profesional bersebelahan atau boleh dipindahkan meliputi " + list(near) + ".");
+    if (gaps.length) parts.push("Perlu disahkan semasa saringan: " + list(gaps) + ".");
+  } else {
+    if (direct.length) parts.push("Published professional evidence directly covers " + direct.length + " of " + total + " requirements (" + list(direct) + ").");
+    if (near.length) parts.push("Adjacent or transferable professional work covers " + list(near) + ".");
+    if (gaps.length) parts.push("Worth confirming in screening: " + list(gaps) + ".");
+  }
+  return clipText(parts.join(" "), JD_DECIDE_NARRATIVE_MAX);
+}
+
+/* `{"mode":"clef-probe"}`: one fixed question, so a paste can be confirmed to reach Clef (and which
+   model id answered) without spending a recruiter request on it. */
+async function runClefProbe(env, cors) {
+  const result = await runClef(env, "Help! My payouts have been failing for 3 days.", {
+    urgent: {
+      type: "noul",
+      instructions: "The message describes an urgent problem.",
+      criteria: { true: "It needs attention now.", false: "It can wait." }
+    }
+  });
+  return json({
+    revision: WORKER_REVISION,
+    ok: result.ok,
+    model: result.ok ? result.modelId : null,
+    reason: result.ok ? "" : result.error,
+    urgent: result.ok ? readClefNoul(result.answers.urgent) : null
+  }, result.ok ? 200 : 502, cors);
 }
 
 async function loadKB() {
@@ -710,7 +1362,10 @@ function detectMode(value) {
     : value === "jd-explanation" ? "jd-explanation"
       : value === "jd-reasoning" ? "jd-reasoning"
         : value === "jd-scoring" ? "jd-scoring"
-          : "chat";
+          : value === "jd-decide" ? "jd-decide"
+            : value === "clef-probe" ? "clef-probe"
+              : value === "text-probe" ? "text-probe"
+                : "chat";
 }
 
 function sanitizeMessages(rawMessages, limit, maxChars) {
@@ -753,6 +1408,24 @@ function normalizeText(value) {
 
 function clipText(value, maxChars) {
   return normalizeText(value).slice(0, maxChars);
+}
+
+/* For the narratives a visitor reads as a paragraph. gpt-oss writes past the requested length more
+   readily than Llama did, and a hard clipText cut left the report's headline ending mid-word
+   ("…Overa"). Over the limit, this keeps every whole sentence that fits; if the first sentence
+   alone is too long, it cuts at the last word boundary and adds an ellipsis. Never longer than
+   maxChars, so the browser's own clip at the same limit stays a no-op. */
+function clipToSentence(value, maxChars) {
+  const text = normalizeText(value);
+  if (text.length <= maxChars) return text;
+  const head = text.slice(0, maxChars);
+  let end = -1;
+  const sentenceEnd = /[.!?](?=\s|$)/g;
+  let match;
+  while ((match = sentenceEnd.exec(head)) !== null) end = match.index + 1;
+  if (end >= Math.floor(maxChars * 0.4)) return head.slice(0, end);
+  const space = head.lastIndexOf(" ", maxChars - 1);
+  return (space > 0 ? head.slice(0, space) : head.slice(0, maxChars - 1)).replace(/[\s,;:–—-]+$/, "") + "…";
 }
 
 /* Enum-valued fields (matchLevel, confidence, fitBand) come from a language model, which
@@ -1469,7 +2142,7 @@ function validateJdReasoningModelOutput(rawOutput, input, options) {
     ok: true,
     parsed,
     reasoning: {
-      narrative: clipText(parsed.narrative, JD_REASONING_TEXT_LIMITS.narrative),
+      narrative: clipToSentence(parsed.narrative, JD_REASONING_TEXT_LIMITS.narrative),
       requirements
     }
   };
@@ -1651,12 +2324,100 @@ function jdReasoningMaxTokens(requirementCount) {
   );
 }
 
+/* Every text-model call goes through here. `maxTokens` is the visible-answer budget each caller
+   always had; the reasoning headroom is added on top (see MODEL). `reasoning_effort` is the Chat
+   Completions spelling of gpt-oss's effort setting; if the runtime rejects the field, the call is
+   retried once without it and the field is not sent again for the life of the isolate, so a schema
+   mismatch costs one failed call, never chat. */
+let textEffortSupported = true;
+async function runText(env, system, messages, maxTokens, temperature) {
+  const request = {
+    messages: [{ role: "system", content: system }, ...messages],
+    max_tokens: maxTokens + TEXT_REASONING_HEADROOM,
+    temperature
+  };
+  if (textEffortSupported) {
+    try {
+      return await env.AI.run(MODEL, { ...request, reasoning_effort: TEXT_REASONING_EFFORT });
+    } catch (e) {
+      if (!/reasoning_effort|additional\s*propert|unknown\s*(field|propert|param)|unrecognized/i.test(String((e && e.message) || e))) throw e;
+      textEffortSupported = false;
+    }
+  }
+  return env.AI.run(MODEL, request);
+}
+
+/* The model's answer, before any parsing, whichever shape the runtime handed back:
+     { response }                                 Workers AI's native text shape (the Llama era)
+     { choices: [{ message: { content } }] }      Chat Completions, what gpt-oss answers `messages` with
+     { output_text } / { output: [{ type: "message", content: [{ type: "output_text", text }] }] }
+                                                  the Responses API shape gpt-oss also speaks
+   Reasoning (`reasoning_content`, `type: "reasoning"` items) is never read: the model's hidden
+   reasoning must not reach a visitor. `response` may be an object when the runtime parsed JSON
+   output itself; that is passed through for parseModelJson, as before. */
+function modelOutput(out) {
+  if (!out || typeof out !== "object") return "";
+  /* An empty `response` beside a Chat Completions body must not hide the real answer. */
+  const response = out.response;
+  if ((typeof response === "string" && response.trim()) || (response && typeof response === "object")) return response;
+  if (Array.isArray(out.choices) && out.choices.length) {
+    const choice = out.choices[0] || {};
+    const content = choice.message ? choice.message.content : choice.text;
+    if (typeof content === "string") return content;
+    if (Array.isArray(content)) {
+      return content.map((part) => (part && typeof part.text === "string" ? part.text : "")).join("");
+    }
+    return "";
+  }
+  if (typeof out.output_text === "string") return out.output_text;
+  if (Array.isArray(out.output)) {
+    return out.output
+      .filter((item) => item && item.type === "message" && Array.isArray(item.content))
+      .map((item) => item.content
+        .map((part) => (part && part.type !== "reasoning_text" && typeof part.text === "string" ? part.text : ""))
+        .join(""))
+      .join("");
+  }
+  return typeof response === "string" ? response : "";
+}
+
+/* `{"mode":"text-probe"}`: one fixed prompt, so a paste can be confirmed to reach the text model and
+   to come back in a shape modelOutput reads, without spending a visitor's chat on it. `shape` is
+   the response's top-level key names only (safeKeyLabel'd), never model prose; `reply` is the
+   answer to the fixed prompt, clipped. */
+async function runTextProbe(env, cors) {
+  let out;
+  try {
+    out = await runText(env, "You are a health check. Reply with exactly one word.", [
+      { role: "user", content: "Reply with the word: ready" }
+    ], 16, 0);
+  } catch (e) {
+    return json({
+      revision: WORKER_REVISION,
+      ok: false,
+      model: MODEL,
+      reason: "text-run-failed:" + safeKeyLabel((e && e.message) || e)
+    }, 502, cors);
+  }
+  const reply = normalizeText(modelText(out)).slice(0, 40);
+  const shape = out && typeof out === "object" ? Object.keys(out).slice(0, 8).map(safeKeyLabel) : [typeof out];
+  return json({
+    revision: WORKER_REVISION,
+    ok: !!reply,
+    model: MODEL,
+    effort: textEffortSupported ? TEXT_REASONING_EFFORT : "default",
+    shape,
+    reply,
+    reason: reply ? "" : "text-empty"
+  }, reply ? 200 : 502, cors);
+}
+
 /* The sibling of parseModelJson for the free-text modes (chat, summary, jd-explanation).
    `(out.response || "").trim()` throws "trim is not a function" the moment the runtime parses
    the model's output into an object — reachable from plain chat just by asking AIMeer to reply
    with JSON, which 502s the whole request as ai-failed. */
 function modelText(out) {
-  const response = out && out.response;
+  const response = modelOutput(out);
   if (typeof response === "string") return response.trim();
   if (response === undefined || response === null) return "";
   if (typeof response === "object") {

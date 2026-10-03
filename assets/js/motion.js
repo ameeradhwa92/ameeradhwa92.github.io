@@ -1,7 +1,8 @@
 /* Page choreography — the 2026-10 redesign's motion layer, on the vendored GSAP.
    Owns: split-line heading reveals, stat count-ups, the stacked IR chapters and their screens,
    the scroll-velocity marquee, magnetic buttons, the custom cursor, the nav's
-   hide-on-scroll and current-section dot, and the Shah Alam clock.
+   hide-on-scroll and current-section dot, the Shah Alam clock, and the AIMeer JD report
+   settling (count-up, staggered sections, decision-confidence bars).
 
    Rules it keeps:
    - Nothing is hidden unless GSAP *and* ScrollTrigger loaded, so a failed vendor
@@ -198,6 +199,34 @@
       }
     });
   }
+
+  /* ================= the recruiter report settling =================
+     chatbot.js fires aimeer:jd-report once when a JD match report settles. The report is plain DOM
+     that chatbot.js rebuilds on every render (a language switch included), so everything here is
+     a from() that clears its props: a re-render mid-flight simply lands in the final state, and
+     the count-up stops writing the moment its node leaves the document. */
+  document.addEventListener("aimeer:jd-report", function (e) {
+    var report = document.querySelector("#chat-jd-result .jd-report");
+    if (!report) return;
+    gsap.from(report.children, {
+      autoAlpha: 0, y: 14, duration: 0.6, ease: "power3.out", stagger: 0.06,
+      clearProps: "opacity,visibility,transform"
+    });
+    var bars = report.querySelectorAll(".chat-jd-meter-bar");
+    if (bars.length) {
+      gsap.from(bars, { scaleX: 0, duration: 0.9, ease: "power3.out", stagger: 0.05, delay: 0.3, clearProps: "transform" });
+    }
+    var score = report.querySelector(".jd-report-score");
+    var match = score && e.detail && e.detail.mode === "ai" ? score.textContent.match(/^(\d+)%/) : null;
+    if (match) {
+      var rest = score.textContent.slice(match[0].length);
+      var box = { v: 0 };
+      gsap.to(box, {
+        v: Number(match[1]), duration: 1.1, ease: "power3.out",
+        onUpdate: function () { if (score.isConnected) score.textContent = Math.round(box.v) + "%" + rest; }
+      });
+    }
+  });
 
   /* ================= pointer-only niceties ================= */
   if (!fine) return;

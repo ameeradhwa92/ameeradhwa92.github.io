@@ -163,7 +163,7 @@ window.I18N_MS = {
   "skills.cloud": "Awan &amp; DevOps",
   "skills.integrations": "Integrasi",
   "skills.ai": "Kejuruteraan berbantukan AI",
-  "skills.ai.desc": "Aliran kerja Claude Code dan Codex dengan peraturan ejen bersama dan cangkuk pengawal; ciri AI yang telah dilancarkan seperti AIMeer di laman ini — WebLLM pada peranti dengan sandaran Cloudflare Workers AI",
+  "skills.ai.desc": "Aliran kerja Claude Code dan Codex dengan peraturan ejen bersama dan cangkuk pengawal; ciri AI yang telah dilancarkan seperti AIMeer di laman ini — lapisan keputusan Clef dan jawapan gpt-oss-20b di Cloudflare Workers AI",
 
   "edu.eyebrow": "Pendidikan &amp; Kelayakan",
   "edu.degree": "Sarjana Muda Teknologi Maklumat (Kepujian), Kejuruteraan Sistem Pintar",
@@ -228,10 +228,7 @@ window.I18N_MS = {
   "footer.built": "Dibina dengan tangan — satu fail HTML, tanpa rangka kerja.",
 
   "chat.title": "<em>AI</em>Meer",
-  "chat.callout": "Kenali <b>AIMeer</b> — kembar AI saya. Tanyakannya tentang perjalanan 16 tahun saya; jawapan AI sebenar, pada peranti anda atau melalui awan.",
-  "chat.model.cloud.label": "Guna AI awan selamat",
-  "chat.model.local.label": "Guna AI pada peranti",
-  "chat.model.local.hint": "Peranti ini tidak serasi dengan AI pada peranti. AI awan selamat masih tersedia.",
+  "chat.callout": "Kenali <b>AIMeer</b> — kembar AI saya. Tanyakannya tentang perjalanan 16 tahun saya, atau padankan huraian jawatan dengan profil saya mengikut setiap keperluan.",
   "chat.chip1": "Apakah pengalaman terkuat Ameer?",
   "chat.chip2": "Terangkan pengalaman awan &amp; Azure beliau",
   "chat.jd.toggle": "Padankan huraian jawatan →",
@@ -245,6 +242,7 @@ window.I18N_MS = {
   "chat.jd.fileHint": "Fail dihuraikan secara setempat. Apabila anda menganalisis, kandungan huraian jawatan dihantar kepada AI awan selamat AIMeer untuk pemarkahan, dengan teks yang menyerupai pengenalan diri peribadi ditahan.",
   "chat.jd.fileAction": "Pilih atau ganti fail",
   "chat.jd.fileEmpty": "Belum ada fail dipilih",
+  "chat.jd.dropHint": "atau lepaskan PDF atau DOCX di sini",
   "chat.jd.analyze": "Analisis padanan",
   "chat.jd.clear": "Kosongkan huraian jawatan",
   "chat.jd.disclaimer": "Ini ialah skor keserasian anggaran yang berasaskan hanya pada huraian jawatan dan profil terbitan Ameer. Ia bukan keputusan pengambilan pekerja yang objektif, penilaian teknikal, atau jaminan kesesuaian.",

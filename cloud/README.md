@@ -1,10 +1,19 @@
 # AIMeer cloud relay
 
-`aimeer-worker.js` is a Cloudflare Worker that gives AIMeer real AI answers on
-devices that can't run the on-device WebLLM model (iPhones/iPads, browsers
-without WebGPU, low-memory GPUs). It runs Meta Llama 3.1 8B on **Workers AI**,
-entirely inside Cloudflare's free tier — no API key is stored anywhere, and the
-Worker only answers requests coming from the portfolio site.
+`aimeer-worker.js` is a Cloudflare Worker and AIMeer's only AI tier (the
+on-device WebLLM tier was retired in 2026-10). It runs two models on the one
+**Workers AI** binding: Cloudflare's **Clef-flash** makes typed decisions (chat
+triage, recruiter match levels and evidence) and OpenAI's **gpt-oss-20b** writes
+text (chat answers, summaries, the JD narrative). Both are first-party Workers AI
+models, so both are paid for out of the free 10,000 neurons a day. No API key is
+stored anywhere, and the Worker only answers requests coming from the portfolio
+site.
+
+Until 2026-10-03 the decision model was TypeSafe's **Jev** and the text model
+Llama 3.1 8B. Jev is a third-party model on Workers AI: it bills against AI
+Gateway credit, not the free neuron allowance, and every call failed with
+`2021 InsufficientAIGatewaycredits`. Clef speaks the same API, so the swap was a
+model id.
 
 ## One-time setup (~10 minutes, free, no credit card)
 
@@ -48,7 +57,7 @@ curl -s -X POST https://aimeer-ai.<your-subdomain>.workers.dev/ \
   -H 'Content-Type: application/json' \
   -H 'Origin: https://ameeradhwa92.github.io' \
   -d '{"mode":"version"}'
-# {"revision":"2026-07-30-jd-6","aiBinding":true}
+# {"revision":"2026-10-03-clef-3","aiBinding":true}
 ```
 
 If `revision` does not match the constant in the file you just pasted, the deploy
@@ -57,6 +66,36 @@ reports whether the `AI` binding is still attached, and the version probe costs 
 Workers AI call. Every `jd-scoring` / `jd-reasoning` response carries the same
 `revision`, so a failure reason can always be read against the code that produced
 it.
+
+Then confirm both models answer:
+
+```bash
+curl -s -X POST https://aimeer-ai.<your-subdomain>.workers.dev/ \
+  -H 'Content-Type: application/json' \
+  -H 'Origin: https://ameeradhwa92.github.io' \
+  -d '{"mode":"clef-probe"}'
+# {"revision":"2026-10-03-clef-3","ok":true,"model":"@cf/cloudflare/clef-flash","reason":"","urgent":0.93}
+
+curl -s -X POST https://aimeer-ai.<your-subdomain>.workers.dev/ \
+  -H 'Content-Type: application/json' \
+  -H 'Origin: https://ameeradhwa92.github.io' \
+  -d '{"mode":"text-probe"}'
+# {"revision":"2026-10-03-clef-3","ok":true,"model":"@cf/openai/gpt-oss-20b","effort":"low","shape":["id","choices","usage"],"reply":"ready","reason":""}
+```
+
+`clef-probe` with `ok:false` and `reason: clef-run-failed:...` means Clef is not
+reachable from this account's binding — check the model is listed under Workers
+AI → Models. Nothing breaks meanwhile: chat answers untriaged and the JD matcher
+falls back to `jd-scoring`. `clef-shape-invalid` means Clef answered in a shape
+`readClefAnswers` does not recognise; log the raw output and widen that reader.
+
+`text-probe` exercises the same path every chat answer takes. `shape` lists the
+response's top-level keys (never its text): `choices` is Chat Completions,
+`output` the Responses API, `response` the classic Workers AI shape, and
+`modelOutput` reads all three. `reason: text-empty` with a readable shape means
+the model spent its whole budget reasoning; raise `TEXT_REASONING_HEADROOM`.
+`effort: "default"` means the runtime refused the `reasoning_effort` field, and
+the Worker has stopped sending it.
 
 Suggested smoke tests after a manual redeploy:
 
@@ -67,7 +106,51 @@ Suggested smoke tests after a manual redeploy:
 - `jd-reasoning` accepts a bounded valid payload and returns structured JSON
   reasoning, while invalid payloads return safe error codes.
 - `jd-scoring` accepts the same payload plus the JD prose and returns an
-  `overall` block. This is the mode the live site uses for every match report.
+  `overall` block. The site's fallback when `jd-decide` fails.
+- `jd-decide` accepts the same payload and returns the same shape with
+  `"engine":"clef"` and a per-requirement `probability`. This is the mode the
+  live site tries first for every match report.
+- `chat` with a salary question returns `{"reply":"","action":"salary"}`.
+
+## `jd-decide`: Clef decisions, one call
+
+Clef does not generate text. It reads a state and answers named typed questions —
+`choice` (one label from a fixed set, with a probability per label), `score` (a
+probability-weighted level on an ordered rubric) and `noul` (a yes/no probability).
+`jd-decide` sends one Clef request: the JD prose, the requirements and every citable
+evidence record as state, then per requirement a `level_i` choice over the seven
+match levels and an `evidence_i` choice over the evidence ids plus `none`, and one
+`overall_fit` score on a four-level rubric (mapped to 30/50/67/85 so a fractional
+answer lands inside the right fit band).
+
+Because a choice answer can only be one of the labels offered, the failures
+`jd-scoring` has to tolerate after the fact — invented match levels, invented
+evidence ids, missing fields, truncated JSON — cannot happen. The Worker still
+applies the browser validator's provenance rules before relaying (an evidence-based
+level must cite a compatible record above probability 0.15, otherwise it is demoted,
+and a demoted decision is never reported as confident). A level Clef chose with
+less than 0.4 probability (`CLEF_DECISION_MIN`) does not stand at all: the keyword
+pass's verdict for that requirement is used instead, under the same citation
+rules, reported as low confidence with no probability. Per-requirement copy is
+templated in English and Bahasa Melayu; gpt-oss writes only the narrative, as plain
+text, from the decisions — and a narrative that looks like JSON, markup or a
+percentage of its own is replaced by a templated one.
+
+A `502 {"error":"decide-unavailable","stage":"clef"|"decide","reason":...}` is
+expected while Clef is unavailable; the browser then runs the `jd-scoring` flow
+below unchanged.
+
+## Chat triage
+
+Before the LLM answers a chat message, Clef answers two questions about it: what it
+is about (`intent`, a choice) and whether `aimeer-kb.txt` can answer it
+(`answerable`, a noul). Only strong signals act: compensation at ≥ 0.6 returns
+`action: "salary"` and a confidently unanswerable question (< 0.2, greetings
+exempt) returns `action: "handoff"` — both with an empty reply and **no LLM
+call**, so nothing is generated that could quote a number or invent a fact. A
+job-match intent returns `action: "jd"` alongside the answer, and the browser
+offers the JD matcher. Triage is capped at 2.5 s; a slow or failed Clef leaves
+chat exactly as it was without triage.
 
 ## `jd-scoring` runs two model calls
 
@@ -82,11 +165,18 @@ and composes the answer:
 This is load-bearing, not an optimization. A single call failed every live request
 across six revisions — invented requirement ids, then ids under other field names,
 then missing prose fields — while `jd-reasoning`, identical apart from carrying no
-JD prose, succeeded every time. An 8B model cannot hold a whole job description and
-a ten-field-per-requirement contract at once. Each `502` names which call broke via
+JD prose, succeeded every time. An 8B model (Llama 3.1, the text model then) cannot hold
+a whole job description and a ten-field-per-requirement contract at once. gpt-oss-20b
+is stronger, but the split has not been re-tested against it. Each `502` names which call broke via
 its `stage` field.
 
 Budget note: two calls per analysis instead of one, against 10,000 neurons/day.
+`jd-decide` is also two calls (one Clef, one short gpt-oss narrative), and chat adds
+one Clef triage call per message. Rough per-call costs from published prices (check
+the Workers AI dashboard for the real figures on this account): Clef-flash about
+8,200 neurons per million input tokens, so ~25 neurons for a chat triage (it carries
+the whole KB) and ~80 for a `jd-decide`; gpt-oss-20b costs a few times what Llama 3.1
+8B did per reply, and its hidden reasoning tokens are billed as output.
 
 ## Diagnosing a `reasoning-invalid` 502
 
@@ -107,12 +197,13 @@ Those have opposite fixes, which is why the bare code was not enough.
 The browser folds the reason into a `console.warn` line — `JD scoring fallback:
 Error: cloud-502:capability-invalid` — and never renders it. A visitor still sees
 the labeled keyword estimate. So: open DevTools, paste a JD, and read the reason
-rather than guessing which rule the 8B model broke.
+rather than guessing which rule the model broke.
 
 ## Free-tier limits
 
 - Workers: 100,000 requests/day.
-- Workers AI: 10,000 neurons/day — roughly a few hundred chat replies. If the
+- Workers AI: 10,000 neurons/day — on the order of a hundred or so triaged chat
+  replies with gpt-oss-20b (estimate; confirm in the dashboard). If the
   daily quota runs out, AIMeer silently falls back to instant keyword answers.
 
 ## How abuse is prevented without an API key

@@ -108,7 +108,7 @@ Assert-Match $chatbot 'jdFileTrigger\.addEventListener\("click",\s*function \(\)
 
 # (?:\?v=[^"]*)? tolerates the cache-busting tag so bumping ?v= on a deploy does
 # not break this assertion — the load ORDER is what matters here, not the query.
-Assert-Match $index '<script src="assets/js/i18n\.js(?:\?v=[^"]*)?" defer></script>\s*<script src="assets/js/main\.js(?:\?v=[^"]*)?" defer></script>\s*<script src="assets/js/aimeer-device\.js(?:\?v=[^"]*)?" defer></script>\s*<script src="assets/js/jd-extractor\.js(?:\?v=[^"]*)?" defer></script>\s*<script src="assets/js/jd-matcher\.js(?:\?v=[^"]*)?" defer></script>\s*<script src="assets/js/jd-reasoning\.js(?:\?v=[^"]*)?" defer></script>\s*<script src="assets/js/chatbot\.js(?:\?v=[^"]*)?" defer></script>' 'JD extractor, matcher and reasoning scripts must load before chatbot.js.'
+Assert-Match $index '<script src="assets/js/i18n\.js(?:\?v=[^"]*)?" defer></script>\s*<script src="assets/js/main\.js(?:\?v=[^"]*)?" defer></script>\s*<script src="assets/js/jd-extractor\.js(?:\?v=[^"]*)?" defer></script>\s*<script src="assets/js/jd-matcher\.js(?:\?v=[^"]*)?" defer></script>\s*<script src="assets/js/jd-reasoning\.js(?:\?v=[^"]*)?" defer></script>\s*<script src="assets/js/chatbot\.js(?:\?v=[^"]*)?" defer></script>' 'JD extractor, matcher and reasoning scripts must load before chatbot.js.'
 
 # The cache-busting tag must be consistent across every versioned asset, or a
 # deploy refreshes some files and serves others stale — the confusing half-updated
