@@ -1,9 +1,10 @@
 /* AIMeer — Ameer's AI twin. Two tiers, one decision layer.
    Tier 1: instant keyword answers, zero download, works offline — and the fallback for every
            cloud failure.
-   Tier 2: the Cloudflare Worker relay (cloud/aimeer-worker.js). TypeSafe's Jev decision model
-           triages each question first (salary → curated answer + handoff, out of knowledge →
-           handoff, job match → the JD matcher) and Llama 3.1 8B answers the rest from the KB.
+   Tier 2: the Cloudflare Worker relay (cloud/aimeer-worker.js). Cloudflare's Clef-flash decision
+           model triages each question first (salary → curated answer + handoff, out of
+           knowledge → handoff, job match → the JD matcher) and gpt-oss-20b answers the rest
+           from the KB.
    The on-device WebLLM tier (Llama 3.2 1B, ≈ 0.9 GB download) was retired in 2026-10: it
    answered poorly even on high-end GPUs and cost every capable visitor a large download.
    The active tier is shown in the chat status line. */
@@ -289,7 +290,7 @@
       jdNoMatches: "No items in this section.",
       jdReasonTitle: "Recruiter reasoning",
       jdReasonStatusCloud: "Recruiter reasoning used secure cloud AI, weighing the job description wording, the keyword-based baseline, and recruiter-safe evidence.",
-      jdReasonStatusJev: "Each requirement was decided by Jev, a decision model that picks from fixed match levels and published evidence and reports how sure it is; a language model wrote only the summary paragraph.",
+      jdReasonStatusClef: "Each requirement was decided by Clef, Cloudflare's decision model, which picks from fixed match levels and published evidence and reports how sure it is; a language model wrote only the summary paragraph.",
       jdDecisionProbability: "{p}% decision confidence",
       jdOfferMatcher: "Want a requirement-by-requirement answer? Paste the job description into the JD matcher.",
       jdReasonStatusUnavailable: "Recruiter reasoning is unavailable right now, so the keyword-based estimate above stands on its own.",
@@ -379,7 +380,7 @@
       jdNoMatches: "Tiada item dalam seksyen ini.",
       jdReasonTitle: "Penaakulan perekrut",
       jdReasonStatusCloud: "Penaakulan perekrut menggunakan AI awan selamat, menimbang kandungan huraian jawatan, garis dasar berasaskan kata kunci, dan bukti selamat perekrut.",
-      jdReasonStatusJev: "Setiap keperluan diputuskan oleh Jev, model keputusan yang memilih daripada tahap padanan tetap dan bukti terbitan serta melaporkan tahap keyakinannya; model bahasa hanya menulis perenggan ringkasan.",
+      jdReasonStatusClef: "Setiap keperluan diputuskan oleh Clef, model keputusan Cloudflare, yang memilih daripada tahap padanan tetap dan bukti terbitan serta melaporkan tahap keyakinannya; model bahasa hanya menulis perenggan ringkasan.",
       jdDecisionProbability: "{p}% keyakinan keputusan",
       jdOfferMatcher: "Mahukan jawapan mengikut setiap keperluan? Tampal huraian jawatan ke dalam mod padanan huraian jawatan.",
       jdReasonStatusUnavailable: "Penaakulan perekrut tidak tersedia sekarang, jadi anggaran berasaskan kata kunci di atas berdiri dengan sendirinya.",
@@ -723,7 +724,7 @@
   function reasoningStatusKey(mode) {
     if (jdState.reasoningFallback) return "jdReasonStatusFallback";
     if (mode === "cloud" && jdState.scoringMode === "ai" && jdState.result &&
-      jdState.result.reasoningEngine === "jev") return "jdReasonStatusJev";
+      jdState.result.reasoningEngine === "clef") return "jdReasonStatusClef";
     return mode === "cloud" ? "jdReasonStatusCloud" : "jdReasonStatusUnavailable";
   }
 
@@ -837,7 +838,7 @@
     parent.appendChild(row);
   }
 
-  /* Jev's weight on the level it chose. Shown as "how sure the decision model was", never as a
+  /* Clef's weight on the level it chose. Shown as "how sure the decision model was", never as a
      probability that Ameer can do the job — that is a different claim, and not one it makes.
      motion.js grows the bar from --p; without it the bar simply renders at its width. */
   function renderDecisionMeter(probability) {
@@ -1219,7 +1220,7 @@
 
 
   /* ---------------- tier 2: cloud relay ---------------- */
-  /* Resolves to { reply, action }. `action` is the Worker's Jev triage: "salary" and "handoff"
+  /* Resolves to { reply, action }. `action` is the Worker's Clef triage: "salary" and "handoff"
      arrive with no reply on purpose (nothing was generated), "jd" and "answer" with one. A Worker
      from before triage sends no action, which reads as "answer". */
   var TRIAGE_ACTIONS = ["answer", "salary", "handoff", "jd"];
@@ -1296,8 +1297,8 @@
     });
   }
 
-  /* AI scoring is cloud-only. Jev decisions (jd-decide) first: one request, no generated JSON to
-     break. Any jd-decide failure — a Worker from before Jev answers it as an unknown mode, or Jev
+  /* AI scoring is cloud-only. Clef decisions (jd-decide) first: one request, no generated JSON to
+     break. Any jd-decide failure — a Worker from before jd-decide answers it as an unknown mode, or Clef
      is unavailable — falls through to the jd-scoring flow exactly as it was: one silent retry,
      then the deterministic pass stands on its own as a labeled keyword estimate. The one
      exception is the Worker refusing the payload itself (a 4xx naming a jd- rule, such as
@@ -1342,7 +1343,7 @@
       });
     }
 
-    /* Validated and merged against the wider decision input: Jev may cite any citable record in
+    /* Validated and merged against the wider decision input: Clef may cite any citable record in
        the published profile, not only the ids the keyword pass referenced. */
     function requestDecisionAttempt(profile) {
       var decisionInput = window.JDReasoning.buildDecisionInput(reasoningInput, profile);
@@ -1561,7 +1562,7 @@
     busy = false;
   }
 
-  /* The Jev triage answers that never reach the LLM. A salary question gets the curated
+  /* The Clef triage answers that never reach the LLM. A salary question gets the curated
      compensation copy from TOPICS (the same text the instant tier gives) and the handoff; an
      out-of-knowledge one gets the honest "ask Ameer" line and the handoff. Neither is generated. */
   function salaryAnswer() {

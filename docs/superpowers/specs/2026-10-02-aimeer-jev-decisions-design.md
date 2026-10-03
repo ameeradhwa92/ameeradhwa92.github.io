@@ -3,6 +3,15 @@
 Status: implemented on `claude/gracious-gates-d3amt2` · Worker revision `2026-10-02-jev-1`
 (not live until pasted into the Cloudflare dashboard — see Rollout).
 
+> **2026-10-03 — models swapped, design unchanged.** Revision `2026-10-02-jev-1` went live and
+> every Jev call failed with `2021 InsufficientAIGatewaycredits`: Jev is a third-party model on
+> Workers AI, billed against AI Gateway credit, not the free 10,000 neurons a day. Revision
+> `2026-10-03-clef-1` replaces it with Cloudflare's **Clef-flash** (`@cf/cloudflare/clef-flash`),
+> which speaks the same API and is covered by the free allowance, and replaces Llama 3.1 8B with
+> **gpt-oss-20b** (`@cf/openai/gpt-oss-20b`) as the text model. Everything below that says Jev now
+> runs on Clef (`engine: "clef"`, `clef-probe`, `CLEF_*` constants); the rollout gains a
+> `{"mode":"text-probe"}` check for the text model. See `cloud/README.md` for the current probes.
+
 ## Why
 
 1. **The on-device tier did not earn its cost.** WebLLM running Llama 3.2 1B answered poorly

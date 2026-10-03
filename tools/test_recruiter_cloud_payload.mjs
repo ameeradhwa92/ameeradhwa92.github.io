@@ -306,7 +306,7 @@ test("worker assembles the jd-explanation prompt server-side with KB and disclai
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("Access-Control-Allow-Origin"), "http://localhost:8080");
   assert.ok(aiInput);
-  assert.equal(aiInput.model, "@cf/meta/llama-3.1-8b-instruct-fast");
+  assert.equal(aiInput.model, "@cf/openai/gpt-oss-20b");
   assert.match(aiInput.input.messages[0].content, /Recruiter KB facts/);
   assert.match(aiInput.input.messages[0].content, /Repeat this disclaimer verbatim/i);
   assert.match(aiInput.input.messages[0].content, /keserasian anggaran/i);

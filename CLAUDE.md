@@ -90,7 +90,7 @@ asset lacks one, and names the offending file. While iterating locally, tick
 | `assets/js/jd-extractor.js` | Recruiter JD matcher: local PDF/DOCX/paste text extraction and normalization |
 | `assets/js/jd-matcher.js` | Recruiter JD matcher: deterministic keyword-based scoring against the published profile |
 | `assets/js/jd-reasoning.js` | Recruiter JD matcher: builds the cloud scoring request (and `buildDecisionInput`, the wider registry a `jd-decide` response is checked against), re-validates the response the Worker relays (must stay in lockstep with the Worker's validator), merges it with the deterministic result (clamp band, fit band, report sections) |
-| `assets/js/chatbot.js` | AIMeer, the two-tier chatbot (instant answers + the cloud Worker with Jev triage), plus the recruiter JD match report UI, its drop zone, and its `jd-decide` → `jd-scoring` request flow |
+| `assets/js/chatbot.js` | AIMeer, the two-tier chatbot (instant answers + the cloud Worker with Clef triage), plus the recruiter JD match report UI, its drop zone, and its `jd-decide` → `jd-scoring` request flow |
 | `assets/js/route-globe-core.js` | Route globe, pure half: sphere geometry, camera keyframes/scrub, coastline decoding, capability gate, load state machine. UMD, tested by plain `require()` |
 | `assets/js/route-globe.js` | Route globe, DOM/WebGL adapter: reads the stops `<ol>`, gates, lazy-imports vendored three.js, owns the canvas/scroll/drag/theme wiring |
 | `assets/js/ir-core.js` | RetailAIM IR showcase, pure half: the survey pack's sample sizes and sizing rules. UMD, tested by plain `require()` |
@@ -98,12 +98,12 @@ asset lacks one, and names the offending file. While iterating locally, tick
 | `assets/js/motion.js` | GSAP choreography: split-line headings, count-ups, stacked IR chapters, velocity marquees, magnetic buttons, custom cursor, nav hide/current dot, the MYT clock, and the JD report settling (on `aimeer:jd-report`) |
 | `assets/data/route-globe-coastlines.json` | Generated country outlines for the globe (never hand-edited — see Regenerating the globe coastlines) |
 | `assets/vendor/` | Self-hosted libraries, pins and hashes recorded in `assets/vendor/README.md`: `pdfjs/` 4.10.38 and `jszip/` 3.10.1 (lazily `import()`ed by `jd-extractor.js` for PDF/DOCX), `gsap/` 3.15.0 (core, ScrollTrigger, SplitText — classic `defer` tags), `three/` r185 (`three.module.min.js` + `three.core.min.js`, kept side by side) and its `lines/` fat-line addon, whose bare `three` import the `<head>` import map resolves |
-| `assets/data/aimeer-kb.txt` | Chatbot knowledge base — read by the Worker (the chat prompt and Jev's triage state); the browser's instant answers are the `TOPICS` table |
+| `assets/data/aimeer-kb.txt` | Chatbot knowledge base — read by the Worker (the chat prompt and Clef's triage state); the browser's instant answers are the `TOPICS` table |
 | `assets/data/aimeer-profile.json` | Recruiter evidence registry (`recruiterEvidence`, `privacyExclusions`) — the only allowlist of evidence the JD matcher's cloud reasoning may cite |
-| `cloud/aimeer-worker.js` | Cloudflare Worker relay — chat (Jev-triaged)/summary/jd-explanation/jd-reasoning/jd-scoring/jd-decide/jev-probe/version modes (deployed manually, see below) |
+| `cloud/aimeer-worker.js` | Cloudflare Worker relay — chat (Clef-triaged)/summary/jd-explanation/jd-reasoning/jd-scoring/jd-decide/clef-probe/text-probe/version modes (deployed manually, see below) |
 | `docs/superpowers/specs/2026-07-24-portfolio-site-design.md` | Design spec + canonical project/URL/status registry |
 | `docs/superpowers/specs/2026-07-30-recruiter-copilot-ai-scoring-design.md` | Design of record for AI-led JD scoring — two-call split, clamp band, privacy screen, model-output tolerance, Worker diagnosability. Read before touching either JD validator |
-| `docs/superpowers/specs/2026-10-02-aimeer-jev-decisions-design.md` | Design of record for retiring the on-device tier and adding Jev (chat triage, `jd-decide`), the rollout order, the redesign brief for the chat/JD UI, and the roadmap |
+| `docs/superpowers/specs/2026-10-02-aimeer-jev-decisions-design.md` | Design of record for retiring the on-device tier and adding a decision model (chat triage, `jd-decide`; designed for Jev, now Clef-flash — see its 2026-10-03 note), the rollout order, the redesign brief for the chat/JD UI, and the roadmap |
 | `docs/resume-source/resume.html` | Source for the downloadable résumé PDF |
 | `tests/*.test.js` | `node --test` suite — run before anything ships (see Running locally); `ir-core.test.js` covers the pack's sizing rules |
 | `tools/` | Five extra harnesses `tests/*.test.js` does not cover (JD extractor/matcher/cloud-payload contracts, recruiter profile/KB drift, recruiter UI exact copy) — see Running locally |
@@ -155,9 +155,9 @@ element and snapshots its `innerHTML` into an in-memory `EN` dict; switching to 
 1. **Instant** — regex `TOPICS` table, zero download, works offline, and the fallback for
    every cloud failure.
 2. **Cloud** — POSTs to the Cloudflare Worker (`CLOUD_ENDPOINT`). The Worker first asks
-   **Jev** (TypeSafe's decision model on Workers AI, `@cf/typesafe/jev`) two typed questions
-   about the message — its intent and whether the KB can answer it — then lets
-   `@cf/meta/llama-3.1-8b-instruct-fast` answer. A confident salary question comes back as
+   **Clef-flash** (Cloudflare's decision model on Workers AI, `@cf/cloudflare/clef-flash`) two
+   typed questions about the message — its intent and whether the KB can answer it — then lets
+   `@cf/openai/gpt-oss-20b` answer. A confident salary question comes back as
    `action: "salary"` and a confidently unanswerable one as `action: "handoff"`, both with an
    empty reply and no LLM call; the browser answers them from `TOPICS` and the handoff card.
    `action: "jd"` adds a one-time offer of the JD matcher. A Worker with no `action` reads as
@@ -170,10 +170,23 @@ external network dependency** besides the Worker — everything else, fonts incl
 self-hosted so the page renders offline. `aiState` is `"cloud"` when `CLOUD_ENDPOINT` is set
 and `"off"` otherwise; there is no download state machine left.
 
-Jev is a decision model, not a text model: it can only pick from the labels it is offered and
-reports calibrated probabilities. Independent evaluations found it well calibrated at the
-extremes and least reliable in the 0.3–0.8 band, which is why the chat gates only act on
-strong signals (`JEV_TRIAGE_*` in the Worker). Don't lower those thresholds without evidence.
+Clef is a decision model, not a text model: it can only pick from the labels it is offered and
+reports calibrated probabilities. It speaks the same API as TypeSafe's **Jev**, which it
+replaced on 2026-10-03: Jev is a third-party model on Workers AI, billed against AI Gateway
+credit rather than the free 10,000 neurons a day, and every call failed with error 2021
+(`InsufficientAIGatewaycredits`). Clef-flash is first-party and covered by the free allowance.
+The chat gates (`CLEF_TRIAGE_*` in the Worker) were set for Jev, which independent evaluations
+found well calibrated at the extremes and least reliable in the 0.3–0.8 band; they have not been
+re-measured on Clef, so they stay strict. Don't lower them without evidence.
+
+The text model, `gpt-oss-20b` (replaced Llama 3.1 8B the same day), is a **reasoning model**: its
+hidden reasoning tokens come out of `max_tokens`. Every call goes through `runText`, which asks
+for `reasoning_effort: "low"` and adds `TEXT_REASONING_HEADROOM` on top of each caller's
+visible-answer budget; a budget spent entirely on reasoning comes back as empty content, which
+every caller already treats as a miss. `modelOutput` reads the answer from whichever shape the
+runtime returns (`response`, Chat Completions `choices`, or Responses `output`) and never reads
+the reasoning. `{"mode":"text-probe"}` reports the model, the response's top-level keys and
+whether the effort field was accepted; `{"mode":"clef-probe"}` does the same for Clef.
 
 The Worker assembles its system prompt from `PERSONA_HEAD` plus `aimeer-kb.txt` (the browser's
 copy, `PROMPT_HEAD`, went with the on-device tier). It does so server-side on purpose — that's what stops the endpoint being used as a generic LLM proxy;
@@ -199,23 +212,23 @@ and that ambiguity has already cost a full round of debugging on this file.
 
 ### Recruiter JD decisions: `jd-decide` first, `jd-scoring` as the fallback
 
-The browser sends every analysis to `jd-decide` first. One **Jev** call answers, per
+The browser sends every analysis to `jd-decide` first. One **Clef** call answers, per
 requirement, a `level_i` choice over the seven match levels and an `evidence_i` choice over
 every citable record in the published profile (plus `none`), and one `overall_fit` score on a
-four-level rubric. Llama then writes only the narrative, as plain text, from the decisions.
-The response has the `jd-scoring` shape plus `engine: "jev"` and a per-requirement
+four-level rubric. gpt-oss then writes only the narrative, as plain text, from the decisions.
+The response has the `jd-scoring` shape plus `engine: "clef"` and a per-requirement
 `probability`, both optional in `jd-reasoning.js`, so **one validator serves both modes**.
-Because Jev is offered the whole citable registry (not only the ids the keyword pass touched),
+Because Clef is offered the whole citable registry (not only the ids the keyword pass touched),
 the browser validates and merges a `jd-decide` response against
 `JDReasoning.buildDecisionInput(input, profile)`, not the `jd-scoring` input.
 
 Any `jd-decide` failure falls through to the `jd-scoring` flow below, unchanged, retry rules
 included — except a 4xx naming a `jd-` rule (`jd-privacy-invalid` and friends), because
 `jd-scoring` validates the identical body and would refuse it too. That fall-through is also
-what keeps the site working against a Worker from before Jev, which answers `jd-decide` as an
+what keeps the site working against a Worker from before `jd-decide`, which answers `jd-decide` as an
 unknown chat request (`400 empty`). Never make the browser depend on `jd-decide` succeeding.
 
-The probability on each requirement card is Jev's weight on the level it chose — "how sure the
+The probability on each requirement card is Clef's weight on the level it chose — "how sure the
 decision model was", never the odds that Ameer can do the job. Keep the copy that way.
 
 ### Recruiter JD scoring runs two model calls
@@ -226,7 +239,8 @@ JD prose) and then the overall score (full JD prose, three-key `{score, fitBand,
 narrative}` schema). This is not an optimization — a single call failed every live request
 for six revisions while `jd-reasoning`, identical but without the JD prose, never failed.
 An 8B model cannot hold a whole job description *and* a ten-field-per-requirement
-contract. Don't recombine them.
+contract. That was Llama 3.1 8B; gpt-oss-20b is stronger, but the split has not been re-tested
+against it, so don't recombine them without evidence.
 
 **A JD reaches the model only if three layers agree on how many requirements it has.**
 `jd-extractor.js`'s `HEADING_ALIASES` decides which sections exist; `jd-matcher.js` harvests

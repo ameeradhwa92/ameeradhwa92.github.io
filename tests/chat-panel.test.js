@@ -1970,7 +1970,7 @@ test('a Worker from before triage (no action) still answers normally', async () 
   assert.ok(!harness.elements['chat-log'].children.some((child) => /chat-jd-offer|chat-handoff/.test(child.className)));
 });
 
-/* jd-decide: the Jev-decided report, merged against the wider decision input. */
+/* jd-decide: the Clef-decided report, merged against the wider decision input. */
 function buildDecideModelOutput(overrides = {}) {
   return JSON.stringify(Object.assign({
     narrative: 'Direct ASP.NET Core delivery, with Kubernetes adjacent through Azure DevOps release work.',
@@ -1990,7 +1990,7 @@ function buildDecideModelOutput(overrides = {}) {
       }
     ],
     overall: { score: 70, fitBand: 'good', narrative: 'Direct ASP.NET Core delivery, with Kubernetes adjacent through Azure DevOps release work.' },
-    engine: 'jev'
+    engine: 'clef'
   }, overrides));
 }
 
@@ -2031,7 +2031,7 @@ function failure(status, body) {
   return Promise.resolve({ ok: false, status, json: () => Promise.resolve(body), text: () => Promise.resolve(JSON.stringify(body)) });
 }
 
-test('JD analysis asks for Jev decisions first and renders the decision confidence per requirement', async () => {
+test('JD analysis asks for Clef decisions first and renders the decision confidence per requirement', async () => {
   const harness = createDecideContext(() => Promise.resolve(makeJsonResponse({ reasoning: buildDecideModelOutput() })));
   await analyze(harness);
 
@@ -2039,7 +2039,7 @@ test('JD analysis asks for Jev decisions first and renders the decision confiden
   assert.deepEqual(Object.keys(harness.cloudCalls[0]).sort(), ['deterministicInput', 'evidenceIds', 'jdText', 'language', 'mode']);
   const rendered = collectText(harness.elements['chat-jd-result']);
   assert.match(rendered, /Good fit/);
-  assert.match(rendered, /decided by Jev/);
+  assert.match(rendered, /decided by Clef, Cloudflare's decision model/);
   assert.match(rendered, /93% decision confidence/);
   assert.match(rendered, /71% decision confidence/);
   assert.match(rendered, /Owns release pipelines and cloud delivery workflows\./, 'adjacent evidence resolves from the decision registry');
@@ -2050,8 +2050,8 @@ test('JD analysis asks for Jev decisions first and renders the decision confiden
 
 test('a jd-decide failure falls through to the jd-scoring flow, which keeps its own retry', async () => {
   for (const decideFailure of [
-    () => failure(502, { error: 'decide-unavailable', stage: 'jev', reason: 'jev-run-failed:x' }),
-    () => failure(400, { error: 'empty' }), /* a Worker from before Jev reads jd-decide as chat */
+    () => failure(502, { error: 'decide-unavailable', stage: 'clef', reason: 'clef-run-failed:x' }),
+    () => failure(400, { error: 'empty' }), /* a Worker from before jd-decide reads jd-decide as chat */
     () => Promise.resolve(makeJsonResponse({ reasoning: buildDecideModelOutput({ engine: 'gpt' }) }))
   ]) {
     const harness = createDecideContext((body, count) => {

@@ -1697,7 +1697,7 @@ body.modal-open { overflow: hidden; }
 .chat-jd-requirement-body {
   display: grid; gap: 6px; padding: 12px;
 }
-/* Jev's weight on the level it chose: how sure the decision model was, not a hiring odds */
+/* Clef's weight on the level it chose: how sure the decision model was, not a hiring odds */
 .chat-jd-meter {
   flex-basis: 100%; display: flex; align-items: center; gap: 10px;
 }

@@ -163,7 +163,7 @@ window.I18N_MS = {
   "skills.cloud": "Awan &amp; DevOps",
   "skills.integrations": "Integrasi",
   "skills.ai": "Kejuruteraan berbantukan AI",
-  "skills.ai.desc": "Aliran kerja Claude Code dan Codex dengan peraturan ejen bersama dan cangkuk pengawal; ciri AI yang telah dilancarkan seperti AIMeer di laman ini — lapisan keputusan Jev dan jawapan Llama 3.1 di Cloudflare Workers AI",
+  "skills.ai.desc": "Aliran kerja Claude Code dan Codex dengan peraturan ejen bersama dan cangkuk pengawal; ciri AI yang telah dilancarkan seperti AIMeer di laman ini — lapisan keputusan Clef dan jawapan gpt-oss-20b di Cloudflare Workers AI",
 
   "edu.eyebrow": "Pendidikan &amp; Kelayakan",
   "edu.degree": "Sarjana Muda Teknologi Maklumat (Kepujian), Kejuruteraan Sistem Pintar",

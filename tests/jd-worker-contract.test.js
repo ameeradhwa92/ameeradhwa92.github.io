@@ -38,7 +38,7 @@ function loadBrowserHarness() {
 let workerNonce = 0;
 
 /* `fresh` appends a unique comment so the data: URL differs and the import is not served from the
-   module cache — the Worker caches which Jev model id answered in module scope, and a test that
+   module cache — the Worker caches which Clef model id answered and whether gpt-oss accepted reasoning_effort in module scope, and a test that
    exercises the id fallback must not inherit an earlier test's choice. */
 async function loadWorker(fresh) {
   const source = fs.readFileSync(workerPath, 'utf8') + (fresh ? `\n// fresh ${++workerNonce}\n` : '');
@@ -281,12 +281,14 @@ test('jd-reasoning accepts a bounded valid request and returns strict JSON reaso
   assert.equal(parsed.requirements.length, request.deterministicInput.requirements.length);
 
   assert.equal(response.aiCalls.length, 1, 'bounded reasoning should invoke Workers AI exactly once');
-  assert.equal(response.aiCalls[0].model, '@cf/meta/llama-3.1-8b-instruct-fast');
+  assert.equal(response.aiCalls[0].model, '@cf/openai/gpt-oss-20b');
   assert.equal(response.aiCalls[0].payload.temperature <= 0.2, true, 'reasoning should use a low temperature');
   /* The cap was a flat 900, which could not hold six prose fields per requirement — the model's
      JSON was truncated mid-object in production. It now scales with the requirement count and is
      still bounded, because Workers AI's free tier is 10,000 neurons/day. */
-  assert.equal(response.aiCalls[0].payload.max_tokens <= 3400, true, 'reasoning should stay bounded by the ceiling');
+  /* gpt-oss spends hidden reasoning tokens out of the same max_tokens, so the Worker adds a fixed
+     reasoning headroom (640) on top of the visible-answer ceiling. */
+  assert.equal(response.aiCalls[0].payload.max_tokens <= 3400 + 640, true, 'reasoning should stay bounded by the ceiling');
   assert.equal(
     response.aiCalls[0].payload.max_tokens >= 400 + 260 * request.deterministicInput.requirements.length,
     true,
@@ -829,11 +831,11 @@ test('jd-scoring accepts a bounded valid request and returns strict JSON reasoni
       1,
       'the worker should assemble its own single system prompt on every call'
     );
-    assert.equal(call.model, '@cf/meta/llama-3.1-8b-instruct-fast');
+    assert.equal(call.model, '@cf/openai/gpt-oss-20b');
     assert.equal(call.payload.temperature <= 0.2, true);
   }
   assert.equal(
-    response.aiCalls[1].payload.max_tokens <= 400,
+    response.aiCalls[1].payload.max_tokens <= 400 + 640,
     true,
     'the scoring call answers three fields and should stay small'
   );
@@ -1848,7 +1850,7 @@ test('existing chat, summary, and jd-explanation modes remain compatible', async
   assert.equal(chat.status, 200);
   assert.equal(chat.json.reply, 'Chat reply');
   assert.equal(chat.fetchCalls.some((url) => url.includes('/assets/data/aimeer-kb.txt')), true);
-  /* Chat now asks Jev to triage first; an unreadable triage (this fixture is plain text) leaves
+  /* Chat now asks Clef to triage first; an unreadable triage (this fixture is plain text) leaves
      the LLM call exactly as it was. */
   const chatLlmCall = chat.aiCalls.find((call) => call.payload.messages);
   assert.match(chatLlmCall.payload.messages[0].content, /LEGACY-KB-FACT/);
@@ -1960,18 +1962,18 @@ test('the reasoning prompt never shows the model a matchLevel-shaped classificat
   }
 });
 
-/* ---------------- Jev: jd-decide, chat triage, jev-probe ---------------- */
+/* ---------------- Clef: jd-decide, chat triage, clef-probe ---------------- */
 
-const LLM_MODEL = '@cf/meta/llama-3.1-8b-instruct-fast';
-const isJev = (model) => /typesafe\/jev$/.test(model);
+const LLM_MODEL = '@cf/openai/gpt-oss-20b';
+const isClef = (model) => model === '@cf/cloudflare/clef-flash';
 
 function buildDecideRequest(options = {}) {
   return { ...buildValidRequest(options), mode: 'jd-decide' };
 }
 
-/* Answers every question Jev is asked: `pick(name, question)` returns the answer for one question,
+/* Answers every question Clef is asked: `pick(name, question)` returns the answer for one question,
    or undefined for the defaults below (first evidence record, adjacent-professional, score 2). */
-function jevAnswerer(pick = () => undefined) {
+function clefAnswerer(pick = () => undefined) {
   return (payload) => {
     const answers = {};
     for (const [name, question] of Object.entries(payload.questions)) {
@@ -1999,15 +2001,15 @@ function jevAnswerer(pick = () => undefined) {
         answers[name] = { type: 'noul', noul: 0.5 };
       }
     }
-    return { model: 'jev-1.13.0', answers, usage: { input_tokens: 1, output_tokens: 1 } };
+    return { model: 'clef-1.13.0', answers, usage: { input_tokens: 1, output_tokens: 1 } };
   };
 }
 
-function decideAi({ jev = jevAnswerer(), narrative = 'Ameer brings adjacent Azure delivery to this role, with container orchestration the one area to confirm in screening.', jevError = null } = {}) {
+function decideAi({ clef = clefAnswerer(), narrative = 'Ameer brings adjacent Azure delivery to this role, with container orchestration the one area to confirm in screening.', clefError = null } = {}) {
   return (model, payload) => {
-    if (isJev(model)) {
-      if (jevError) throw jevError;
-      return jev(payload);
+    if (isClef(model)) {
+      if (clefError) throw clefError;
+      return clef(payload);
     }
     if (narrative instanceof Error) throw narrative;
     return { response: narrative };
@@ -2032,14 +2034,14 @@ Preferred Skills:
   return { harness, decisionInput, deterministicResult, validated };
 }
 
-test('jd-decide relays Jev decisions in the shape the browser validator already accepts', async () => {
+test('jd-decide relays Clef decisions in the shape the browser validator already accepts', async () => {
   const request = buildDecideRequest();
   const result = await callWorker(request, { freshWorker: true, aiImpl: decideAi() });
   assert.equal(result.status, 200, JSON.stringify(result.json));
-  assert.equal(result.json.revision, '2026-10-02-jev-1');
+  assert.equal(result.json.revision, '2026-10-03-clef-1');
 
   const reasoning = JSON.parse(result.json.reasoning);
-  assert.equal(reasoning.engine, 'jev');
+  assert.equal(reasoning.engine, 'clef');
   assert.equal(reasoning.requirements.length, request.deterministicInput.requirements.length);
   assert.equal(reasoning.overall.score, 67);
   assert.equal(reasoning.overall.fitBand, 'good');
@@ -2053,16 +2055,16 @@ test('jd-decide relays Jev decisions in the shape the browser validator already 
   const { harness, decisionInput, deterministicResult, validated } = browserCheck(request, result.json);
   assert.equal(validated.ok, true, validated.error);
   const merged = harness.JDReasoning.mergeResult(deterministicResult, validated.reasoning, decisionInput);
-  assert.equal(merged.reasoningEngine, 'jev');
+  assert.equal(merged.reasoningEngine, 'clef');
   assert.equal(merged.requirementReasoning[0].probability, 0.86);
 });
 
-test('jd-decide asks one Jev call: two questions per requirement plus the overall rubric, no keyword verdicts', async () => {
+test('jd-decide asks one Clef call: two questions per requirement plus the overall rubric, no keyword verdicts', async () => {
   const request = buildDecideRequest();
   const result = await callWorker(request, { freshWorker: true, aiImpl: decideAi() });
-  const jevCalls = result.aiCalls.filter((call) => isJev(call.model));
-  assert.equal(jevCalls.length, 1);
-  const { state, questions } = jevCalls[0].payload;
+  const clefCalls = result.aiCalls.filter((call) => isClef(call.model));
+  assert.equal(clefCalls.length, 1);
+  const { state, questions } = clefCalls[0].payload;
   const count = request.deterministicInput.requirements.length;
   assert.equal(Object.keys(questions).length, count * 2 + 1);
   assert.equal(questions.overall_fit.type, 'score');
@@ -2087,7 +2089,7 @@ test('jd-decide asks one Jev call: two questions per requirement plus the overal
 
 test('jd-decide demotes a level its evidence cannot back, and never calls a demotion confident', async () => {
   const request = buildDecideRequest();
-  const jev = jevAnswerer((name, question, payload) => {
+  const clef = clefAnswerer((name, question, payload) => {
     if (name === 'level_0') return { type: 'choice', choice: 'direct-professional', probabilities: { 'direct-professional': 0.95 } };
     if (name === 'evidence_0') {
       const academic = payload.state.publishedEvidence.find((record) => record.evidenceType === 'academic');
@@ -2099,7 +2101,7 @@ test('jd-decide demotes a level its evidence cannot back, and never calls a demo
     if (name === 'level_3') return { type: 'choice', choice: 'invented-level', probabilities: { 'invented-level': 0.99 } };
     return undefined;
   });
-  const result = await callWorker(request, { freshWorker: true, aiImpl: decideAi({ jev }) });
+  const result = await callWorker(request, { freshWorker: true, aiImpl: decideAi({ clef }) });
   assert.equal(result.status, 200, JSON.stringify(result.json));
   const [first, second, third, fourth] = JSON.parse(result.json.reasoning).requirements;
 
@@ -2133,8 +2135,8 @@ test('jd-decide never relays a narrative that looks like a schema, markup or its
 
 test('jd-decide maps the overall rubric onto the fit bands, and falls back to the decisions without it', async () => {
   const scoreOf = async (overallFit) => {
-    const jev = jevAnswerer((name) => (name === 'overall_fit' ? overallFit : undefined));
-    const result = await callWorker(buildDecideRequest(), { freshWorker: true, aiImpl: decideAi({ jev }) });
+    const clef = clefAnswerer((name) => (name === 'overall_fit' ? overallFit : undefined));
+    const result = await callWorker(buildDecideRequest(), { freshWorker: true, aiImpl: decideAi({ clef }) });
     return JSON.parse(result.json.reasoning).overall;
   };
   assert.deepEqual(await scoreOf({ type: 'score', score: 3 }).then((o) => [o.score, o.fitBand]), [85, 'strong']);
@@ -2145,43 +2147,42 @@ test('jd-decide maps the overall rubric onto the fit bands, and falls back to th
   assert.deepEqual(await scoreOf({ type: 'score', score: 9 }).then((o) => o.score), 75);
 });
 
-test('jd-decide reports a Jev outage as a staged 502 the browser can fall back from', async () => {
+test('jd-decide reports a Clef outage as a staged 502 the browser can fall back from', async () => {
   const outage = await callWorker(buildDecideRequest(), {
     freshWorker: true,
-    aiImpl: decideAi({ jevError: new Error('No such model') })
+    aiImpl: decideAi({ clefError: new Error('No such model') })
   });
   assert.equal(outage.status, 502);
   assert.equal(outage.json.error, 'decide-unavailable');
-  assert.equal(outage.json.stage, 'jev');
-  assert.match(outage.json.reason, /^jev-run-failed:/);
-  assert.deepEqual(outage.aiCalls.map((call) => call.model), ['@cf/typesafe/jev', 'typesafe/jev']);
+  assert.equal(outage.json.stage, 'clef');
+  assert.match(outage.json.reason, /^clef-run-failed:/);
+  assert.deepEqual(outage.aiCalls.map((call) => call.model), ['@cf/cloudflare/clef-flash']);
 
   const garbled = await callWorker(buildDecideRequest(), {
     freshWorker: true,
-    aiImpl: (model) => (isJev(model) ? { response: 'not a decision' } : { response: 'x' })
+    aiImpl: (model) => (isClef(model) ? { response: 'not a decision' } : { response: 'x' })
   });
   assert.equal(garbled.status, 502);
-  assert.equal(garbled.json.reason, 'jev-shape-invalid');
+  assert.equal(garbled.json.reason, 'clef-shape-invalid');
   assert.equal(garbled.aiCalls.length, 1);
 
   const unreadable = await callWorker(buildDecideRequest(), {
     freshWorker: true,
-    aiImpl: decideAi({ jev: jevAnswerer((name) => (name.startsWith('level_') ? { choice: 'nope' } : undefined)) })
+    aiImpl: decideAi({ clef: clefAnswerer((name) => (name.startsWith('level_') ? { choice: 'nope' } : undefined)) })
   });
   assert.equal(unreadable.status, 502);
   assert.equal(unreadable.json.stage, 'decide');
-  assert.equal(unreadable.json.reason, 'jev-answers-unreadable');
+  assert.equal(unreadable.json.reason, 'clef-answers-unreadable');
 });
 
-test('jd-decide tries the second catalogue id and remembers whichever answered', async () => {
+test('jd-decide asks Clef-flash once per analysis, from the first request on', async () => {
   const worker = await loadWorker(true);
   const models = [];
   const env = {
     AI: {
       async run(model, payload) {
         models.push(model);
-        if (model === '@cf/typesafe/jev') throw new Error('No such model');
-        if (isJev(model)) return jevAnswerer()(payload);
+        if (isClef(model)) return clefAnswerer()(payload);
         return { response: 'Ameer brings adjacent Azure delivery to this role, with one area to confirm.' };
       }
     }
@@ -2203,7 +2204,7 @@ test('jd-decide tries the second catalogue id and remembers whichever answered',
     global.fetch = originalFetch;
     global.caches = originalCaches;
   }
-  assert.deepEqual(models.filter(isJev), ['@cf/typesafe/jev', 'typesafe/jev', 'typesafe/jev']);
+  assert.deepEqual(models.filter(isClef), ['@cf/cloudflare/clef-flash', '@cf/cloudflare/clef-flash']);
 });
 
 test('jd-decide validates its body exactly like jd-scoring', async () => {
@@ -2216,7 +2217,7 @@ test('jd-decide validates its body exactly like jd-scoring', async () => {
 
 function triageAi({ intent, intentP = 0.9, answerable, reply = 'LLM reply' }) {
   return (model, payload) => {
-    if (isJev(model)) {
+    if (isClef(model)) {
       return {
         answers: {
           intent: { type: 'choice', choice: intent, probabilities: { [intent]: intentP } },
@@ -2245,9 +2246,9 @@ test('chat triage sends salary and out-of-knowledge questions to the handoff wit
   assert.deepEqual(unknown.json, { reply: '', action: 'handoff', intent: 'personal' });
   assert.equal(unknown.aiCalls.filter((call) => call.model === LLM_MODEL).length, 0);
 
-  const jevState = unknown.aiCalls.find((call) => isJev(call.model)).payload.state;
-  assert.equal(jevState.knowledgeBase, 'KB FACTS');
-  assert.equal(jevState.latestMessage, 'What is his blood type?');
+  const clefState = unknown.aiCalls.find((call) => isClef(call.model)).payload.state;
+  assert.equal(clefState.knowledgeBase, 'KB FACTS');
+  assert.equal(clefState.latestMessage, 'What is his blood type?');
 });
 
 test('chat triage leaves greetings, uncertain signals and job-match intents to the LLM', async () => {
@@ -2268,27 +2269,141 @@ test('chat triage leaves greetings, uncertain signals and job-match intents to t
 
 test('a failed or garbled triage leaves chat answering exactly as before', async () => {
   const thrown = await chatWith('Tell me about Azure.', (model) => {
-    if (isJev(model)) throw new Error('No such model');
+    if (isClef(model)) throw new Error('No such model');
     return { response: 'Plain reply' };
   });
   assert.deepEqual(thrown.json, { reply: 'Plain reply' });
 
-  const garbled = await chatWith('Tell me about Azure.', (model) => ({ response: isJev(model) ? 'nonsense' : 'Plain reply' }));
+  const garbled = await chatWith('Tell me about Azure.', (model) => ({ response: isClef(model) ? 'nonsense' : 'Plain reply' }));
   assert.deepEqual(garbled.json, { reply: 'Plain reply' });
 });
 
-test('jev-probe reports which model id answered, and the revision', async () => {
-  const ok = await callWorker({ mode: 'jev-probe' }, {
+test('clef-probe reports which model id answered, and the revision', async () => {
+  const ok = await callWorker({ mode: 'clef-probe' }, {
     freshWorker: true,
     aiImpl: (model) => ({ answers: { urgent: { type: 'noul', noul: 0.81 } } })
   });
-  assert.deepEqual(ok.json, { revision: '2026-10-02-jev-1', ok: true, model: '@cf/typesafe/jev', reason: '', urgent: 0.81 });
+  assert.deepEqual(ok.json, { revision: '2026-10-03-clef-1', ok: true, model: '@cf/cloudflare/clef-flash', reason: '', urgent: 0.81 });
 
-  const down = await callWorker({ mode: 'jev-probe' }, {
+  const down = await callWorker({ mode: 'clef-probe' }, {
     freshWorker: true,
     aiImpl: () => { throw new Error('nope'); }
   });
   assert.equal(down.status, 502);
   assert.equal(down.json.ok, false);
-  assert.match(down.json.reason, /^jev-run-failed:/);
+  assert.match(down.json.reason, /^clef-run-failed:/);
+});
+
+/* ---------------- gpt-oss-20b: the text model ---------------- */
+
+test('chat reads gpt-oss answers in every shape the runtime returns, and never relays its reasoning', async () => {
+  const shapes = [
+    { choices: [{ message: { role: 'assistant', content: 'From chat completions.', reasoning_content: 'SECRET reasoning' } }] },
+    { output: [
+      { type: 'reasoning', content: [{ type: 'reasoning_text', text: 'SECRET reasoning' }] },
+      { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'From responses.' }] }
+    ] },
+    { output_text: 'From output_text.' },
+    { response: 'From response.' },
+    { response: '', choices: [{ message: { content: 'Beside an empty response.' } }] }
+  ];
+  const replies = [];
+  for (const shape of shapes) {
+    const result = await chatWith('Tell me about Azure.', (model) => {
+      if (isClef(model)) throw new Error('No such model');
+      return shape;
+    });
+    assert.equal(result.status, 200);
+    assert.doesNotMatch(JSON.stringify(result.json), /SECRET/);
+    replies.push(result.json.reply);
+  }
+  assert.deepEqual(replies, ['From chat completions.', 'From responses.', 'From output_text.', 'From response.', 'Beside an empty response.']);
+
+  const reasoningOnly = await chatWith('Tell me about Azure.', (model) => {
+    if (isClef(model)) throw new Error('No such model');
+    return { choices: [{ message: { content: null, reasoning_content: 'SECRET reasoning' } }] };
+  });
+  assert.deepEqual(reasoningOnly.json, { reply: '' });
+});
+
+test('every gpt-oss call asks for low reasoning effort on top of the old visible budget', async () => {
+  const result = await chatWith('Tell me about Azure.', (model) => {
+    if (isClef(model)) throw new Error('No such model');
+    return { choices: [{ message: { content: 'ok' } }] };
+  });
+  const call = result.aiCalls.find((entry) => entry.model === LLM_MODEL);
+  assert.equal(call.payload.reasoning_effort, 'low');
+  assert.equal(call.payload.max_tokens, 300 + 640);
+  assert.equal(call.payload.messages.filter((message) => message.role === 'system').length, 1);
+});
+
+test('a runtime that rejects reasoning_effort costs one retry, then the field is no longer sent', async () => {
+  const worker = await loadWorker(true);
+  const textCalls = [];
+  const env = {
+    AI: {
+      async run(model, payload) {
+        if (isClef(model)) throw new Error('No such model');
+        textCalls.push(payload);
+        if ('reasoning_effort' in payload) throw new Error('AiError: Invalid input: must NOT have additional properties (reasoning_effort)');
+        return { choices: [{ message: { content: 'Plain reply' } }] };
+      }
+    }
+  };
+  const originalFetch = global.fetch;
+  const originalCaches = global.caches;
+  global.fetch = async () => new Response('KB FACTS', { status: 200, headers: { 'Content-Type': 'text/plain' } });
+  global.caches = { default: { async match() { return null; }, async put() {} } };
+  try {
+    const post = async () => (await worker.fetch(new Request('https://worker.example.test/', {
+      method: 'POST',
+      headers: { Origin: 'http://localhost:8080', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'chat', messages: [{ role: 'user', content: 'Tell me about Azure.' }] })
+    }), env)).json();
+    assert.deepEqual(await post(), { reply: 'Plain reply' });
+    assert.deepEqual(await post(), { reply: 'Plain reply' });
+  } finally {
+    global.fetch = originalFetch;
+    global.caches = originalCaches;
+  }
+  assert.deepEqual(textCalls.map((payload) => 'reasoning_effort' in payload), [true, false, false]);
+});
+
+test('an unrelated gpt-oss failure is not mistaken for a rejected reasoning_effort', async () => {
+  const result = await chatWith('Tell me about Azure.', (model) => {
+    if (isClef(model)) throw new Error('No such model');
+    throw new Error('3040: Capacity temporarily exceeded');
+  });
+  assert.equal(result.status, 502);
+  assert.equal(result.json.error, 'ai-failed');
+  assert.equal(result.aiCalls.filter((call) => call.model === LLM_MODEL).length, 1);
+});
+
+test('text-probe reports the model, the response shape and the fixed reply, never prose beyond it', async () => {
+  const ok = await callWorker({ mode: 'text-probe' }, {
+    freshWorker: true,
+    aiImpl: () => ({ id: 'x', choices: [{ message: { content: 'ready', reasoning_content: 'SECRET' } }], usage: {} })
+  });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(ok.json, {
+    revision: '2026-10-03-clef-1',
+    ok: true,
+    model: '@cf/openai/gpt-oss-20b',
+    effort: 'low',
+    shape: ['id', 'choices', 'usage'],
+    reply: 'ready',
+    reason: ''
+  });
+
+  const empty = await callWorker({ mode: 'text-probe' }, {
+    freshWorker: true,
+    aiImpl: () => ({ choices: [{ message: { content: null, reasoning_content: 'SECRET' } }] })
+  });
+  assert.equal(empty.status, 502);
+  assert.equal(empty.json.reason, 'text-empty');
+  assert.doesNotMatch(JSON.stringify(empty.json), /SECRET/);
+
+  const down = await callWorker({ mode: 'text-probe' }, { freshWorker: true, aiImpl: () => { throw new Error('nope'); } });
+  assert.equal(down.status, 502);
+  assert.match(down.json.reason, /^text-run-failed:/);
 });

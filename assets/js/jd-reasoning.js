@@ -56,10 +56,10 @@
        too would withhold ordinary technical prose ("digital signature APIs", DocuSign
        integration) from a posting this candidate would plausibly be sent. */
   ];
-  /* `engine` and a per-requirement `probability` arrive only from the Worker's jd-decide mode (Jev
+  /* `engine` and a per-requirement `probability` arrive only from the Worker's jd-decide mode (Clef
      decisions). Both are optional, so a jd-scoring response without them validates as before. */
   var ROOT_KEYS = ["narrative", "requirements", "overall", "engine"];
-  var ENGINES = ["jev"];
+  var ENGINES = ["clef"];
   var REQUIREMENT_KEYS = [
     "requirementId",
     "recruiterIntent",
@@ -475,7 +475,7 @@
     };
   }
 
-  /* jd-decide offers Jev every citable record in the published profile (the Worker does the same
+  /* jd-decide offers Clef every citable record in the published profile (the Worker does the same
      server-side from the same file), not only the ids the keyword pass referenced, so a decision
      may cite adjacent evidence the keyword pass never touched. This is the input its response is
      validated and merged against: the jd-scoring input with that wider registry and the matching
@@ -679,7 +679,7 @@
       ok: true,
       reasoning: {
         narrative: clipText(parsed.narrative, FIELD_LIMITS.narrative),
-        engine: parsed.engine === "jev" ? "jev" : "",
+        engine: parsed.engine === "clef" ? "clef" : "",
         requirements: sanitizedRequirements,
         overall: {
           score: clampScore(overall.score),
@@ -892,7 +892,7 @@
       ? clipText(reasoning.overall.narrative, FIELD_LIMITS.narrative)
       : clipText(reasoning && reasoning.narrative, FIELD_LIMITS.narrative);
     result.sections = buildSections(requirementReasoning);
-    result.reasoningEngine = reasoning && reasoning.engine === "jev" ? "jev" : "llm";
+    result.reasoningEngine = reasoning && reasoning.engine === "clef" ? "clef" : "llm";
     var aiConfidence = aggregateAiConfidence(requirementReasoning);
     if (aiConfidence) result.aiConfidence = aiConfidence;
     return result;
